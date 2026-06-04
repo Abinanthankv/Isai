@@ -28,7 +28,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBindingObserver {
   late TextEditingController _apiKeyController;
-  static const String _localVersion = '0.9.0';
+  static const String _localVersion = '1.0.0';
   String _githubVersion = _localVersion;
   String _changelog = '';
   bool _updateAvailable = false;

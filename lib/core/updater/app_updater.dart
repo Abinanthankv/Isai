@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/apple_music_theme.dart';
 
 class AppUpdater {
-  static const String localVersion = '0.9.0';
+  static const String localVersion = '1.0.0';
   static const String _methodChannelName = 'com.isai.music/updater';
   static const String _ignoredVersionKey = 'ignored_app_version';
 
