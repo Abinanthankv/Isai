@@ -90,21 +90,8 @@ class AppUpdater {
           final assets = data['assets'] as List<dynamic>? ?? [];
           Map<String, dynamic>? targetAsset;
 
-          // 1. Try to locate universal/standard APK first (does not contain -v7a, -v8a, -arm, -x86, etc.)
-          final abiSignatures = ['v8a', 'v7a', 'arm64', 'arm', 'x86_64', 'x86'];
-          for (final asset in assets) {
-            final name = asset['name']?.toString()?.toLowerCase() ?? '';
-            if (name.endsWith('.apk')) {
-              final containsAbi = abiSignatures.any((sig) => name.contains(sig));
-              if (!containsAbi) {
-                targetAsset = asset;
-                break;
-              }
-            }
-          }
-
-          // 2. If no universal APK exists, look for a split APK matching the device architecture
-          if (targetAsset == null && deviceAbi.isNotEmpty) {
+          // 1. Look for a split APK matching the device architecture first (saves bandwidth)
+          if (deviceAbi.isNotEmpty) {
             final abiLower = deviceAbi.toLowerCase();
             String? preferredSig;
             if (abiLower.contains('arm64') || abiLower.contains('v8a')) {
@@ -121,6 +108,21 @@ class AppUpdater {
               for (final asset in assets) {
                 final name = asset['name']?.toString()?.toLowerCase() ?? '';
                 if (name.endsWith('.apk') && name.contains(preferredSig)) {
+                  targetAsset = asset;
+                  break;
+                }
+              }
+            }
+          }
+
+          // 2. If no matching split APK is found, try to locate the universal/standard APK
+          if (targetAsset == null) {
+            final abiSignatures = ['v8a', 'v7a', 'arm64', 'arm', 'x86_64', 'x86'];
+            for (final asset in assets) {
+              final name = asset['name']?.toString()?.toLowerCase() ?? '';
+              if (name.endsWith('.apk')) {
+                final containsAbi = abiSignatures.any((sig) => name.contains(sig));
+                if (!containsAbi) {
                   targetAsset = asset;
                   break;
                 }
