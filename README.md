@@ -11,7 +11,8 @@
 </p>
 
 ---
-
+![Home Screen](screenshots/home.png)
+![Now Playing Screen](screenshots/now_playing.png)
 ## 🌟 Features
 
 - 🎵 **Multi-source Streaming** — Jiosaavn, MassTamilan, Internet Archive.
