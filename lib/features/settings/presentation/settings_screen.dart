@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../music/presentation/music_providers.dart';
@@ -580,8 +581,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
         // Retrieve local version dynamically
         String localVer = _localVersion;
         try {
-          if (Platform.isAndroid) {
-            const channel = MethodChannel('com.isai.music/updater');
+          if (io.Platform.isAndroid) {
+            final channel = MethodChannel('com.isai.music/updater');
             localVer = await channel.invokeMethod<String>('getAppVersion') ?? _localVersion;
           }
         } catch (_) {}
