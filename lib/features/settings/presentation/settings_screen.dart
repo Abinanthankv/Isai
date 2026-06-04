@@ -29,6 +29,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBindingObserver {
   late TextEditingController _apiKeyController;
   static const String _localVersion = '1.0.0';
+  String _currentLocalVersion = _localVersion;
   String _githubVersion = _localVersion;
   String _changelog = '';
   bool _updateAvailable = false;
@@ -410,7 +411,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                         _SettingsTile(
                           icon: Icons.info_outline,
                           title: _updateAvailable ? 'New Update Available!' : 'Version',
-                          subtitle: _updateAvailable ? 'v$_githubVersion (Local: v$_localVersion)' : 'v$_localVersion',
+                          subtitle: _updateAvailable ? 'v$_githubVersion (Local: v$_currentLocalVersion)' : 'v$_currentLocalVersion',
                           showChevron: true,
                           onTap: () => AppUpdater.checkForUpdate(context, silent: false),
                         ),
@@ -576,10 +577,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           }
         }
 
+        // Retrieve local version dynamically
+        String localVer = _localVersion;
+        try {
+          if (Platform.isAndroid) {
+            const channel = MethodChannel('com.isai.music/updater');
+            localVer = await channel.invokeMethod<String>('getAppVersion') ?? _localVersion;
+          }
+        } catch (_) {}
+
         if (mounted) {
           setState(() {
+            _currentLocalVersion = localVer;
             _githubVersion = cleanTag;
-            _updateAvailable = _isUpdateAvailable(_localVersion, cleanTag);
+            _updateAvailable = _isUpdateAvailable(localVer, cleanTag);
             if (body.isNotEmpty) {
               _changelog = body;
             }

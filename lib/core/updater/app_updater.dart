@@ -61,8 +61,16 @@ class AppUpdater {
         final cleanLatestVersion = tag.replaceAll('v', '');
         final releaseNotes = data['body']?.toString() ?? 'No release notes available.';
 
+        // Retrieve local version dynamically from Gradle via MethodChannel
+        String localVer = localVersion;
+        try {
+          localVer = await _channel.invokeMethod<String>('getAppVersion') ?? localVersion;
+        } catch (e) {
+          print('[AppUpdater] Failed to get local version: $e');
+        }
+
         // Check if update is available
-        final updateAvailable = _isUpdateAvailable(localVersion, cleanLatestVersion);
+        final updateAvailable = _isUpdateAvailable(localVer, cleanLatestVersion);
 
         if (updateAvailable) {
           // Check if this version is ignored (only for silent checks)

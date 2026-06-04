@@ -32,6 +32,13 @@ class MainActivity: AudioServiceActivity() {
                 }
             } else if (call.method == "getDeviceAbi") {
                 result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "")
+            } else if (call.method == "getAppVersion") {
+                try {
+                    val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                    result.success(packageInfo.versionName ?: "1.0.0")
+                } catch (e: Exception) {
+                    result.success("1.0.0")
+                }
             } else {
                 result.notImplemented()
             }
