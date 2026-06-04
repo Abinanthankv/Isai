@@ -2687,7 +2687,7 @@ final jiosaavnPlaylistTracksProvider = FutureProvider.family<List<ItunesTrack>, 
     final artwork = images.isNotEmpty ? images.first?.toString() ?? '' : '';
     
     return ItunesTrack(
-      trackId: int.tryParse(item['id']?.toString() ?? '') ?? 0,
+      trackId: int.tryParse(item['id']?.toString() ?? '') ?? (item['id']?.toString().hashCode.abs() ?? 0),
       trackName: item['title']?['text']?.toString() ?? 'Unknown Track',
       artistName: artistName.isNotEmpty ? artistName : 'Unknown Artist',
       collectionName: item['album']?['text']?.toString() ?? '',

@@ -260,7 +260,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        'Library · ${file.formattedSize}',
+        '${_limitArtists(meta?.artistName ?? parsed.artist)} · Library · ${file.formattedSize}',
         style: const TextStyle(
             color: Colors.white54, fontSize: 12),
       ),
@@ -302,7 +302,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
           if (result.artist.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
-              StringUtils.unescapeHtml(result.artist),
+              StringUtils.unescapeHtml(_limitArtists(result.artist)),
               style: const TextStyle(
                 color: Colors.white54,
                 fontSize: 12,
@@ -535,6 +535,15 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
       );
     }
     return (artist: 'Unknown', title: name);
+  }
+
+  String _limitArtists(String artist) {
+    if (artist.isEmpty) return artist;
+    final parts = artist.split(RegExp(r'\s*(?:,|\s+&\s+|\s+and\s+)\s*'));
+    if (parts.length > 2) {
+      return '${parts[0]}, ${parts[1]}';
+    }
+    return artist;
   }
 }
 

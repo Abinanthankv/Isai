@@ -921,8 +921,9 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
       'artist': track.artistName,
       'artworkUrl': artwork,
       'forceReplace': true,
-      'queue': customQueue.map((e) {
-        final tMatch = queue[customQueue.indexOf(e)];
+      'queue': List.generate(customQueue.length, (i) {
+        final e = customQueue[i];
+        final tMatch = queue[i];
         String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
         if (e.torrentId == -1) {
           fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(tMatch.trackName)}&artist=${Uri.encodeComponent(tMatch.artistName)}';
@@ -939,7 +940,7 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
             'localPath': e.localPath,
           }
         };
-      }).toList(),
+      }),
       'index': startIndex >= 0 ? startIndex : 0,
     });
 

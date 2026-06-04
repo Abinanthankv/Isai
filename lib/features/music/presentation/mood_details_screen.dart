@@ -366,9 +366,9 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
               'artist': widget.track.artistName,
               'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
               'forceReplace': true,
-              'queue': customQueue.map((e) {
-                final qIdx = customQueue.indexOf(e);
-                final qTrack = widget.allSongs[qIdx];
+              'queue': List.generate(customQueue.length, (i) {
+                final e = customQueue[i];
+                final qTrack = widget.allSongs[i];
                 String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
                 if (e.torrentId == -1) {
                   fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qTrack.trackName)}&artist=${Uri.encodeComponent(qTrack.artistName)}';
@@ -385,7 +385,7 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
                     'localPath': e.localPath,
                   }
                 };
-              }).toList(),
+              }),
               'index': startIndex != -1 ? startIndex : 0,
             });
 

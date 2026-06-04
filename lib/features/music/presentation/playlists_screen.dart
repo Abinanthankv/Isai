@@ -1127,25 +1127,26 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
       'artist': track.artist,
       'artworkUrl': track.artworkUrl ?? '',
       'forceReplace': true,
-      'queue': customQueue.map((e) {
-        final tMatch = tracks[customQueue.indexOf(e)];
-          String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
-          if (e.torrentId == -1) {
-            fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(tMatch.title)}&artist=${Uri.encodeComponent(tMatch.artist)}';
+      'queue': List.generate(customQueue.length, (i) {
+        final e = customQueue[i];
+        final tMatch = tracks[i];
+        String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
+        if (e.torrentId == -1) {
+          fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(tMatch.title)}&artist=${Uri.encodeComponent(tMatch.artist)}';
+        }
+        return {
+          'url': fUrl,
+          'title': tMatch.title,
+          'artist': tMatch.artist,
+          'artworkUrl': tMatch.artworkUrl ?? '',
+          'extras': {
+            'torrentId': e.torrentId,
+            'fileId': e.id,
+            'size': e.size,
+            'localPath': e.localPath,
           }
-          return {
-            'url': fUrl,
-            'title': tMatch.title,
-            'artist': tMatch.artist,
-            'artworkUrl': tMatch.artworkUrl ?? '',
-            'extras': {
-              'torrentId': e.torrentId,
-              'fileId': e.id,
-              'size': e.size,
-              'localPath': e.localPath,
-            }
-          };
-      }).toList(),
+        };
+      }),
       'index': startIndex,
     });
 
@@ -1190,25 +1191,26 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
       'artist': track.artistName,
       'artworkUrl': artwork ?? '',
       'forceReplace': true,
-      'queue': customQueue.map((e) {
-        final tMatch = tracks[customQueue.indexOf(e)];
-          String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
-          if (e.torrentId == -1) {
-            fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(tMatch.trackName)}&artist=${Uri.encodeComponent(tMatch.artistName)}';
+      'queue': List.generate(customQueue.length, (i) {
+        final e = customQueue[i];
+        final tMatch = tracks[i];
+        String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
+        if (e.torrentId == -1) {
+          fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(tMatch.trackName)}&artist=${Uri.encodeComponent(tMatch.artistName)}';
+        }
+        return {
+          'url': fUrl,
+          'title': tMatch.trackName,
+          'artist': tMatch.artistName,
+          'artworkUrl': tMatch.artworkUrl.isNotEmpty ? tMatch.artworkUrl : playlistArtwork ?? '',
+          'extras': {
+            'torrentId': e.torrentId,
+            'fileId': e.id,
+            'size': e.size,
+            'localPath': e.localPath,
           }
-          return {
-            'url': fUrl,
-            'title': tMatch.trackName,
-            'artist': tMatch.artistName,
-            'artworkUrl': tMatch.artworkUrl.isNotEmpty ? tMatch.artworkUrl : playlistArtwork ?? '',
-            'extras': {
-              'torrentId': e.torrentId,
-              'fileId': e.id,
-              'size': e.size,
-              'localPath': e.localPath,
-            }
-          };
-      }).toList(),
+        };
+      }),
       'index': startIndex,
     });
 

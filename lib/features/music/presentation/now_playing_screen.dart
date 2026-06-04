@@ -3029,7 +3029,7 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
         style: TextStyle(color: isActive ? AppleMusicTheme.primaryPink : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
       ),
       subtitle: Text(
-        'Library • ${file.formattedSize}',
+        '${_limitArtists(meta?.artistName ?? parsed.artist)} • Library • ${file.formattedSize}',
         style: const TextStyle(color: Colors.white54, fontSize: 12),
       ),
       trailing: isActive ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink, size: 20) : null,
@@ -3066,7 +3066,7 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
         style: TextStyle(color: isActive ? AppleMusicTheme.primaryPink : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
       ),
       subtitle: Text(
-        '${result.source} • ${result.format}',
+        '${result.artist.isNotEmpty ? "${_unescapeHtml(_limitArtists(result.artist))} • " : ""}${result.source} • ${result.format}',
         style: const TextStyle(color: Colors.white54, fontSize: 12),
       ),
       trailing: isActive ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink, size: 20) : null,
@@ -3091,6 +3091,15 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
       color: isDark ? Colors.white12 : Colors.black.withOpacity(0.05),
       child: Icon(Icons.music_note, color: isDark ? Colors.white54 : Colors.black45, size: 20),
     );
+  }
+
+  String _limitArtists(String artist) {
+    if (artist.isEmpty) return artist;
+    final parts = artist.split(RegExp(r'\s*(?:,|\s+&\s+|\s+and\s+)\s*'));
+    if (parts.length > 2) {
+      return '${parts[0]}, ${parts[1]}';
+    }
+    return artist;
   }
 
   Future<void> _switchSource({

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - June 2026
+
+### Fixed
+- Fixed JioSaavn playlist queue playback bug where it repeated the first song.
+- Fixed missing artist names in the playback source selection sheets.
+
 ## [1.0.0] - June 2026
 
 ### Added
