@@ -1,0 +1,18 @@
+# Legal & Disclaimer
+
+Last updated: June 2026
+
+## 1. Nature of the Application
+Isai is a media player and metadata management application. It acts solely as a client-side interface for browsing publicly available metadata  and playing media files provided by the user or third-party extensions. Isai itself does not host, store, distribute, or index any media content.
+
+## 2. Third-Party Extensions
+Isai uses an extensible architecture that allows users to install third-party plugins (extensions). These extensions are developed and maintained by independent developers not affiliated with Isai. We have no control over, and assume no responsibility for, the content, legality, or functionality of any third-party extension.
+
+## 3. User Responsibility
+Users are solely responsible for the extensions they install and the content they access. By using this application, you agree to ensure that you have the legal right to access any content you view using Isai. The developers of Isai do not endorse or encourage copyright infringement.
+
+## 4. Copyright & DMCA
+We respect the intellectual property rights of others. Since Isai does not host any content, we cannot remove content from the internet. However, if you believe that the application interface itself infringes on your rights, please contact us.
+
+## 5. No Warranty
+This software is provided "as is", without warranty of any kind, express or implied. In no event shall the authors or copyright holders be liable for any claim, damages, or other liability arising from the use of this software.

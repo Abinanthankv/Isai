@@ -1,0 +1,465 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'music_providers.dart';
+import 'music_search_screen.dart';
+import 'now_playing_screen.dart';
+import 'playlists_screen.dart';
+import '../data/music_models.dart';
+import '../data/itunes_metadata_service.dart';
+import '../../../core/theme/apple_music_theme.dart';
+import '../../../core/theme/glassmorphism.dart';
+import '../../../core/theme/apple_music_components.dart';
+import 'package:isai/main.dart';
+
+class MoodDetailsScreen extends ConsumerWidget {
+  final String mood;
+  final List<Color> gradientColors;
+  final String? contextQuery;
+  final bool isPersonal;
+  final int? genreId;
+
+  const MoodDetailsScreen({
+    super.key,
+    required this.mood,
+    required this.gradientColors,
+    this.contextQuery,
+    this.isPersonal = false,
+    this.genreId,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<ItunesTrack>> moodSongs;
+    
+    if (isPersonal) {
+      moodSongs = ref.watch(reccoMixProvider(MoodSearchParams(mood: mood, context: contextQuery)));
+    } else {
+      moodSongs = ref.watch(moodSongsProvider(MoodSearchParams(mood: mood, context: contextQuery)));
+    }
+    
+    final AsyncValue<List<DeezerPlaylist>> playlistsAsync;
+    if (genreId != null) {
+      playlistsAsync = ref.watch(genrePlaylistsProvider(GenrePlaylistsParams(id: genreId!, name: mood)));
+    } else {
+      playlistsAsync = const AsyncValue.data([]);
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      body: CustomScrollView(
+        slivers: [
+          _buildAppBar(context, isDark),
+          
+          if (genreId != null)
+            playlistsAsync.when(
+              data: (playlists) {
+                if (playlists.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+                return SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        child: Text(
+                          'Related Playlists',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 185,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: playlists.length,
+                          itemBuilder: (context, index) {
+                            final playlist = playlists[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 14),
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => PlaylistDetailsScreen(
+                                        deezerPlaylist: playlist,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 120,
+                                      height: 120,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.2),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(16),
+                                        child: CachedNetworkImage(
+                                          imageUrl: playlist.artworkUrl,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) => Container(
+                                            color: isDark ? Colors.white10 : Colors.black12,
+                                            child: const Icon(Icons.music_note_rounded, color: Colors.grey),
+                                          ),
+                                          errorWidget: (context, url, error) => Container(
+                                            color: isDark ? Colors.white10 : Colors.black12,
+                                            child: const Icon(Icons.queue_music_rounded, color: Colors.grey),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    SizedBox(
+                                      width: 120,
+                                      child: Text(
+                                        playlist.title,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                          color: isDark ? Colors.white : Colors.black,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
+                        child: Text(
+                          'Top Songs',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              loading: () => const SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 150,
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                  ),
+                ),
+              ),
+              error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+            ),
+
+          moodSongs.when(
+            data: (songs) => SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _MoodSongTile(
+                    track: songs[index],
+                    allSongs: songs,
+                    index: index + 1,
+                    gradientColors: gradientColors,
+                  ),
+                  childCount: songs.length,
+                ),
+              ),
+            ),
+            loading: () => const SliverFillRemaining(
+              child: Center(
+                child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+              ),
+            ),
+            error: (e, _) => SliverFillRemaining(
+              child: Center(child: Text('Error: $e')),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar(BuildContext context, bool isDark) {
+    return SliverAppBar(
+      expandedHeight: 200,
+      pinned: true,
+      backgroundColor: isDark ? Colors.black : Colors.white,
+      leading: const BackButton(color: Colors.white),
+      flexibleSpace: FlexibleSpaceBar(
+        centerTitle: false,
+        titlePadding: const EdgeInsets.only(left: 50, bottom: 16),
+        title: Text(
+          isPersonal ? 'Personal $mood Mix' : '$mood Vibes',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: gradientColors,
+                ),
+              ),
+            ),
+            // Abstract pattern icons
+            Center(
+              child: Opacity(
+                opacity: 0.1,
+                child: Icon(
+                  _getMoodIcon(),
+                  size: 200,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            // Bottom gradient for title readability
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.5),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getMoodIcon() {
+    switch (mood) {
+      case 'Happy': return Icons.wb_sunny_rounded;
+      case 'Chill': return Icons.nightlight_round;
+      case 'Sad': return Icons.cloud_rounded;
+      case 'Focus': return Icons.psychology_rounded;
+      case 'Energy': return Icons.bolt_rounded;
+      default: return Icons.music_note_rounded;
+    }
+  }
+}
+
+class _MoodSongTile extends ConsumerStatefulWidget {
+  final ItunesTrack track;
+  final List<ItunesTrack> allSongs;
+  final int index;
+  final List<Color> gradientColors;
+
+  const _MoodSongTile({
+    required this.track,
+    required this.allSongs,
+    required this.index,
+    required this.gradientColors,
+  });
+
+  @override
+  ConsumerState<_MoodSongTile> createState() => _MoodSongTileState();
+}
+
+class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
+  TorBoxFile? _matchingFile;
+  ItunesMeta? _meta;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkLibrary());
+  }
+
+  Future<void> _checkLibrary() async {
+    final libraryNotifier = ref.read(libraryProvider.notifier);
+    final file = ref.read(libraryProvider).findMatchingTrack(widget.track.trackName, widget.track.artistName);
+    if (file != null) {
+      if (!mounted) return;
+      setState(() {
+        _matchingFile = file;
+      });
+      libraryNotifier.enrichTrack(file);
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      
+      final trackMeta = ItunesMeta(
+        trackName: widget.track.trackName,
+        artworkUrlLow: widget.track.artworkUrl,
+        artworkUrlHigh: widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
+        artistName: widget.track.artistName,
+        album: widget.track.collectionName,
+      );
+      await libraryNotifier.updateTrackMetadata(file, trackMeta);
+      
+      if (mounted) {
+        setState(() {
+          _meta = trackMeta;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GlassCard(
+        padding: const EdgeInsets.all(12),
+        borderRadius: 20,
+        onTap: () async {
+          if (_matchingFile != null) {
+            final library = ref.read(libraryProvider);
+            final customQueue = widget.allSongs.map<TorBoxFile>((t) {
+              final match = library.findMatchingTrack(t.trackName, t.artistName);
+              if (match != null) return match;
+              
+              // Internal dummy for lazy resolution
+              return TorBoxFile(
+                id: -t.trackId,
+                torrentId: -1,
+                name: t.trackName,
+                size: 0,
+                localPath: null,
+              );
+            }).toList();
+
+            final startIndex = widget.allSongs.indexWhere((t) => t.trackId == widget.track.trackId);
+            
+            final url = _matchingFile!.localPath != null 
+                ? Uri.file(_matchingFile!.localPath!).toString() 
+                : 'https://lazy.torbox.internal/${_matchingFile!.torrentId}/${_matchingFile!.id}';
+
+            await audioHandler.customAction('play', {
+              'url': url,
+              'title': widget.track.trackName,
+              'artist': widget.track.artistName,
+              'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
+              'forceReplace': true,
+              'queue': customQueue.map((e) {
+                final qIdx = customQueue.indexOf(e);
+                final qTrack = widget.allSongs[qIdx];
+                String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
+                if (e.torrentId == -1) {
+                  fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qTrack.trackName)}&artist=${Uri.encodeComponent(qTrack.artistName)}';
+                }
+                return {
+                  'url': fUrl,
+                  'title': qTrack.trackName,
+                  'artist': qTrack.artistName,
+                  'artworkUrl': qTrack.artworkUrl,
+                  'extras': {
+                    'torrentId': e.torrentId,
+                    'fileId': e.id,
+                    'size': e.size,
+                    'localPath': e.localPath,
+                  }
+                };
+              }).toList(),
+              'index': startIndex != -1 ? startIndex : 0,
+            });
+
+            if (mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => NowPlayingScreen(
+                    file: _matchingFile!,
+                    customQueue: customQueue,
+                  ),
+                ),
+              );
+            }
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (ctx) => MusicSearchScreen(
+                  initialQuery: '${widget.track.artistName} ${widget.track.trackName}',
+                ),
+              ),
+            );
+          }
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(
+                  image: CachedNetworkImageProvider(widget.track.artworkUrl),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.track.trackName,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.track.artistName,
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black54,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              _matchingFile != null ? Icons.play_circle_fill_rounded : Icons.add_circle_outline_rounded,
+              color: AppleMusicTheme.primaryPink,
+              size: 32,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

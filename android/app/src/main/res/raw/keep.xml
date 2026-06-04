@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Prevent resource shrinking from removing drawables referenced by string name
+     at runtime via audio_service / MediaControl.androidIcon -->
+<resources
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_heart_filled,@drawable/ic_heart_border,@drawable/ic_stat_music" />
