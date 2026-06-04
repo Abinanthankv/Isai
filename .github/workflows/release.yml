@@ -50,16 +50,25 @@ jobs:
         run: flutter pub get
 
       - name: Build Split APKs
-        run: flutter build apk --release --split-per-abi
+        run: |
+          TAG_VERSION="${{ github.event.inputs.tag_name || github.ref_name }}"
+          CLEAN_VERSION="${TAG_VERSION//v/}"
+          flutter build apk --release --split-per-abi --build-name="$CLEAN_VERSION"
+          mkdir -p build/resolved-apks
+          cp build/app/outputs/apk/release/isai-*.apk build/resolved-apks/
 
       - name: Build Universal APK
-        run: flutter build apk --release
+        run: |
+          TAG_VERSION="${{ github.event.inputs.tag_name || github.ref_name }}"
+          CLEAN_VERSION="${TAG_VERSION//v/}"
+          flutter build apk --release --build-name="$CLEAN_VERSION"
+          cp build/app/outputs/apk/release/isai-*.apk build/resolved-apks/
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-apks
-          path: build/app/outputs/apk/release/isai-*.apk
+          path: build/resolved-apks/isai-*.apk
 
   build-linux:
     name: Build Linux App
