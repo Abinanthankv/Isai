@@ -123,13 +123,48 @@ jobs:
       - name: Package Linux Bundle
         run: |
           mkdir -p build/linux-release
+          # Create tar.gz bundle
           tar -czf build/linux-release/isai-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+
+          # Create AppImage structure
+          APPDIR=build/linux/x64/release/Isai.AppDir
+          mkdir -p "$APPDIR"
+          cp -r build/linux/x64/release/bundle/* "$APPDIR/"
+
+          # Create AppRun
+          cat << 'EOF' | sed 's/^[[:space:]]*//' > "$APPDIR/AppRun"
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export LD_LIBRARY_PATH="${HERE}/lib:${LD_LIBRARY_PATH}"
+          exec "${HERE}/debrid_vault_music" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # Create desktop file
+          cat << 'EOF' | sed 's/^[[:space:]]*//' > "$APPDIR/isai.desktop"
+          [Desktop Entry]
+          Name=Isai
+          Exec=debrid_vault_music
+          Icon=isai
+          Type=Application
+          Categories=AudioVideo;Audio;Music;Player;
+          Comment=A premium debrid video and music streaming client.
+          Terminal=false
+          EOF
+
+          # Copy icon
+          cp assets/isai_app_icon.png "$APPDIR/isai.png"
+
+          # Download and run appimagetool
+          curl -Lo appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$APPDIR" build/linux-release/Isai-x86_64.AppImage
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-app
-          path: build/linux-release/isai-linux-x64.tar.gz
+          path: build/linux-release/*
 
   release:
     name: Create GitHub Release
