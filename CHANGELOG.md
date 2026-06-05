@@ -4,8 +4,10 @@
 
 ### Added
 - External plain-text link sharing: Intercept Spotify and YouTube song links shared from other apps and play them instantly using high-quality lazy source resolution.
+- YouTube and Spotify playlist URL importing: Automatically detect and import entire playlists into local databases when sharing playlist links from external apps.
 - Integrated `ShareHandlerService` and updated `AndroidManifest.xml` to handle incoming `SEND` sharing intents.
 - Added `receive_sharing_intent` package to dependencies.
+- Portable Linux `.AppImage` build integration added alongside `.tar.gz` in GitHub release Actions workflow.
 - Native tactile haptic feedback on song selections, long presses, buttons, and filter chips across presentation screens.
 - Interactive synced lyrics offset controls (+/- 0.5s) to delay or speed up lyrics sync.
 
