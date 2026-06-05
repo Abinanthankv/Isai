@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 
@@ -123,6 +124,7 @@ class LikedSongsScreen extends ConsumerWidget {
                               constraints: const BoxConstraints(),
                               icon: const Icon(Icons.favorite, color: AppleMusicTheme.primaryPink, size: 22),
                               onPressed: () {
+                                HapticFeedback.lightImpact();
                                 ref.read(likedSongsProvider.notifier).toggleLike(
                                   file.torrentId,
                                   file.id,
@@ -141,6 +143,7 @@ class LikedSongsScreen extends ConsumerWidget {
                           ],
                         ),
                         onTap: () async {
+                          HapticFeedback.lightImpact();
                           final customQueue = entries.map((e) => e.file).toList();
                           final url = file.localPath != null 
                               ? Uri.file(file.localPath!).toString() 

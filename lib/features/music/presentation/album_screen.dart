@@ -16,6 +16,7 @@ import '../../../core/theme/glassmorphism.dart';
 import '../../../core/theme/apple_music_components.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:isai/main.dart';
+import 'package:flutter/services.dart';
 
 class AlbumScreen extends ConsumerStatefulWidget {
   final ItunesTrack album;
@@ -161,7 +162,10 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           child: GlassIconButton(
             icon: Icons.more_horiz,
             size: 36,
-            onPressed: () => _showAlbumActionSheet(context, tracks),
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              _showAlbumActionSheet(context, tracks);
+            },
           ),
         ),
       ],
@@ -285,7 +289,10 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(left: 24, right: 8),
                           child: ElevatedButton(
-                            onPressed: () => _handlePlayAlbum(tracks, context, shuffle: false),
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              _handlePlayAlbum(tracks, context, shuffle: false);
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: isDark ? Colors.white : Colors.black,
                               foregroundColor: isDark ? Colors.black : Colors.white,
@@ -317,7 +324,10 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(left: 8, right: 24),
                           child: ElevatedButton(
-                            onPressed: () => _handlePlayAlbum(tracks, context, shuffle: true),
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              _handlePlayAlbum(tracks, context, shuffle: true);
+                            },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.06),
                               foregroundColor: isDark ? Colors.white : Colors.black,
@@ -923,8 +933,12 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
     final matchingFile = ref.read(libraryProvider).findMatchingTrack(widget.track.trackName, widget.album.artistName);
     
     return InkWell(
-      onTap: _isCheckingSources ? null : () => _handleTap(matchingFile),
+      onTap: _isCheckingSources ? null : () {
+        HapticFeedback.lightImpact();
+        _handleTap(matchingFile);
+      },
       onLongPress: () {
+        HapticFeedback.mediumImpact();
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -1004,7 +1018,10 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
               )
             else
               GestureDetector(
-                onTap: () => _handleTap(matchingFile),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _handleTap(matchingFile);
+                },
                 child: Container(
                   width: 36,
                   height: 36,

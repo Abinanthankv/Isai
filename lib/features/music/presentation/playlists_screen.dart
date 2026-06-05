@@ -8,6 +8,7 @@ import 'package:isai/main.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/apple_music_components.dart';
@@ -348,6 +349,7 @@ class _PlaylistCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
+        HapticFeedback.lightImpact();
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -358,6 +360,7 @@ class _PlaylistCard extends StatelessWidget {
         );
       },
       onLongPress: () {
+        HapticFeedback.mediumImpact();
         showModalBottomSheet(
           context: context,
           backgroundColor: Colors.transparent,
@@ -810,11 +813,12 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Shuffle button (circle)
+                           // Shuffle button (circle)
                           _buildCircleButton(
                             icon: Icons.shuffle_rounded,
                             isDark: isDark,
                             onTap: () {
+                              HapticFeedback.lightImpact();
                               if (tracks.isNotEmpty) {
                                 if (localPlaylist != null) {
                                   final shuffled = List<DbPlaylistTrack>.from(tracks)..shuffle();
@@ -831,6 +835,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                           // Play button (large pill)
                           GestureDetector(
                             onTap: () {
+                              HapticFeedback.lightImpact();
                               if (tracks.isNotEmpty) {
                                 if (localPlaylist != null) {
                                   _playLocalTracks(ref, context, tracks as List<DbPlaylistTrack>, forceFullQueue: true);
@@ -870,13 +875,14 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                           const SizedBox(width: 20),
                           
                           // Add/Save button (circle)
-                          _buildCircleButton(
+                           _buildCircleButton(
                             icon: localPlaylist != null ? Icons.check_rounded : Icons.add_rounded,
                             isDark: isDark,
                             iconColor: localPlaylist != null ? Colors.green : null,
                             onTap: localPlaylist != null
-                                ? () {} // Already saved
+                                ? () { HapticFeedback.lightImpact(); } // Already saved
                                 : () async {
+                                    HapticFeedback.lightImpact();
                                     if (tracks.isNotEmpty) {
                                       try {
                                         final itunesTracks = tracks as List<ItunesTrack>;
@@ -972,6 +978,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                           imageUrl: track.artworkUrl.isNotEmpty ? track.artworkUrl : artworkUrl,
                           isDark: isDark,
                           onTap: () => _playAppleMusicTracks(ref, context, tracks as List<ItunesTrack>, artworkUrl, startIndex: index),
+                          onLongPress: () => _showTrackOptionsForItunesTrack(context, ref, track),
                         );
                       }
                       return const SizedBox.shrink();
@@ -1031,8 +1038,14 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
     VoidCallback? onLongPress,
   }) {
     return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      onLongPress: onLongPress != null ? () {
+        HapticFeedback.mediumImpact();
+        onLongPress();
+      } : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
@@ -1281,6 +1294,21 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
         track: itunesTrack,
         libraryFile: matchingFile,
         playlistTrackId: track.id,
+      ),
+    );
+  }
+
+  void _showTrackOptionsForItunesTrack(BuildContext context, WidgetRef ref, ItunesTrack track) {
+    final library = ref.read(libraryProvider);
+    final matchingFile = library.findMatchingTrack(track.trackName, track.artistName);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => TrackActionSheet(
+        track: track,
+        libraryFile: matchingFile,
       ),
     );
   }

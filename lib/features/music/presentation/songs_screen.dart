@@ -13,6 +13,7 @@ import '../data/itunes_metadata_service.dart';
 import 'metadata_picker_sheet.dart';
 import 'package:isai/main.dart'; // for navigatorKey
 import 'artist_screen.dart';
+import 'package:flutter/services.dart';
 
 enum SongListMode { all, recent }
 
@@ -273,6 +274,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
 
     return GestureDetector(
       onLongPress: () {
+        HapticFeedback.mediumImpact();
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -291,6 +293,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
         onSubtitleTap: (isEnriching || artist == 'TorBox')
             ? null
             : () {
+                HapticFeedback.lightImpact();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -310,6 +313,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
               size: 26,
             ),
         onTap: () {
+          HapticFeedback.lightImpact();
           Navigator.push(
             context,
             MaterialPageRoute(

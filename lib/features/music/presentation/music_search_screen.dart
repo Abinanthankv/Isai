@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -152,6 +153,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                               gradientColors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
                               isSelected: searchState.searchMode == 'songs',
                               onTap: () {
+                                HapticFeedback.lightImpact();
                                 ref.read(musicSearchProvider.notifier).setMode('songs');
                               },
                             ),
@@ -161,6 +163,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                               gradientColors: [AppleMusicTheme.primaryBlue, Colors.cyan],
                               isSelected: searchState.searchMode == 'albums',
                               onTap: () {
+                                HapticFeedback.lightImpact();
                                 ref.read(musicSearchProvider.notifier).setMode('albums');
                               },
                             ),
@@ -170,6 +173,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                               gradientColors: [Colors.orange, Colors.deepOrange],
                               isSelected: searchState.searchMode == 'artists',
                               onTap: () {
+                                HapticFeedback.lightImpact();
                                 ref.read(musicSearchProvider.notifier).setMode('artists');
                               },
                             ),
@@ -392,7 +396,10 @@ class _FlacResultTile extends ConsumerWidget {
       child: GlassCard(
         padding: const EdgeInsets.all(8),
         borderRadius: 12,
-        onTap: () => _playDirect(context, ref),
+        onTap: () {
+          HapticFeedback.lightImpact();
+          _playDirect(context, ref);
+        },
         child: Row(
           children: [
             ClipRRect(
@@ -784,8 +791,12 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         child: GlassCard(
           padding: const EdgeInsets.all(8),
           borderRadius: 12,
-          onTap: _isCheckingSources ? null : () => _handleTap(matchingFile),
+          onTap: _isCheckingSources ? null : () {
+            HapticFeedback.lightImpact();
+            _handleTap(matchingFile);
+          },
           onLongPress: () {
+            HapticFeedback.mediumImpact();
             showModalBottomSheet(
               context: context,
               isScrollControlled: true,
@@ -898,6 +909,7 @@ class _AlbumResultTile extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         borderRadius: 12,
         onTap: () {
+          HapticFeedback.lightImpact();
           Navigator.push(
             context,
             MaterialPageRoute(builder: (ctx) => AlbumScreen(album: album)),
@@ -979,6 +991,7 @@ class _ArtistResultTile extends ConsumerWidget {
         padding: const EdgeInsets.all(8),
         borderRadius: 12,
         onTap: () {
+          HapticFeedback.lightImpact();
           Navigator.push(
             context,
             MaterialPageRoute(

@@ -2681,7 +2681,20 @@ final jiosaavnPlaylistTracksProvider = FutureProvider.family<List<ItunesTrack>, 
   final list = playlist['list'] as List<dynamic>? ?? [];
   return list.map((item) {
     final artistsList = item['artists'] as List<dynamic>? ?? [];
-    final artistName = artistsList.map((a) => a['name']?.toString() ?? '').where((s) => s.isNotEmpty).join(', ');
+    var filteredArtists = artistsList.where((a) {
+      final role = a['role']?.toString().toLowerCase() ?? '';
+      return role == 'singer' || role == 'primary_artist' || role == 'primary' || role == 'artist';
+    }).toList();
+
+    if (filteredArtists.isEmpty) {
+      filteredArtists = artistsList;
+    }
+
+    final artistName = filteredArtists
+        .map((a) => a['name']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .take(2)
+        .join(', ');
     
     final images = item['image'] as List<dynamic>? ?? [];
     final artwork = images.isNotEmpty ? images.first?.toString() ?? '' : '';

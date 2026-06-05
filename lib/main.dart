@@ -19,6 +19,8 @@ import 'core/theme/apple_music_components.dart';
 import 'features/player/presentation/mini_player.dart';
 import 'features/player/presentation/player_providers.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'core/services/share_handler_service.dart';
+
 late AudioHandler audioHandler;
 
 class MyHttpOverrides extends HttpOverrides {
@@ -56,6 +58,8 @@ void main() async {
       androidNotificationIcon: 'drawable/ic_stat_music',
     ),
   );
+
+  ShareHandlerService.init();
 
   runApp(const ProviderScope(child: MyApp()));
 }

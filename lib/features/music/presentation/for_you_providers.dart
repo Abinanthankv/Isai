@@ -17,10 +17,10 @@ final _recommendationEngine = const RecommendationEngine();
 
 /// Full user music profile built from playback history.
 final userMusicProfileProvider = FutureProvider<UserMusicProfile>((ref) async {
-  final history = ref.watch(allPlaybackProvider).value ?? [];
+  final db = getIt<AppDatabase>();
+  final history = await db.getAllPlayback();
   if (history.isEmpty) return UserMusicProfile.empty;
 
-  final db = getIt<AppDatabase>();
   final metadata = await db.getAllMetadata();
   final followedArtists = await db.getAllFollowedArtists();
 

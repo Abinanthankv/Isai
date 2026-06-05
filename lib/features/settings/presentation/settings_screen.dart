@@ -95,7 +95,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 5),
                   
                   AppleMusicSectionHeader(title: 'Appearance'),
                   
@@ -134,7 +134,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                     ),
                   ),
                   
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   
                   AppleMusicSectionHeader(title: 'Account'),
                   
@@ -166,25 +166,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              GestureDetector(
-                                onTap: () async {
-                                  final url = Uri.parse('https://torbox.app/settings?section=account');
-                                  if (await canLaunchUrl(url)) {
-                                    await launchUrl(url, mode: LaunchMode.externalApplication);
-                                  }
-                                },
-                                child: Text(
-                                  'Find your key at torbox.app → Account → API Keys',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark 
-                                        ? AppleMusicTheme.primaryPink.withOpacity(0.7) 
-                                        : AppleMusicTheme.primaryPink,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
+                              
                               TextField(
                                 controller: _apiKeyController,
                                 obscureText: true,
@@ -245,7 +227,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                   style: const TextStyle(color: Colors.redAccent),
                                 ),
                               ],
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                               SizedBox(
                                 width: double.infinity,
                                 child: GlassButton(
@@ -292,7 +274,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                         ),
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 12),
                               Center(
                                 child: TextButton(
                                   onPressed: () async {
@@ -311,7 +293,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 8),
                               _SettingsTile(
                                 icon: Icons.dashboard_outlined,
                                 title: 'TorBox Dashboard',
@@ -330,7 +312,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                     ),
                   ),
                   
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   AppleMusicSectionHeader(title: 'Last.fm Scrobbling'),
                   
                   GlassCard(
@@ -401,7 +383,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   
                   AppleMusicSectionHeader(title: 'About'),
                   

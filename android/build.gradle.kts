@@ -61,6 +61,26 @@ subprojects {
     }
 }
 
+subprojects {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        val javaTask = project.tasks.withType<JavaCompile>().firstOrNull()
+        val targetCompat = javaTask?.targetCompatibility
+        if (targetCompat != null) {
+            compilerOptions {
+                if (targetCompat == "1.8" || targetCompat == "8") {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+                } else if (targetCompat == "11") {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+                } else if (targetCompat == "17") {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                } else if (targetCompat == "21") {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+                }
+            }
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

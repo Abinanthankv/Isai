@@ -72,6 +72,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
   DateTime? _sleepTimerEnd;
   bool _sleepAtEndOfTrack = false;
   String? _sleepTimerTrackId;
+  Duration _lyricsOffset = Duration.zero;
 
   @override
   void initState() {
@@ -551,6 +552,24 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
   }
   @override
   Widget build(BuildContext context) {
+    ref.listen(libraryProvider.select((s) => s.downloadError), (previous, next) {
+      if (next != null && next.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next),
+            backgroundColor: Colors.redAccent,
+            action: SnackBarAction(
+              label: 'Settings',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+              },
+            ),
+          ),
+        );
+      }
+    });
+
     final library = ref.watch(libraryProvider);
     final settings = ref.watch(settingsProvider);
     
@@ -2420,11 +2439,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
           stream: AudioService.position,
           builder: (context, snapshot) {
             final position = snapshot.data ?? Duration.zero;
+            final adjustedPosition = position + _lyricsOffset;
             
             // Find current line
             int currentLineIndex = -1;
             for (int i = 0; i < lyrics.syncedLines.length; i++) {
-              if (lyrics.syncedLines[i].timestamp <= position) {
+              if (lyrics.syncedLines[i].timestamp <= adjustedPosition) {
                 currentLineIndex = i;
               } else {
                 break;
@@ -2466,60 +2486,119 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
               });
             }
 
-            return ShaderMask(
-              shaderCallback: (rect) {
-                return const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black,
-                    Colors.black,
-                    Colors.transparent,
-                  ],
-                  stops: [0.0, 0.1, 0.7, 1.0], // Fade out earlier at the bottom
-                ).createShader(rect);
-              },
-              blendMode: BlendMode.dstIn,
-              child: ListView.builder(
-                controller: _lyricsScrollController,
-                padding: EdgeInsets.only(
-                  left: 28,
-                  right: 28,
-                  top: focusPoint - (itemHeight / 2),
-                  bottom: viewportHeight - focusPoint - (itemHeight / 2),
-                ),
-                itemCount: lyrics.syncedLines.length,
-                itemBuilder: (context, index) {
-                  final line = lyrics.syncedLines[index];
-                  final isActive = index == currentLineIndex;
-
-                  return Container(
-                    height: itemHeight,
-                    alignment: settings.playerLyricsAlignment == 'left' 
-                        ? Alignment.centerLeft 
-                        : (settings.playerLyricsAlignment == 'right' ? Alignment.centerRight : Alignment.center),
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 400),
-                      curve: Curves.easeOut,
-                      style: TextStyle(
-                        color: isActive ? Colors.white : Colors.white.withOpacity(0.2),
-                        fontSize: isActive ? settings.playerLyricsFontSize + 4 : settings.playerLyricsFontSize,
-                        fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-                        height: 1.2,
-                      ),
-                      child: Text(
-                        line.text,
-                        textAlign: settings.playerLyricsAlignment == 'left' 
-                            ? TextAlign.left 
-                            : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+            return Stack(
+              children: [
+                ShaderMask(
+                  shaderCallback: (rect) {
+                    return const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black,
+                        Colors.black,
+                        Colors.transparent,
+                      ],
+                      stops: [0.0, 0.1, 0.7, 1.0], // Fade out earlier at the bottom
+                    ).createShader(rect);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: ListView.builder(
+                    controller: _lyricsScrollController,
+                    padding: EdgeInsets.only(
+                      left: 28,
+                      right: 28,
+                      top: focusPoint - (itemHeight / 2),
+                      bottom: viewportHeight - focusPoint - (itemHeight / 2),
                     ),
-                  );
-                },
-              ),
+                    itemCount: lyrics.syncedLines.length,
+                    itemBuilder: (context, index) {
+                      final line = lyrics.syncedLines[index];
+                      final isActive = index == currentLineIndex;
+
+                      return Container(
+                        height: itemHeight,
+                        alignment: settings.playerLyricsAlignment == 'left' 
+                            ? Alignment.centerLeft 
+                            : (settings.playerLyricsAlignment == 'right' ? Alignment.centerRight : Alignment.center),
+                        child: AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeOut,
+                          style: TextStyle(
+                            color: isActive ? Colors.white : Colors.white.withOpacity(0.2),
+                            fontSize: isActive ? settings.playerLyricsFontSize + 4 : settings.playerLyricsFontSize,
+                            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                            height: 1.2,
+                          ),
+                          child: Text(
+                            line.text,
+                            textAlign: settings.playerLyricsAlignment == 'left' 
+                                ? TextAlign.left 
+                                : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Positioned(
+                  bottom: 24,
+                  right: 24,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _lyricsOffset -= const Duration(milliseconds: 500);
+                            });
+                          },
+                          child: const Icon(Icons.remove_circle_outline_rounded, color: Colors.white70, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${_lyricsOffset.inMilliseconds >= 0 ? '+' : ''}${(_lyricsOffset.inMilliseconds / 1000).toStringAsFixed(1)}s',
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _lyricsOffset += const Duration(milliseconds: 500);
+                            });
+                          },
+                          child: const Icon(Icons.add_circle_outline_rounded, color: Colors.white70, size: 22),
+                        ),
+                        if (_lyricsOffset != Duration.zero) ...[
+                          const SizedBox(width: 10),
+                          Container(width: 1, height: 16, color: Colors.white10),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.mediumImpact();
+                              setState(() {
+                                _lyricsOffset = Duration.zero;
+                              });
+                            },
+                            child: const Icon(Icons.restore_rounded, color: AppleMusicTheme.primaryPink, size: 18),
+                          ),
+                        ]
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             );
           },
         );

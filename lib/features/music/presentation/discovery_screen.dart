@@ -99,7 +99,7 @@ class DiscoveryScreen extends ConsumerWidget {
 
 
           
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          const SliverToBoxAdapter(child: SizedBox(height: 50)),
         ],
       ),
 
@@ -791,7 +791,7 @@ class DiscoveryScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
                 child: Row(
                   children: [
                     Icon(icon, color: AppleMusicTheme.primaryPink, size: 20),
@@ -808,7 +808,7 @@ class DiscoveryScreen extends ConsumerWidget {
                 ),
               ),
               SizedBox(
-                height: 185,
+                height: 165,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -911,7 +911,7 @@ class DiscoveryScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 32, 16, 4),
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Text(
                 'Curated Playlists',
                 style: TextStyle(
@@ -1103,7 +1103,7 @@ class DiscoveryScreen extends ConsumerWidget {
         ),
 
         SizedBox(
-          height: 185,
+          height: 165,
           child: playlistsAsync.when(
             data: (items) {
               if (items.isEmpty) {

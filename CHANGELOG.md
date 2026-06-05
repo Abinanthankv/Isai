@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2] - June 2026
+
+### Added
+- External plain-text link sharing: Intercept Spotify and YouTube song links shared from other apps and play them instantly using high-quality lazy source resolution.
+- Integrated `ShareHandlerService` and updated `AndroidManifest.xml` to handle incoming `SEND` sharing intents.
+- Added `receive_sharing_intent` package to dependencies.
+- Native tactile haptic feedback on song selections, long presses, buttons, and filter chips across presentation screens.
+- Interactive synced lyrics offset controls (+/- 0.5s) to delay or speed up lyrics sync.
+
+### Fixed & Improved
+
+- Redesigned and cleaned up UI layout/spacing on Discovery, Album, and Settings screens for cleaner layouts and improved responsiveness.
+- Surfaced download directory configuration warnings with direct settings redirect links on the Now Playing player screen.
+- Prevented automatic recommendations rebuilding/re-fetching on the "For You" page by loading history profile via direct database queries.
+
 ## [1.0.1] - June 2026
 
 ### Fixed
