@@ -98,19 +98,13 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                     children: [
                       Text(
                         'Choose Source',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white,
+                          fontWeight: FontWeight.bold,),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${StringUtils.unescapeHtml(widget.track.trackName)} · ${StringUtils.unescapeHtml(widget.track.artistName)}',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 13,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white54,),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -118,14 +112,14 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                   ),
                 ),
                 if (isSearching)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppleMusicTheme.primaryPink,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   )
@@ -222,12 +216,9 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
       child: Text(
         label,
-        style: const TextStyle(
-          color: AppleMusicTheme.primaryPink,
-          fontSize: 11,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,
-        ),
+          letterSpacing: 1.2,),
       ),
     );
   }
@@ -248,8 +239,8 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
               : Colors.black.withOpacity(0.05),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.library_music,
-            color: AppleMusicTheme.primaryPink, size: 22),
+        child: Icon(Icons.library_music,
+            color: Theme.of(context).colorScheme.primary, size: 22),
       ),
       title: Text(
         StringUtils.unescapeHtml(meta?.trackName ?? parsed.title),
@@ -261,11 +252,10 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
       ),
       subtitle: Text(
         '${_limitArtists(meta?.artistName ?? parsed.artist)} · Library · ${file.formattedSize}',
-        style: const TextStyle(
-            color: Colors.white54, fontSize: 12),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
       ),
       trailing: Icon(Icons.play_circle_filled_rounded,
-          color: AppleMusicTheme.primaryPink.withOpacity(0.8), size: 28),
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.8), size: 28),
       onTap: () => _playLibraryTrack(file, meta),
     );
   }
@@ -303,10 +293,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
             const SizedBox(height: 2),
             Text(
               StringUtils.unescapeHtml(_limitArtists(result.artist)),
-              style: const TextStyle(
-                color: Colors.white54,
-                fontSize: 12,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -318,15 +305,14 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
               const SizedBox(width: 6),
               Text(
                 result.format,
-                style: TextStyle(
-                    color: isDark ? Colors.white38 : Colors.black38, fontSize: 11),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
               ),
             ],
           ),
         ],
       ),
       trailing: Icon(Icons.play_circle_filled_rounded,
-          color: AppleMusicTheme.primaryPink.withOpacity(0.8), size: 28),
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.8), size: 28),
       onTap: () => _playStream(result),
     );
   }
@@ -363,18 +349,12 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                 children: [
                   Text(
                     'Add via Torrent (Apibay)',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                      fontWeight: FontWeight.w500,),
                   ),
                   Text(
                     'Search and download to your TorBox library',
-                    style: TextStyle(
-                      color: isDark ? Colors.white38 : Colors.black38,
-                      fontSize: 12,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
                   ),
                 ],
               ),
@@ -451,7 +431,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
         SnackBar(
           content: Text('Added to Next in Queue'),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: AppleMusicTheme.primaryPink,
+          backgroundColor: Theme.of(context).colorScheme.primary,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -505,7 +485,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
         SnackBar(
           content: Text('Added to Next in Queue'),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: AppleMusicTheme.primaryPink,
+          backgroundColor: Theme.of(context).colorScheme.primary,
           duration: const Duration(seconds: 2),
         ),
       );
@@ -569,7 +549,7 @@ class _SourceBadge extends StatelessWidget {
         color = Colors.lightGreenAccent;
         break;
       default:
-        color = AppleMusicTheme.primaryPink;
+        color = Theme.of(context).colorScheme.primary;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -580,12 +560,9 @@ class _SourceBadge extends StatelessWidget {
       ),
       child: Text(
         source.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color,
           fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
+          letterSpacing: 0.5,),
       ),
     );
   }

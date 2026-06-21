@@ -31,7 +31,7 @@ class RainbowSliderTrackShape extends RoundedRectSliderTrackShape {
 
     final activeGradient = LinearGradient(
       colors: [
-        AppleMusicTheme.primaryPink,
+        sliderTheme.activeTrackColor ?? Colors.blue,
         AppleMusicTheme.primaryPurple,
         Colors.blue,
         Colors.green,
@@ -159,7 +159,7 @@ class GradientSliderTrackShape extends RoundedRectSliderTrackShape {
     );
     final activeGradient = LinearGradient(
       colors: [
-        AppleMusicTheme.primaryPink,
+        sliderTheme.activeTrackColor ?? Colors.blue,
         AppleMusicTheme.primaryPurple,
       ],
     );

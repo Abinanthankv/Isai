@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/music/presentation/music_providers.dart';
 import '../theme/apple_music_theme.dart';
 
-class AppleMusicCard extends StatelessWidget {
+class AppleMusicCard extends StatefulWidget {
   final String title;
   final String? subtitle;
   final String? imageUrl;
@@ -26,108 +28,119 @@ class AppleMusicCard extends StatelessWidget {
   });
 
   @override
+  State<AppleMusicCard> createState() => _AppleMusicCardState();
+}
+
+class _AppleMusicCardState extends State<AppleMusicCard> {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return GestureDetector(
-      onTap: onTap != null
-          ? () {
-              HapticFeedback.lightImpact();
-              onTap!();
-            }
-          : null,
-      child: Container(
-        width: width ?? 160,
-        height: height ?? 200,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: gradientColors != null
-              ? LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: gradientColors!,
-                )
-              : null,
-          color: gradientColors == null
-              ? (isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF5F5F7))
-              : null,
-        ),
-        child: Stack(
-          children: [
-            if (imageUrl != null)
-              Positioned.fill(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: CachedNetworkImage(
-                    imageUrl: imageUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(color: Colors.black12),
-                    errorWidget: (_, __, ___) => Container(color: Colors.black12),
-                  ),
-                ),
-              ),
-            if (imageUrl != null)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
+      onTapDown: widget.onTap != null ? (_) => setState(() => _isPressed = true) : null,
+      onTapUp: widget.onTap != null ? (_) {
+        setState(() => _isPressed = false);
+        HapticFeedback.lightImpact();
+        widget.onTap!();
+      } : null,
+      onTapCancel: widget.onTap != null ? () => setState(() => _isPressed = false) : null,
+      child: AnimatedScale(
+        scale: _isPressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        child: Container(
+          width: widget.width ?? 160,
+          height: widget.height ?? 200,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: widget.gradientColors != null
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: widget.gradientColors!,
+                  )
+                : null,
+            color: widget.gradientColors == null
+                ? (isDark ? const Color(0xFF2C2C2E) : const Color(0xFFF5F5F7))
+                : null,
+          ),
+          child: Stack(
+            children: [
+              if (widget.imageUrl != null)
+                Positioned.fill(
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.7),
-                      ],
+                    child: CachedNetworkImage(
+                      imageUrl: widget.imageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: Colors.black12),
+                      errorWidget: (_, __, ___) => Container(color: Colors.black12),
                     ),
                   ),
                 ),
-              ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      shadows: [
-                        Shadow(
-                          color: Colors.black.withOpacity(0.5),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle!,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 12,
+              if (widget.imageUrl != null)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.7),
+                        ],
                       ),
-                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black.withOpacity(0.5),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.subtitle!,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (trailing != null)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: trailing!,
-              ),
-          ],
+              if (widget.trailing != null)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: widget.trailing!,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -194,12 +207,9 @@ class BrowseCard extends StatelessWidget {
                   child: Text(
                     title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: -0.5,
-                    ),
+                      letterSpacing: -0.5,),
                   ),
                 ),
               ),
@@ -289,11 +299,8 @@ class AppleMusicListTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white : Colors.black,),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -308,15 +315,12 @@ class AppleMusicListTile extends StatelessWidget {
                           : null,
                       child: Text(
                         subtitle!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: onSubtitleTap != null
-                              ? AppleMusicTheme.primaryPink
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: onSubtitleTap != null
+                              ? Theme.of(context).colorScheme.primary
                               : (isDark 
                                   ? AppleMusicTheme.darkTextSecondary 
                                   : AppleMusicTheme.lightTextSecondary),
-                          fontWeight: onSubtitleTap != null ? FontWeight.w600 : FontWeight.normal,
-                        ),
+                          fontWeight: onSubtitleTap != null ? FontWeight.w600 : FontWeight.normal,),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -371,23 +375,17 @@ class AppleMusicSectionHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
                     color: showGradient
-                        ? AppleMusicTheme.primaryPink
-                        : (isDark ? Colors.white : Colors.black),
-                  ),
+                        ? Theme.of(context).colorScheme.primary
+                        : (isDark ? Colors.white : Colors.black),),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     subtitle!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? Colors.white38 : Colors.black38,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white38 : Colors.black38,
+                      fontWeight: FontWeight.w500,),
                   ),
                 ],
               ],
@@ -400,17 +398,14 @@ class AppleMusicSectionHeader extends StatelessWidget {
                 children: [
                   Text(
                     actionText!,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: AppleMusicTheme.primaryPink,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.primary,),
                   ),
                   const SizedBox(width: 4),
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 12,
-                    color: AppleMusicTheme.primaryPink,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ],
               ),
@@ -459,10 +454,7 @@ class AppleMusicSearchBar extends StatelessWidget {
         onTap: onTap,
         readOnly: readOnly,
         textInputAction: TextInputAction.search,
-        style: TextStyle(
-          fontSize: 16,
-          color: isDark ? Colors.white : Colors.black,
-        ),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,),
         decoration: InputDecoration(
           hintText: hintText,
           hintStyle: TextStyle(
@@ -477,7 +469,7 @@ class AppleMusicSearchBar extends StatelessWidget {
               ? IconButton(
                   icon: Icon(
                     Icons.arrow_forward_rounded,
-                    color: AppleMusicTheme.primaryPink,
+                    color: Theme.of(context).colorScheme.primary,
                     size: 20,
                   ),
                   onPressed: () => onSubmitted!(controller!.text),
@@ -526,7 +518,7 @@ class AppleMusicChip extends StatelessWidget {
               ? LinearGradient(colors: gradientColors!)
               : null,
           color: isSelected
-              ? (gradientColors == null ? AppleMusicTheme.primaryPink : null)
+              ? (gradientColors == null ? Theme.of(context).colorScheme.primary : null)
               : (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
@@ -537,38 +529,52 @@ class AppleMusicChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             color: isSelected
                 ? Colors.white
-                : (isDark ? Colors.white70 : Colors.black87),
-          ),
+                : (isDark ? Colors.white70 : Colors.black87),),
         ),
       ),
     );
   }
 }
 
-class AppleMusicGradientText extends StatelessWidget {
+class AppleMusicGradientText extends ConsumerWidget {
   final String text;
-  final List<Color> colors;
+  final List<Color>? colors;
   final double fontSize;
   final FontWeight fontWeight;
 
   const AppleMusicGradientText({
     super.key,
     required this.text,
-    this.colors = AppleMusicTheme.pinkGradient,
+    this.colors,
     this.fontSize = 28,
     this.fontWeight = FontWeight.bold,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isM3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
+    
+    if (isM3) {
+      return Text(
+        text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      );
+    }
+
+    final activeColors = colors ?? [
+      Theme.of(context).colorScheme.primary,
+      Theme.of(context).colorScheme.secondary,
+    ];
     return ShaderMask(
       shaderCallback: (bounds) => LinearGradient(
-        colors: colors,
+        colors: activeColors,
         begin: Alignment.centerLeft,
         end: Alignment.centerRight,
       ).createShader(bounds),
@@ -615,33 +621,27 @@ class OfflinePlaceholder extends StatelessWidget {
               child: Icon(
                 Icons.wifi_off_rounded,
                 size: 64,
-                color: AppleMusicTheme.primaryPink,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 24),
             Text(
               title,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
               message,
-              style: TextStyle(
-                fontSize: 16,
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white70 : Colors.black54,),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
             ElevatedButton.icon(
               onPressed: onGoToDownloads,
               icon: const Icon(Icons.download_done_rounded),
-              label: const Text('Go to Offline Songs'),
+              label: Text('Go to Offline Songs'),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(200, 50),
               ),
@@ -707,11 +707,8 @@ class AppleMusicButton extends StatelessWidget {
             ],
             Text(
               label,
-              style: TextStyle(
-                color: foregroundColor ?? (isDark ? Colors.black : Colors.white),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: foregroundColor ?? (isDark ? Colors.black : Colors.white),
+                fontWeight: FontWeight.bold,),
             ),
           ],
         ),

@@ -42,7 +42,7 @@ class ForYouScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: RefreshIndicator(
-        color: AppleMusicTheme.primaryPink,
+        color: Theme.of(context).colorScheme.primary,
         backgroundColor: isDark ? const Color(0xFF1c1c1e) : Colors.white,
         onRefresh: () async {
           // Invalidate key providers to trigger fresh fetch
@@ -65,8 +65,8 @@ class ForYouScreen extends ConsumerWidget {
             }
             return _buildContent(context, ref, isDark);
           },
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+          loading: () => Center(
+            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
           ),
           error: (e, __) => _buildErrorState(context, isDark, e.toString(), ref),
         ),
@@ -88,9 +88,9 @@ class ForYouScreen extends ConsumerWidget {
                 children: [
                    Icon(Icons.error_outline_rounded, size: 64, color: Colors.redAccent.withOpacity(0.5)),
                    const SizedBox(height: 24),
-                   const Text(
+                   Text(
                     'Something went wrong',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                   ),
                    const SizedBox(height: 12),
                    Text(
@@ -102,9 +102,9 @@ class ForYouScreen extends ConsumerWidget {
                   ElevatedButton.icon(
                     onPressed: () => ref.invalidate(userMusicProfileProvider),
                     icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Retry'),
+                    label: Text('Retry'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppleMusicTheme.primaryPink,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -140,26 +140,20 @@ class ForYouScreen extends ConsumerWidget {
                     child: Icon(
                       Icons.auto_awesome_rounded,
                       size: 64,
-                      color: AppleMusicTheme.primaryPink,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                   const SizedBox(height: 24),
                   Text(
                     'Your music journey starts here',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
                   Text(
                     'Start playing music to get personalized recommendations, curated playlists, and daily mixes tailored to your taste.',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isDark ? Colors.white60 : Colors.black54,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white60 : Colors.black54,),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -246,7 +240,7 @@ class ForYouScreen extends ConsumerWidget {
               text: 'For You',
               fontSize: 28,
               colors: isDark
-                  ? [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]
+                  ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                   : [const Color(0xFF667eea), const Color(0xFF764ba2)],
             ),
             Padding(
@@ -263,7 +257,7 @@ class ForYouScreen extends ConsumerWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppleMusicTheme.primaryPink.withOpacity(0.2),
+                        Theme.of(context).colorScheme.primary.withOpacity(0.2),
                         AppleMusicTheme.primaryPurple.withOpacity(0.2),
                       ],
                     ),
@@ -275,15 +269,12 @@ class ForYouScreen extends ConsumerWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.insights_rounded, size: 14, color: AppleMusicTheme.primaryPink),
+                      Icon(Icons.insights_rounded, size: 14, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 4),
                       Text(
                         'Insights',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppleMusicTheme.primaryPink,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,),
                       ),
                     ],
                   ),
@@ -380,7 +371,7 @@ class ForYouScreen extends ConsumerWidget {
           ],
         );
       },
-      loading: () => _buildLoadingSection('Your Daily Mixes', isDark),
+      loading: () => _buildLoadingSection(context, 'Your Daily Mixes', isDark),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
@@ -452,31 +443,22 @@ class ForYouScreen extends ConsumerWidget {
                     ),
                     child: Text(
                       'PLAYLIST',
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black87,
-                        fontSize: 10,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white : Colors.black87,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
+                        letterSpacing: 1.2,),
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     title,
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: (isDark ? Colors.white : Colors.black).withOpacity(0.7),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: (isDark ? Colors.white : Colors.black).withOpacity(0.7),
+                      fontWeight: FontWeight.w500,),
                   ),
                 ],
               ),
@@ -534,7 +516,7 @@ class ForYouScreen extends ConsumerWidget {
           }).toList(),
         );
       },
-      loading: () => _buildLoadingSection('Because you listened to...', isDark),
+      loading: () => _buildLoadingSection(context, 'Because you listened to...', isDark),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
@@ -640,11 +622,8 @@ class ForYouScreen extends ConsumerWidget {
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                                color: isDark ? Colors.white : Colors.black,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black,),
                             ),
                           ),
                         ],
@@ -743,20 +722,14 @@ class ForYouScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 track.trackName,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black,),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 track.artistName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary,
-                                ),
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary,),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -765,7 +738,7 @@ class ForYouScreen extends ConsumerWidget {
                         ),
                         Icon(
                           Icons.play_circle_outline_rounded,
-                          color: AppleMusicTheme.primaryPink,
+                          color: Theme.of(context).colorScheme.primary,
                           size: 28,
                         ),
                       ],
@@ -814,11 +787,8 @@ class ForYouScreen extends ConsumerWidget {
                 track.trackName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold, 
-                  fontSize: 13, 
-                  color: isDark ? Colors.white : Colors.black
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, 
+                  color: isDark ? Colors.white : Colors.black),
               ),
             ),
             SizedBox(
@@ -827,10 +797,7 @@ class ForYouScreen extends ConsumerWidget {
                 track.artistName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11, 
-                  color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary),
               ),
             ),
           ],
@@ -941,11 +908,8 @@ class ForYouScreen extends ConsumerWidget {
                                       textAlign: TextAlign.center,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 12,
-                                        color: isDark ? Colors.white : Colors.black,
-                                      ),
+                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : Colors.black,),
                                     ),
                                   ),
                                 ],
@@ -976,19 +940,19 @@ class ForYouScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoadingSection(String title, bool isDark) {
+  Widget _buildLoadingSection(BuildContext context, String title, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppleMusicSectionHeader(title: title),
         const SizedBox(height: 8),
-        const Center(
+        Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink),
+              child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
             ),
           ),
         ),

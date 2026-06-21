@@ -40,25 +40,25 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         title: AppleMusicGradientText(
           text: 'Insights',
           fontSize: 20,
-          colors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
+          colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
         ),
       ),
       body: profileAsync.when(
         data: (profile) {
           if (profile.interactionCount == 0) {
-            return _buildEmptyState(isDark);
+            return _buildEmptyState(context, isDark);
           }
           return _buildContent(context, ref, profile, isDark);
         },
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
         ),
         error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(BuildContext context, bool isDark) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -69,16 +69,13 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             Text(
               'No insights yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,),
             ),
             const SizedBox(height: 8),
             Text(
               'Start playing music to see how your recommendations are built.',
-              style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 14),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white60 : Colors.black54,),
               textAlign: TextAlign.center,
             ),
           ],
@@ -94,33 +91,33 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 1. Personality Hero Card
-          _buildPersonalityCard(profile, isDark),
+          _buildPersonalityCard(context, profile, isDark),
           const SizedBox(height: 20),
 
           // 2. Quick Stats Row
-          _buildQuickStats(profile, isDark),
+          _buildQuickStats(context, profile, isDark),
           const SizedBox(height: 24),
 
           // 3. Topic Weights (Genre Bar Chart)
-          _buildSectionHeader('Topic Weights'),
+          _buildSectionHeader(context, 'Topic Weights'),
           const SizedBox(height: 12),
           _buildTopicWeights(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
           // 4. Interest Map (Bubble Chart)
-          _buildSectionHeader('Interest Map'),
+          _buildSectionHeader(context, 'Interest Map'),
           const SizedBox(height: 12),
           _buildInterestMap(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
           // 5. Temporal Patterns
-          _buildSectionHeader('Temporal Patterns'),
+          _buildSectionHeader(context, 'Temporal Patterns'),
           const SizedBox(height: 12),
           _buildTemporalPatterns(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
           // 6. Artist Memory
-          _buildSectionHeader('Artist Memory'),
+          _buildSectionHeader(context, 'Artist Memory'),
           const SizedBox(height: 12),
           _buildArtistMemory(context, profile, isDark),
         ],
@@ -130,8 +127,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
 
   // ─── Personality Card ─────────────────────────────────────────────────
 
-  Widget _buildPersonalityCard(UserMusicProfile profile, bool isDark) {
-    final gradientColors = _personalityGradient(profile.personalityType);
+  Widget _buildPersonalityCard(BuildContext context, UserMusicProfile profile, bool isDark) {
+    final gradientColors = _personalityGradient(context, profile.personalityType);
 
     return GlassContainer(
       padding: const EdgeInsets.all(24),
@@ -153,12 +150,9 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             ),
             child: Text(
               'ACTIVE LEARNING',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
                 letterSpacing: 1.2,
-                color: gradientColors[0],
-              ),
+                color: gradientColors[0],),
             ),
           ),
           const SizedBox(height: 16),
@@ -168,12 +162,9 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             shaderCallback: (bounds) => LinearGradient(colors: gradientColors).createShader(bounds),
             child: Text(
               profile.personalityName,
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
+              style: Theme.of(context).textTheme.displayMedium?.copyWith(fontWeight: FontWeight.w800,
                 color: Colors.white,
-                letterSpacing: -1,
-              ),
+                letterSpacing: -1,),
             ),
           ),
           const SizedBox(height: 8),
@@ -181,12 +172,9 @@ class RecommendationInsightsScreen extends ConsumerWidget {
           // Description
           Text(
             profile.personalityDescription,
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.white70 : Colors.black87,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
               fontWeight: FontWeight.w400,
-              height: 1.4,
-            ),
+              height: 1.4,),
           ),
           const SizedBox(height: 20),
 
@@ -195,19 +183,13 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             children: [
               Text(
                 'Level ${profile.level}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white60 : Colors.black54,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white60 : Colors.black54,),
               ),
               const Spacer(),
               Text(
                 '${profile.interactionCount} interactions',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white38 : Colors.black38,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
               ),
             ],
           ),
@@ -228,10 +210,11 @@ class RecommendationInsightsScreen extends ConsumerWidget {
 
   // ─── Quick Stats ─────────────────────────────────────────────────────
 
-  Widget _buildQuickStats(UserMusicProfile profile, bool isDark) {
+  Widget _buildQuickStats(BuildContext context, UserMusicProfile profile, bool isDark) {
     return Row(
       children: [
         _buildStatChip(
+          context: context,
           value: profile.interactionCount.toString(),
           label: 'Interactions',
           icon: Icons.headphones_outlined,
@@ -239,6 +222,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 8),
         _buildStatChip(
+          context: context,
           value: profile.uniqueGenresCount.toString(),
           label: 'Genres',
           icon: Icons.category_outlined,
@@ -246,6 +230,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 8),
         _buildStatChip(
+          context: context,
           value: profile.uniqueArtistsCount.toString(),
           label: 'Artists',
           icon: Icons.people_outline,
@@ -256,6 +241,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
   }
 
   Widget _buildStatChip({
+    required BuildContext context,
     required String value,
     required String label,
     required IconData icon,
@@ -267,23 +253,17 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         borderRadius: 16,
         child: Column(
           children: [
-            Icon(icon, size: 18, color: AppleMusicTheme.primaryPink),
+            Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 8),
             Text(
               value,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10,
-                color: isDark ? Colors.white38 : Colors.black38,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
             ),
           ],
         ),
@@ -297,7 +277,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
     if (profile.genreWeights.isEmpty) return const SizedBox.shrink();
 
     final colors = [
-      AppleMusicTheme.primaryPink,
+      Theme.of(context).colorScheme.primary,
       AppleMusicTheme.primaryPurple,
       AppleMusicTheme.primaryOrange,
       AppleMusicTheme.primaryBlue,
@@ -381,11 +361,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                     width: 80,
                     child: Text(
                       gw.genre,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black,),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -419,11 +396,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                     width: 42,
                     child: Text(
                       '${gw.percentage.toStringAsFixed(1)}%',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black,),
                       textAlign: TextAlign.end,
                     ),
                   ),
@@ -445,7 +419,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
     final maxPct = top.first.percentage;
 
     final colors = [
-      AppleMusicTheme.primaryPink,
+      Theme.of(context).colorScheme.primary,
       AppleMusicTheme.primaryPurple,
       AppleMusicTheme.primaryOrange,
       AppleMusicTheme.primaryBlue,
@@ -566,7 +540,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
     final gradients = {
       TimeSlot.morning: [const Color(0xFFFFD700), const Color(0xFFFF8C00)],
       TimeSlot.afternoon: [const Color(0xFF87CEEB), const Color(0xFF4169E1)],
-      TimeSlot.evening: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
+      TimeSlot.evening: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
       TimeSlot.night: [const Color(0xFF191970), const Color(0xFF483D8B)],
     };
 
@@ -652,18 +626,12 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                       children: [
                         Text(
                           p.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,),
                         ),
                         Text(
                           p.timeRange,
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: isDark ? Colors.white38 : Colors.black38,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
                         ),
                       ],
                     ),
@@ -679,21 +647,15 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           g.genre,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       Text(
                         '${g.percentage.toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.white38 : Colors.black38,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white38 : Colors.black38,),
                       ),
                     ],
                   ),
@@ -701,19 +663,13 @@ class RecommendationInsightsScreen extends ConsumerWidget {
               ] else
                 Text(
                   'No data yet',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? Colors.white30 : Colors.black26,
-                    fontStyle: FontStyle.italic,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white30 : Colors.black26,
+                    fontStyle: FontStyle.italic,),
                 ),
               const SizedBox(height: 4),
               Text(
                 '${p.totalPlays} plays',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white24 : Colors.black26,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white24 : Colors.black26,),
               ),
             ],
           ),
@@ -757,11 +713,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                     width: 22,
                     child: Text(
                       '${index + 1}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white24 : Colors.black26,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white24 : Colors.black26,),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -773,20 +726,14 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                       children: [
                         Text(
                           a.name,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black,),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           '${a.playCount} plays',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isDark ? Colors.white38 : Colors.black38,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
                         ),
                       ],
                     ),
@@ -809,8 +756,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                           child: Container(
                             height: 8,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
+                              gradient: LinearGradient(
+                                colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
                               ),
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -831,13 +778,10 @@ class RecommendationInsightsScreen extends ConsumerWidget {
                     ),
                     child: Text(
                       a.sentiment,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
                         color: a.sentiment == 'Positive'
                             ? (isDark ? Colors.greenAccent : Colors.green)
-                            : Colors.grey,
-                      ),
+                            : Colors.grey,),
                     ),
                   ),
                 ],
@@ -851,29 +795,26 @@ class RecommendationInsightsScreen extends ConsumerWidget {
 
   // ─── Helpers ──────────────────────────────────────────────────────────
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
     return Text(
       title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        letterSpacing: -0.2,
-      ),
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+        letterSpacing: -0.2,),
     );
   }
 
-  List<Color> _personalityGradient(PersonalityType type) {
+  List<Color> _personalityGradient(BuildContext context, PersonalityType type) {
     switch (type) {
       case PersonalityType.explorer:
         return [AppleMusicTheme.primaryPurple, AppleMusicTheme.primaryBlue];
       case PersonalityType.loyalist:
-        return [AppleMusicTheme.primaryPink, const Color(0xFFFF2D55)];
+        return [Theme.of(context).colorScheme.primary, const Color(0xFFFF2D55)];
       case PersonalityType.nicheDiver:
         return [AppleMusicTheme.primaryOrange, const Color(0xFFFF9500)];
       case PersonalityType.moodRider:
         return [const Color(0xFF00C7BE), const Color(0xFF32D74B)];
       case PersonalityType.eclectic:
-        return [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple];
+        return [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple];
     }
   }
 }
@@ -994,10 +935,7 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                   Expanded(
                     child: Text(
                       widget.title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1020,12 +958,12 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                       _handleTrackTap(context, ref, widget.tracks.first, widget.tracks);
                     },
                     icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
-                    label: const Text(
+                    label: Text(
                       'Play Mix',
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppleMusicTheme.primaryPink,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -1035,12 +973,9 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                 ),
                 const SizedBox(height: 16),
 
-                const Text(
+                Text(
                   'Included Songs',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,),
                 ),
                 const SizedBox(height: 8),
 
@@ -1078,11 +1013,11 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                     children: [
                       Icon(Icons.queue_music_rounded, size: 48, color: isDark ? Colors.white24 : Colors.black26),
                       const SizedBox(height: 12),
-                      const Center(
+                      Center(
                         child: Text(
                           'No recommended songs found for this mix yet.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey,),
                         ),
                       ),
                     ],
@@ -1151,8 +1086,8 @@ class _AsyncRecommendationMixSheetState extends ConsumerState<_AsyncRecommendati
           color: isDark ? const Color(0xFF151515) : const Color(0xFFF9F9FB),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        child: const Center(
-          child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+        child: Center(
+          child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
         ),
       );
     }

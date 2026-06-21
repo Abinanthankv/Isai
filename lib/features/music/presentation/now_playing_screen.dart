@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -37,9 +39,14 @@ import 'playlist_providers.dart';
 import '../../player/data/audio_handler.dart';
 import 'visualizer_layer.dart';
 import 'visualizer_settings_sheet.dart';
+import 'package:isai/core/theme/material3_theme.dart';
+import 'package:isai/core/theme/dynamic_color_provider.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
+import 'spotify_canvas_provider.dart';
+import 'interactive_controls.dart';
 
 
-class NowPlayingScreen extends ConsumerStatefulWidget {
+class NowPlayingScreen extends ConsumerWidget {
   final TorBoxFile file;
   final List<TorBoxFile>? customQueue;
   final String? initialArtwork;
@@ -52,10 +59,46 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<NowPlayingScreen> createState() => _NowPlayingScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final isM3 = settings.appThemeStyle == 'material3';
+
+    ThemeData themeData;
+    if (isM3) {
+      final dynamicColors = ref.watch(dynamicColorProvider);
+      themeData = Material3Theme.darkThemeFromScheme(dynamicColors.darkScheme);
+    } else {
+      themeData = AppleMusicTheme.darkTheme();
+    }
+
+    return Theme(
+      data: themeData,
+      child: NowPlayingContent(
+        file: file,
+        customQueue: customQueue,
+        initialArtwork: initialArtwork,
+      ),
+    );
+  }
 }
 
-class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
+class NowPlayingContent extends ConsumerStatefulWidget {
+  final TorBoxFile file;
+  final List<TorBoxFile>? customQueue;
+  final String? initialArtwork;
+
+  const NowPlayingContent({
+    super.key,
+    required this.file,
+    this.customQueue,
+    this.initialArtwork,
+  });
+
+  @override
+  ConsumerState<NowPlayingContent> createState() => _NowPlayingContentState();
+}
+
+class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   String? _error;
@@ -150,6 +193,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             durationMs: item.duration?.inMilliseconds,
           );
 
+          // Fetch Canvas for the new track
+          ref.read(spotifyCanvasProvider.notifier).fetchCanvas(title, artist);
+
           // Proactively enrich library metadata for this track if not already loaded
           final fileId = (item.extras?['fileId'] as num?)?.toInt();
           final torrentId = (item.extras?['torrentId'] as num?)?.toInt();
@@ -178,20 +224,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     });
   }
 
-  @override
-  void deactivate() {
-    // Safely update state before the widget is fully unmounted
-    try {
-      Future.microtask(() {
-        ref.read(lyricsProvider.notifier).clear();
-        ref.read(isPlayerOpenProvider.notifier).setOpen(false);
-      });
-    } catch (e) {
-      // Ignore errors here as they are likely due to the widget already being inactive
-    }
-    super.deactivate();
-  }
-
+  // Removed deactivate() to prevent "Looking up a deactivated widget's ancestor is unsafe" crash.
+  // The state (lyrics/canvas) should persist anyway so we don't have to re-fetch if the user re-opens the screen for the same track.
   @override
   void dispose() {
     print('[NowPlayingScreen] dispose started');
@@ -583,22 +617,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
     final meta = library.metadata['${activeFile.torrentId}-${activeFile.id}'];
     final parsed = parseFilename(activeFile.displayName);
+    final isM3 = settings.appThemeStyle == 'material3';
 
-    return PopScope(
-      onPopInvoked: (didPop) {
-        // We handle the state change primarily in dispose now to be safe,
-        // but can keep this as a backup if didPop is true.
-        if (didPop) {
-          print('[NowPlayingScreen] PopScope: setting isPlayerOpen=false');
-          // Use a post-frame callback to avoid issues with defunct elements during the pop transition
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            try {
-              ref.read(isPlayerOpenProvider.notifier).setOpen(false);
-            } catch (_) {}
-          });
-        }
-      },
-      child: Scaffold(
+    final widgetTree = Scaffold(
         backgroundColor: Colors.black,
       body: StreamBuilder<MediaItem?>(
         stream: audioHandler.mediaItem,
@@ -606,6 +627,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         builder: (context, snapshot) {
           final currentMediaItem = snapshot.data;
           final settings = ref.watch(settingsProvider);
+          final canvasState = ref.watch(spotifyCanvasProvider);
+          final showCanvas = settings.playerSpotifyCanvasEnabled && canvasState.canvasUrl != null;
 
           // 1. Identify the active file (either from the stream or the widget if starting)
           // Use safe num -> int conversion to avoid issues with double/int JSON serialization
@@ -648,8 +671,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          AppleMusicTheme.primaryPink.withValues(alpha: 0.15),
-                          AppleMusicTheme.primaryPurple.withValues(alpha: 0.15),
+                          Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                          isM3 ? Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15) : AppleMusicTheme.primaryPurple.withValues(alpha: 0.15),
                           Colors.black,
                         ],
                       ),
@@ -677,9 +700,18 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                 ),
               ],
 
+              if (showCanvas) ...[
+                SpotifyCanvasBackground(videoUrl: canvasState.canvasUrl!),
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withOpacity(0.55),
+                  ),
+                ),
+              ],
+
               // ── Visualizer Overlay ───────────────────────────────────────
               VisualizerOverlay(
-                albumArtColor: hasArtwork ? AppleMusicTheme.primaryPink : null,
+                albumArtColor: hasArtwork ? Theme.of(context).colorScheme.primary : null,
               ),
 
               // ── Main content ────────────────────────────────────────────
@@ -693,7 +725,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                           // Left side: Album Art
                           Expanded(
                             flex: 5,
-                            child: _buildAlbumArt(hasArtwork, displayArtwork),
+                            child: showCanvas 
+                                ? const SizedBox() 
+                                : _buildAlbumArt(hasArtwork, displayArtwork),
                           ),
                           // Right side: Header, Lyrics / Controls
                           Expanded(
@@ -724,21 +758,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                                                 children: [
                                                   Text(
                                                     displayTitle,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 15,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
+                                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                                                      fontWeight: FontWeight.bold,),
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
                                                   const SizedBox(height: 2),
                                                   Text(
                                                     displayArtist,
-                                                    style: const TextStyle(
-                                                      color: Colors.white70,
-                                                      fontSize: 12,
-                                                    ),
+                                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white70,),
                                                     maxLines: 1,
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
@@ -845,7 +873,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         Expanded(
                           child: _showLyrics 
                             ? _buildLyricsContent()
-                            : _buildAlbumArt(hasArtwork, displayArtwork),
+                            : (showCanvas ? const SizedBox() : _buildAlbumArt(hasArtwork, displayArtwork)),
                         ),
 
                         const SizedBox(height: 32),
@@ -897,7 +925,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
           );
         },
       ),
-    ));
+    );
+
+    return widgetTree;
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -911,8 +941,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             onPressed: () => Navigator.pop(context),
           ),
           Column(
-            children: const [
-              Text('NOW PLAYING', style: TextStyle(color: Colors.white54, fontSize: 11, letterSpacing: 1.5)),
+            children: [
+              Text('NOW PLAYING', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54, letterSpacing: 1.5)),
             ],
           ),
           IconButton(
@@ -1005,6 +1035,164 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     }
   }
 
+
+
+  Widget _buildThreeColumnActions(
+    BuildContext context,
+    WidgetRef ref,
+    bool isLiked,
+    int actualTorrentId,
+    int actualFileId,
+    String displayTitle,
+    String displayArtist,
+    MediaItem? currentItem,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        children: [
+          // 1. Liked Button
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                ref.read(likedSongsProvider.notifier).toggleLike(
+                  actualTorrentId,
+                  actualFileId,
+                  isLiked,
+                  title: displayTitle,
+                  artist: displayArtist,
+                );
+                
+                if (!isLiked && currentItem != null) {
+                   final db = getIt<AppDatabase>();
+                   db.into(db.files).insertOnConflictUpdate(FilesCompanion.insert(
+                     id: actualFileId,
+                     torrentId: actualTorrentId,
+                     name: currentItem.title,
+                     size: 0,
+                     isAudio: true,
+                   ));
+                   db.saveTrackMetadata(TrackMetadataCompanion.insert(
+                     fileId: actualFileId,
+                     torrentId: actualTorrentId,
+                     trackTitle: drift.Value(currentItem.title),
+                     artist: drift.Value(currentItem.artist),
+                     artworkUrlLow: drift.Value(currentItem.artUri?.toString() ?? widget.initialArtwork),
+                     artworkUrlHigh: drift.Value(currentItem.artUri?.toString() ?? widget.initialArtwork),
+                     trackTimeMillis: drift.Value(currentItem.duration?.inMilliseconds),
+                     isLiked: const drift.Value(true)
+                   ));
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2C2E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      color: isLiked ? Theme.of(context).colorScheme.primary : Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isLiked ? 'Liked' : 'Like',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,
+                        fontWeight: FontWeight.w600,),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 2. Playlist Button
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => PlaylistPickerSheet(
+                    track: ItunesTrack(
+                      trackId: actualFileId,
+                      trackName: displayTitle,
+                      artistName: displayArtist,
+                      artworkUrl: currentItem?.artUri?.toString() ?? widget.initialArtwork ?? '',
+                      collectionName: currentItem?.album ?? '',
+                      artistViewUrl: '',
+                    ),
+                    libraryFile: TorBoxFile(
+                      id: actualFileId,
+                      torrentId: actualTorrentId,
+                      name: displayTitle,
+                      size: 0,
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2C2E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.playlist_add, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Playlist',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,
+                        fontWeight: FontWeight.w600,),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 3. Download Button
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+                _handleDownload();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2C2C2E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.download, color: Colors.white, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Download',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,
+                        fontWeight: FontWeight.w600,),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showOptionsMenu(BuildContext context) {
     final liveItem = audioHandler.mediaItem.value;
     final parsedFromLive = liveItem != null ? parseFilename(liveItem.title) : parseFilename(widget.file.displayName);
@@ -1025,23 +1213,30 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
           final isLiked = ref.watch(isTrackLikedProvider((torrentId: actualTorrentId, fileId: actualFileId)));
 
-          return Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: SafeArea(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 12),
-                    Container(
-                      width: 40, height: 4,
-                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-                    ),
-                    const SizedBox(height: 8),
-                    // Header with Artwork, Title, Artist
+          return DraggableScrollableSheet(
+            initialChildSize: 0.35,
+            minChildSize: 0.25,
+            maxChildSize: 0.85,
+            expand: false,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: SafeArea(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          width: 40, height: 4,
+                          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                        ),
+                        const SizedBox(height: 8),
+                        // Header with Artwork, Title, Artist
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       child: Row(
@@ -1069,21 +1264,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                               children: [
                                 Text(
                                   displayTitle,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                                    fontWeight: FontWeight.bold,),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
                                   displayArtist,
-                                  style: const TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 13,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white60,),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1094,150 +1283,74 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                       ),
                     ),
                     const Divider(color: Colors.white12, height: 1),
+                    // 3-Column Action Buttons
+                    _buildThreeColumnActions(
+                      context,
+                      ref,
+                      isLiked,
+                      actualTorrentId,
+                      actualFileId,
+                      displayTitle,
+                      displayArtist,
+                      currentItem,
+                    ),
+                    const Divider(color: Colors.white12, height: 1),
                     
-                    // 1. Add to Liked / Remove from Liked
-                    ListTile(
-                      leading: Icon(
-                        isLiked ? Icons.favorite : Icons.favorite_border,
-                        color: isLiked ? AppleMusicTheme.primaryPink : Colors.white,
-                      ),
-                      title: Text(
-                        isLiked ? 'Remove from Liked' : 'Add to Liked',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        ref.read(likedSongsProvider.notifier).toggleLike(
-                          actualTorrentId,
-                          actualFileId,
-                          isLiked,
-                          title: displayTitle,
-                          artist: displayArtist,
-                        );
-                        
-                        if (!isLiked && currentItem != null) {
-                           final db = getIt<AppDatabase>();
-                           db.into(db.files).insertOnConflictUpdate(FilesCompanion.insert(
-                             id: actualFileId,
-                             torrentId: actualTorrentId,
-                             name: currentItem.title,
-                             size: 0,
-                             isAudio: true,
-                           ));
-                           db.saveTrackMetadata(TrackMetadataCompanion.insert(
-                             fileId: actualFileId,
-                             torrentId: actualTorrentId,
-                             trackTitle: drift.Value(currentItem.title),
-                             artist: drift.Value(currentItem.artist),
-                             artworkUrlLow: drift.Value(currentItem.artUri?.toString() ?? widget.initialArtwork),
-                             artworkUrlHigh: drift.Value(currentItem.artUri?.toString() ?? widget.initialArtwork),
-                             trackTimeMillis: drift.Value(currentItem.duration?.inMilliseconds),
-                             isLiked: const drift.Value(true)
-                           ));
+                    // Repeat Mode Toggle
+                    StreamBuilder<PlaybackState>(
+                      stream: audioHandler.playbackState,
+                      builder: (context, snapshot) {
+                        final state = snapshot.data;
+                        final repeatMode = state?.repeatMode ?? AudioServiceRepeatMode.none;
+
+                        IconData icon;
+                        Color iconColor;
+                        String modeName;
+
+                        switch (repeatMode) {
+                          case AudioServiceRepeatMode.one:
+                            icon = Icons.repeat_one;
+                            iconColor = Theme.of(context).colorScheme.primary;
+                            modeName = 'Repeat 1 time';
+                            break;
+                          case AudioServiceRepeatMode.all:
+                            icon = Icons.repeat;
+                            iconColor = Theme.of(context).colorScheme.primary;
+                            modeName = 'Repeat infinite';
+                            break;
+                          case AudioServiceRepeatMode.none:
+                          default:
+                            icon = Icons.repeat;
+                            iconColor = Colors.white54;
+                            modeName = 'Normal queue';
+                            break;
                         }
-                      },
-                    ),
-                    
-                    // 2. Play next
-                    ListTile(
-                      leading: const Icon(Icons.playlist_play, color: Colors.white),
-                      title: const Text('Play next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        final torrentId = actualTorrentId;
-                        final fileId = actualFileId;
-                        String url = torrentId == -1 
-                            ? (currentItem?.id ?? 'https://lazy.flac.internal/?title=${Uri.encodeComponent(displayTitle)}&artist=${Uri.encodeComponent(displayArtist)}') 
-                            : 'https://lazy.torbox.internal/$torrentId/$fileId';
-                        
-                        await audioHandler.customAction('add_next', {
-                          'url': url,
-                          'title': displayTitle,
-                          'artist': displayArtist,
-                          'album': currentItem?.album ?? '',
-                          'artworkUrl': currentItem?.artUri?.toString() ?? widget.initialArtwork ?? '',
-                          'extras': {
-                            'torrentId': torrentId,
-                            'fileId': fileId,
-                            'size': currentItem?.extras?['size'] ?? 0,
-                            'localPath': currentItem?.extras?['localPath'],
-                          },
-                        });
-                      },
-                    ),
 
-                    // 3. Add to queue
-                    ListTile(
-                      leading: const Icon(Icons.queue_music, color: Colors.white),
-                      title: const Text('Add to queue', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        final torrentId = actualTorrentId;
-                        final fileId = actualFileId;
-                        String url = torrentId == -1 
-                            ? (currentItem?.id ?? 'https://lazy.flac.internal/?title=${Uri.encodeComponent(displayTitle)}&artist=${Uri.encodeComponent(displayArtist)}') 
-                            : 'https://lazy.torbox.internal/$torrentId/$fileId';
-                        
-                        await audioHandler.customAction('add_to_queue', {
-                          'url': url,
-                          'title': displayTitle,
-                          'artist': displayArtist,
-                          'album': currentItem?.album ?? '',
-                          'artworkUrl': currentItem?.artUri?.toString() ?? widget.initialArtwork ?? '',
-                          'extras': {
-                            'torrentId': torrentId,
-                            'fileId': fileId,
-                            'size': currentItem?.extras?['size'] ?? 0,
-                            'localPath': currentItem?.extras?['localPath'],
+                        return ListTile(
+                          leading: Icon(icon, color: iconColor),
+                          title: Text('Repeat Mode', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                          subtitle: Text(modeName, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                          onTap: () {
+                            AudioServiceRepeatMode nextMode;
+                            if (repeatMode == AudioServiceRepeatMode.none) {
+                              nextMode = AudioServiceRepeatMode.one;
+                            } else if (repeatMode == AudioServiceRepeatMode.one) {
+                              nextMode = AudioServiceRepeatMode.all;
+                            } else {
+                              nextMode = AudioServiceRepeatMode.none;
+                            }
+                            audioHandler.setRepeatMode(nextMode);
                           },
-                        });
-                      },
-                    ),
-
-                    // 4. Add to playlist
-                    ListTile(
-                      leading: const Icon(Icons.playlist_add, color: Colors.white),
-                      title: const Text('Add to playlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (context) => PlaylistPickerSheet(
-                            track: ItunesTrack(
-                              trackId: actualFileId,
-                              trackName: displayTitle,
-                              artistName: displayArtist,
-                              artworkUrl: currentItem?.artUri?.toString() ?? widget.initialArtwork ?? '',
-                              collectionName: currentItem?.album ?? '',
-                              artistViewUrl: '',
-                            ),
-                            libraryFile: TorBoxFile(
-                              id: actualFileId,
-                              torrentId: actualTorrentId,
-                              name: displayTitle,
-                              size: 0,
-                            ),
-                          ),
                         );
-                      },
+                      }
                     ),
 
-                    // 5. Download
-                    ListTile(
-                      leading: const Icon(Icons.download, color: Colors.white),
-                      title: const Text('Download', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _handleDownload();
-                      },
-                    ),
+
 
                     // 6. Go to Album
                     ListTile(
                       leading: const Icon(Icons.album, color: Colors.white),
-                      title: const Text('Go to Album', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                      title: Text('Go to Album', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       onTap: () {
                         Navigator.pop(ctx);
                         Navigator.push(
@@ -1276,7 +1389,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     // 8. Share
                     ListTile(
                       leading: const Icon(Icons.share, color: Colors.white),
-                      title: const Text('Share', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                      title: Text('Share', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       onTap: () {
                         Navigator.pop(ctx);
                         _shareNowPlaying();
@@ -1289,26 +1402,26 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     ListTile(
                       leading: Icon(
                         _sleepTimer != null || _sleepAtEndOfTrack ? Icons.bedtime : Icons.bedtime_outlined,
-                        color: _sleepTimer != null || _sleepAtEndOfTrack ? AppleMusicTheme.primaryPink : Colors.white,
+                        color: _sleepTimer != null || _sleepAtEndOfTrack ? Theme.of(context).colorScheme.primary : Colors.white,
                       ),
                       title: Text(
                         _sleepTimer != null || _sleepAtEndOfTrack ? 'Sleep Timer (active)' : 'Sleep Timer',
                         style: TextStyle(
-                          color: _sleepTimer != null || _sleepAtEndOfTrack ? AppleMusicTheme.primaryPink : Colors.white,
+                          color: _sleepTimer != null || _sleepAtEndOfTrack ? Theme.of(context).colorScheme.primary : Colors.white,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       subtitle: _sleepAtEndOfTrack 
-                          ? const Text('Stops at end of track', style: TextStyle(color: Colors.white54, fontSize: 12))
+                          ? Text('Stops at end of track', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,))
                           : (_sleepTimerEnd != null
                               ? StreamBuilder<DateTime>(
                                   stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
                                   builder: (_, __) {
                                     final remaining = _sleepTimerEnd!.difference(DateTime.now());
-                                    if (remaining.isNegative) return const Text('Stopping...', style: TextStyle(color: Colors.white54));
+                                    if (remaining.isNegative) return Text('Stopping...', style: TextStyle(color: Colors.white54));
                                     final m = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
                                     final s = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
-                                    return Text('Stops in ${remaining.inHours > 0 ? "${remaining.inHours}h " : ""}$m:$s', style: const TextStyle(color: Colors.white54, fontSize: 12));
+                                    return Text('Stops in ${remaining.inHours > 0 ? "${remaining.inHours}h " : ""}$m:$s', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,));
                                   },
                                 )
                               : null),
@@ -1321,7 +1434,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     // 10. Song Info
                     ListTile(
                       leading: const Icon(Icons.info_outline, color: Colors.white),
-                      title: const Text('Song Info', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                      title: Text('Song Info', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       onTap: () {
                         Navigator.pop(ctx);
                         showModalBottomSheet(
@@ -1340,7 +1453,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     // 11. Visualizer
                     ListTile(
                       leading: const Icon(Icons.equalizer_rounded, color: Colors.white),
-                      title: const Text('Visualizer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                      title: Text('Visualizer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       onTap: () {
                         Navigator.pop(ctx);
                         Navigator.push(
@@ -1355,7 +1468,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     // 12. Fix Metadata
                     ListTile(
                       leading: const Icon(Icons.edit_note_rounded, color: Colors.white),
-                      title: const Text('Fix Metadata', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                      title: Text('Fix Metadata', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
                       onTap: () {
                         Navigator.pop(ctx);
                         showModalBottomSheet(
@@ -1371,10 +1484,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                       },
                     ),
                     const SizedBox(height: 8),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            }
           );
         }
       ),
@@ -1497,7 +1612,6 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                       ),
                     Positioned.fill(
                       child: Container(
-                        clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
                           shape: shape == 'circle' ? BoxShape.circle : BoxShape.rectangle,
                           borderRadius: shape == 'circle' ? null : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
@@ -1509,17 +1623,20 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                             ),
                           ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: shape == 'circle' 
-                              ? BorderRadius.circular(displaySize / 2) 
-                              : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
-                          child: hasArtwork
-                              ? CachedNetworkImage(
-                                  imageUrl: artworkUrl!,
-                                  fit: BoxFit.cover,
-                                  errorWidget: (context, url, error) => _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
-                                )
-                              : _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+                        child: Hero(
+                          tag: 'artwork_hero',
+                          child: ClipRRect(
+                            borderRadius: shape == 'circle' 
+                                ? BorderRadius.circular(displaySize / 2) 
+                                : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
+                            child: hasArtwork
+                                ? CachedNetworkImage(
+                                    imageUrl: artworkUrl!,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) => _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+                                  )
+                                : _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+                          ),
                         ),
                       ),
                     ),
@@ -1530,9 +1647,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                           shape: shape == 'circle' ? BoxShape.circle : BoxShape.rectangle,
                           borderRadius: shape == 'circle' ? null : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: CircularProgressIndicator(
-                            color: AppleMusicTheme.primaryPink,
+                            color: Theme.of(context).colorScheme.primary,
                             strokeWidth: 3,
                           ),
                         ),
@@ -1560,6 +1677,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
 
   Widget _buildTrackInfo(String title, String artist) {
     final artists = ItunesTrack.splitArtists(artist);
+    final isM3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1570,11 +1688,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: isM3 
+                    ? Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.bold,
+                      )
+                    : Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white,
+                        fontWeight: FontWeight.bold,),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1599,10 +1719,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                       },
                       child: Text(
                         name + (isLast ? "" : " & "),
-                        style: const TextStyle(
-                          color: AppleMusicTheme.primaryPink, 
-                          fontSize: 16,
-                        ),
+                        style: isM3
+                            ? Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              )
+                            : Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.primary,),
                       ),
                     );
                   }).toList(),
@@ -1640,7 +1762,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                 return IconButton(
                   icon: Icon(
                     likeIcon,
-                    color: isLiked ? AppleMusicTheme.primaryPink : Colors.white54,
+                    color: isLiked ? Theme.of(context).colorScheme.primary : Colors.white54,
                   ),
                   onPressed: () {
                     // Update the Database & Last.fm
@@ -1690,7 +1812,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
       final localPath = item.extras?['localPath'] as String?;
       final url = item.id;
       final pathToCheck = localPath ?? url;
-      if (pathToCheck.toLowerCase().endsWith('.flac') || pathToCheck.contains('lazy.flac.internal')) {
+      final originalId = item.extras?['originalId'] as String?;
+      final linkType = item.extras?['linkType'] as String?;
+      
+      if (pathToCheck.toLowerCase().endsWith('.flac') || 
+          pathToCheck.contains('lazy.flac.internal') ||
+          (originalId != null && originalId.contains('lazy.flac.internal')) ||
+          linkType == 'flac') {
         format = 'FLAC';
       } else if (pathToCheck.toLowerCase().endsWith('.mp3')) {
         format = 'MP3';
@@ -1772,7 +1900,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
       final localPath = item.extras?['localPath'] as String?;
       final url = item.id;
       final pathToCheck = localPath ?? url;
-      if (pathToCheck.toLowerCase().endsWith('.flac') || pathToCheck.contains('lazy.flac.internal')) {
+      final originalId = item.extras?['originalId'] as String?;
+      final linkType = item.extras?['linkType'] as String?;
+      
+      if (pathToCheck.toLowerCase().endsWith('.flac') || 
+          pathToCheck.contains('lazy.flac.internal') ||
+          (originalId != null && originalId.contains('lazy.flac.internal')) ||
+          linkType == 'flac') {
         codec = 'FLAC';
       } else if (pathToCheck.toLowerCase().endsWith('.mp3')) {
         codec = 'MP3';
@@ -1826,7 +1960,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             children: [
               Icon(icon, size: 13, color: textColor),
               const SizedBox(width: 4),
-              Text(finalLabel.toUpperCase(), style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              Text(finalLabel.toUpperCase(), style: Theme.of(context).textTheme.labelSmall?.copyWith(color: textColor, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
             ],
           ),
         ),
@@ -1863,20 +1997,20 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             Row(children: [
               Icon(isHiRes ? Icons.star_rounded : (isLossless ? Icons.music_note_rounded : Icons.high_quality_rounded), color: isHiRes ? const Color(0xFFFF2D55) : Colors.white70, size: 28),
               const SizedBox(width: 12),
-              Text(isHiRes ? 'Hi-Res Lossless Audio' : (isLossless ? 'Lossless Audio' : 'High Quality Audio'), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(isHiRes ? 'Hi-Res Lossless Audio' : (isLossless ? 'Lossless Audio' : 'High Quality Audio'), style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 16),
             Text(isHiRes 
               ? 'Studio quality recording format (up to 24-bit/192 kHz) preserving every detail of the performance.' 
               : (isLossless ? 'Lossless compression preserves all of the original data in the audio file for CD-quality playback.' : 'High Quality compression formats (AAC/MP3) provide excellent acoustic reproduction with efficient network usage.'),
-              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, height: 1.4)),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.7), height: 1.4)),
             const Divider(color: Colors.white10, height: 32),
             _buildInfoRow('Codec/Format', format.toUpperCase()),
             if (item.extras?['sampleRate'] != null) _buildInfoRow('Sample Rate', '${item.extras!['sampleRate']} Hz'),
             _buildInfoRow('Source Provider', source),
             if (size > 0) _buildInfoRow('File Size', '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'),
             const SizedBox(height: 24),
-            Center(child: TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.08), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
+            Center(child: TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.08), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
           ],
         ),
       ),
@@ -1889,8 +2023,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 14)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+          Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.4),)),
+          Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -1907,57 +2041,60 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
           builder: (context, posSnap) {
             final position = posSnap.data ?? Duration.zero;
             final settings = ref.watch(settingsProvider);
+            final isM3 = settings.appThemeStyle == 'material3';
+            final colorScheme = Theme.of(context).colorScheme;
             
             double value = 0;
             if (totalDuration.inMilliseconds > 0) {
               value = (position.inMilliseconds / totalDuration.inMilliseconds).clamp(0.0, 1.0);
             }
 
-                SliderThemeData sliderThemeData = SliderThemeData(
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  activeTrackColor: Colors.white,
-                  inactiveTrackColor: Colors.white24,
-                  thumbColor: Colors.white,
-                  overlayColor: Colors.white24,
-                );
+            SliderThemeData sliderThemeData = SliderThemeData(
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              activeTrackColor: isM3 ? colorScheme.primary : Colors.white,
+              inactiveTrackColor: isM3 ? colorScheme.secondaryContainer : Colors.white24,
+              thumbColor: isM3 ? colorScheme.primary : Colors.white,
+              overlayColor: isM3 ? colorScheme.primary.withOpacity(0.12) : Colors.white24,
+            );
 
-                if (settings.playerSeekBarStyle == 'rainbow') {
-                  sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: RainbowSliderTrackShape(),
-                  );
-                } else if (settings.playerSeekBarStyle == 'wavy') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: WavySliderTrackShape(),
-                  );
-                } else if (settings.playerSeekBarStyle == 'gradient') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: GradientSliderTrackShape(),
-                  );
-                } else if (settings.playerSeekBarStyle == 'capsule') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: CapsuleSliderTrackShape(),
-                    thumbShape: SliderComponentShape.noThumb,
-                  );
-                } else if (settings.playerSeekBarStyle == 'neon') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: NeonSliderTrackShape(),
-                  );
-                } else if (settings.playerSeekBarStyle == 'dashed') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: DashedSliderTrackShape(),
-                  );
-                } else if (settings.playerSeekBarStyle == 'dotted') {
-                   sliderThemeData = sliderThemeData.copyWith(
-                    trackShape: DottedSliderTrackShape(),
-                  );
-                }
+            if (settings.playerSeekBarStyle == 'rainbow') {
+              sliderThemeData = sliderThemeData.copyWith(
+                trackShape: RainbowSliderTrackShape(),
+              );
+            } else if (settings.playerSeekBarStyle == 'wavy') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: WavySliderTrackShape(),
+              );
+            } else if (settings.playerSeekBarStyle == 'gradient') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: GradientSliderTrackShape(),
+              );
+            } else if (settings.playerSeekBarStyle == 'capsule') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: CapsuleSliderTrackShape(),
+                thumbShape: SliderComponentShape.noThumb,
+              );
+            } else if (settings.playerSeekBarStyle == 'neon') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: NeonSliderTrackShape(),
+              );
+            } else if (settings.playerSeekBarStyle == 'dashed') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: DashedSliderTrackShape(),
+              );
+            } else if (settings.playerSeekBarStyle == 'dotted') {
+               sliderThemeData = sliderThemeData.copyWith(
+                trackShape: DottedSliderTrackShape(),
+              );
+            }
 
-                return Column(
-                  children: [
-                    SliderTheme(
-                      data: sliderThemeData,
+            final timeColor = isM3 ? colorScheme.onSurfaceVariant : Colors.white54;
+
+            return Column(
+              children: [
+                SliderTheme(
+                  data: sliderThemeData,
                   child: Slider(
                     value: value,
                     onChanged: (v) {
@@ -1978,10 +2115,10 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(_formatDuration(position),
-                          style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,)),
                       Text(
                         totalDuration == Duration.zero ? '--:--' : _formatDuration(totalDuration),
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,),
                       ),
                     ],
                   ),
@@ -1999,79 +2136,62 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
   }
 
   Widget _buildTransportControls() {
+    final settings = ref.watch(settingsProvider);
+    final isM3 = settings.appThemeStyle == 'material3';
+
     return StreamBuilder<PlaybackState>(
       stream: audioHandler.playbackState,
       builder: (context, snapshot) {
         final state = snapshot.data;
         final playing = state?.playing ?? false;
+        final colorScheme = Theme.of(context).colorScheme;
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            IconButton(
-              iconSize: 36,
-              icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                audioHandler.skipToPrevious();
-              },
-            ),
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                if (playing) {
-                  audioHandler.pause();
-                } else {
-                  audioHandler.play();
-                }
-              },
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.white.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  size: 40,
-                  color: Colors.black,
-                ),
-              ),
-            ),
-            IconButton(
-              iconSize: 36,
-              icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                audioHandler.skipToNext();
-              },
-            ),
-          ],
+        return InteractiveControls(
+          isM3: isM3,
+          playing: playing,
+          colorScheme: colorScheme,
+          onPrevious: () {
+            HapticFeedback.mediumImpact();
+            audioHandler.skipToPrevious();
+          },
+          onNext: () {
+            HapticFeedback.mediumImpact();
+            audioHandler.skipToNext();
+          },
+          onPlayPause: () {
+            HapticFeedback.mediumImpact();
+            if (playing) {
+              audioHandler.pause();
+            } else {
+              audioHandler.play();
+            }
+          },
         );
       },
     );
   }
 
   Widget _buildVolumeBar() {
+    final settings = ref.watch(settingsProvider);
+    final isM3 = settings.appThemeStyle == 'material3';
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final iconColor = isM3 ? colorScheme.onSurfaceVariant : Colors.white54;
+    final activeColor = isM3 ? colorScheme.primary : Colors.white70;
+    final inactiveColor = isM3 ? colorScheme.secondaryContainer : Colors.white24;
+    final thumbColor = isM3 ? colorScheme.primary : Colors.white;
+
     return Row(
       children: [
-        const Icon(Icons.volume_mute_rounded, color: Colors.white54, size: 20),
+        Icon(Icons.volume_mute_rounded, color: iconColor, size: 20),
         Expanded(
           child: SliderTheme(
-            data: const SliderThemeData(
+            data: SliderThemeData(
               trackHeight: 3,
-              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-              activeTrackColor: Colors.white70,
-              inactiveTrackColor: Colors.white24,
-              thumbColor: Colors.white,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              activeTrackColor: activeColor,
+              inactiveTrackColor: inactiveColor,
+              thumbColor: thumbColor,
             ),
             child: Slider(
               value: _volume,
@@ -2082,12 +2202,19 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             ),
           ),
         ),
-        const Icon(Icons.volume_up_rounded, color: Colors.white54, size: 20),
+        Icon(Icons.volume_up_rounded, color: iconColor, size: 20),
       ],
     );
   }
 
   Widget _buildBottomBar() {
+    final settings = ref.watch(settingsProvider);
+    final isM3 = settings.appThemeStyle == 'material3';
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final activeColor = isM3 ? colorScheme.primary : Colors.white;
+    final inactiveColor = isM3 ? colorScheme.onSurfaceVariant : Colors.white54;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -2098,7 +2225,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
             return IconButton(
               icon: Icon(
                 Icons.shuffle_rounded,
-                color: isShuffled ? Colors.white : Colors.white54,
+                color: isShuffled ? activeColor : inactiveColor,
               ),
               onPressed: () {
                 audioHandler.customAction('shuffle');
@@ -2142,14 +2269,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     child: CircularProgressIndicator(
                       value: (progress == null || progress <= 0) ? null : progress,
                       strokeWidth: 3,
-                      color: AppleMusicTheme.primaryPink,
-                      backgroundColor: Colors.white10,
+                      color: colorScheme.primary,
+                      backgroundColor: isM3 ? colorScheme.surfaceContainerHighest : Colors.white10,
                     ),
                   ),
                 IconButton(
                   icon: Icon(
                     isDownloading ? Icons.downloading_rounded : Icons.file_download_outlined, 
-                    color: isDownloading ? AppleMusicTheme.primaryPink : Colors.white54,
+                    color: isDownloading ? colorScheme.primary : inactiveColor,
                   ),
                   onPressed: _handleDownload,
                 ),
@@ -2160,18 +2287,18 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
         IconButton(
           icon: Icon(
             Icons.lyrics_outlined, 
-            color: _showLyrics ? AppleMusicTheme.primaryPink : Colors.white54
+            color: _showLyrics ? colorScheme.primary : inactiveColor
           ),
           tooltip: 'Lyrics',
           onPressed: () => setState(() => _showLyrics = !_showLyrics),
         ),
         IconButton(
-          icon: const Icon(Icons.alt_route_rounded, color: Colors.white54),
+          icon: Icon(Icons.alt_route_rounded, color: inactiveColor),
           tooltip: 'Choose Source',
           onPressed: _showSourceSelection,
         ),
         IconButton(
-          icon: const Icon(Icons.playlist_add_rounded, color: Colors.white),
+          icon: Icon(Icons.playlist_add_rounded, color: activeColor),
           tooltip: 'Save to Playlist',
           onPressed: () {
             final mediaItem = audioHandler.mediaItem.value;
@@ -2210,7 +2337,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
           },
         ),
         IconButton(
-          icon: const Icon(Icons.queue_music, color: Colors.white),
+          icon: Icon(Icons.queue_music, color: activeColor),
           onPressed: _showQueue,
         ),
       ],
@@ -2335,12 +2462,12 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     return Column(
       children: [
         Text(_error!, textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.red, fontSize: 14)),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.red,)),
         const SizedBox(height: 16),
         ElevatedButton(
           onPressed: _loadAndPlay,
           style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
-          child: const Text('Retry'),
+          child: Text('Retry'),
         ),
       ],
     );
@@ -2351,81 +2478,231 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
+  Widget _buildLyricsProviderSelector() {
+    final lyricsState = ref.watch(lyricsProvider);
+    final currentItem = audioHandler.mediaItem.value;
+    final trackName = currentItem?.title ?? '';
+    final artistName = currentItem?.artist ?? '';
+    final durationMs = currentItem?.duration?.inMilliseconds;
+    final albumName = currentItem?.album;
+
+    String providerLabel;
+    switch (lyricsState.selectedProvider) {
+      case LyricsProviderType.auto:
+        providerLabel = 'Auto';
+        break;
+      case LyricsProviderType.unison:
+        providerLabel = 'Unison';
+        break;
+      case LyricsProviderType.lrclib:
+        providerLabel = 'LRCLIB';
+        break;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (lyricsState.lyrics?.source != null) ...[
+            Text(
+              lyricsState.lyrics!.source!,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38, fontWeight: FontWeight.w400),
+            ),
+            const SizedBox(width: 8),
+            Container(width: 4, height: 4, decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+          ],
+          InkWell(
+            onTap: () => _showLyricsProviderSelectorMenu(context, lyricsState.selectedProvider, trackName, artistName, album: albumName, durationMs: durationMs),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white12, width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lyrics_outlined, color: Colors.white70, size: 12),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Provider: $providerLabel',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white70, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white54, size: 12),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLyricsProviderSelectorMenu(
+    BuildContext context,
+    LyricsProviderType currentProvider,
+    String track,
+    String artist, {
+    String? album,
+    int? durationMs,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.only(top: 16, bottom: 8, left: 20),
+                  child: Text(
+                    'Select Lyrics Provider',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const Divider(color: Colors.white12),
+                ListTile(
+                  leading: Icon(
+                    Icons.auto_awesome,
+                    color: currentProvider == LyricsProviderType.auto ? Theme.of(context).colorScheme.primary : Colors.white54,
+                  ),
+                  title: Text('Auto (Priority Mirror Search)', style: TextStyle(color: Colors.white)),
+                  subtitle: Text('Searches Unison database first, falls back to LRCLIB', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                  trailing: currentProvider == LyricsProviderType.auto ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.auto, track, artist, album: album, durationMs: durationMs);
+                    Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.music_note,
+                    color: currentProvider == LyricsProviderType.unison ? Theme.of(context).colorScheme.primary : Colors.white54,
+                  ),
+                  title: Text('Unison (Synced & Plain)', style: TextStyle(color: Colors.white)),
+                  subtitle: Text('Fetches from unison.boidu.dev crowdsourced database', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                  trailing: currentProvider == LyricsProviderType.unison ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.unison, track, artist, album: album, durationMs: durationMs);
+                    Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.cloud_queue,
+                    color: currentProvider == LyricsProviderType.lrclib ? Theme.of(context).colorScheme.primary : Colors.white54,
+                  ),
+                  title: Text('LRCLIB (Crowdsourced)', style: TextStyle(color: Colors.white)),
+                  subtitle: Text('Fetches from lrclib.net open database', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                  trailing: currentProvider == LyricsProviderType.lrclib ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.lrclib, track, artist, album: album, durationMs: durationMs);
+                    Navigator.pop(context);
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildLyricsContent() {
     final lyricsState = ref.watch(lyricsProvider);
     final settings = ref.watch(settingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (lyricsState.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
-      );
-    }
+    final lyricsWidget = () {
+      if (lyricsState.isLoading) {
+        return Center(
+          child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
+        );
+      }
 
-    if (lyricsState.error != null || lyricsState.lyrics == null) {
-      return Center(
-        child: Text(
-          lyricsState.error ?? 'No lyrics found',
-          style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
-        ),
-      );
-    }
-
-    final lyrics = lyricsState.lyrics!;
-    
-    if (lyrics.hasSynced) {
-      return _buildSyncedLyrics(lyrics);
-    }
-
-    // Assuming 'meta' and 'parsed' are available in this scope,
-    // or need to be fetched/passed. For now, assuming they are accessible.
-    // This part of the instruction was syntactically incorrect and missing context.
-    // I'm interpreting it as adding title/artist above the plain lyrics.
-    final currentMedia = audioHandler.mediaItem.value;
-    final meta = currentMedia?.extras?['meta'] as ItunesMeta?;
-    final parsed = parseFilename(currentMedia?.title ?? ''); // Assuming parseFilename is accessible
-
-    return Column(
-      children: [
-        Text(
-          meta?.trackName ?? currentMedia?.title ?? '',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+      if (lyricsState.error != null || lyricsState.lyrics == null) {
+        return Center(
+          child: Text(
+            lyricsState.error ?? 'No lyrics found',
+            style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          meta?.artistName ?? (currentMedia?.artist?.isNotEmpty == true ? currentMedia!.artist! : 'TorBox'),
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+        );
+      }
+
+      final lyrics = lyricsState.lyrics!;
+      
+      if (lyrics.hasSynced) {
+        return _buildSyncedLyrics(lyrics);
+      }
+
+      final currentMedia = audioHandler.mediaItem.value;
+      final meta = currentMedia?.extras?['meta'] as ItunesMeta?;
+
+      return Column(
+        children: [
+          Text(
+            meta?.trackName ?? currentMedia?.title ?? '',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white,
+              fontWeight: FontWeight.bold,),
           ),
-        ),
-        const SizedBox(height: 20),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _lyricsScrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-            child: Text(
-              lyrics.plainLyrics ?? '',
-              textAlign: settings.playerLyricsAlignment == 'left' 
-                  ? TextAlign.left 
-                  : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: settings.playerLyricsFontSize,
-                height: 1.6,
-                fontWeight: FontWeight.w500,
+          const SizedBox(height: 4),
+          Text(
+            meta?.artistName ?? (currentMedia?.artist?.isNotEmpty == true ? currentMedia!.artist! : 'TorBox'),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white70,
+              fontWeight: FontWeight.w500,),
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _lyricsScrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+              child: Text(
+                lyrics.plainLyrics ?? '',
+                textAlign: settings.playerLyricsAlignment == 'left' 
+                    ? TextAlign.left 
+                    : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: settings.playerLyricsFontSize,
+                  height: 1.6,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
-        ),
+        ],
+      );
+    }();
+
+    return Column(
+      children: [
+        _buildLyricsProviderSelector(),
+        const SizedBox(height: 8),
+        Expanded(child: lyricsWidget),
       ],
     );
   }
+
 
   Widget _buildSyncedLyrics(LyricsData lyrics) {
     final settings = ref.watch(settingsProvider);
@@ -2515,20 +2792,46 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                     itemBuilder: (context, index) {
                       final line = lyrics.syncedLines[index];
                       final isActive = index == currentLineIndex;
+                      final baseStyle = TextStyle(
+                        fontSize: isActive ? settings.playerLyricsFontSize + 4 : settings.playerLyricsFontSize,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                        height: 1.2,
+                      );
 
-                      return Container(
-                        height: itemHeight,
-                        alignment: settings.playerLyricsAlignment == 'left' 
-                            ? Alignment.centerLeft 
-                            : (settings.playerLyricsAlignment == 'right' ? Alignment.centerRight : Alignment.center),
-                        child: AnimatedDefaultTextStyle(
+                      Widget textWidget;
+                      if (line.words.isNotEmpty) {
+                        final spans = <TextSpan>[];
+                        for (int i = 0; i < line.words.length; i++) {
+                          final word = line.words[i];
+                          Color wordColor;
+                          
+                          if (adjustedPosition >= word.end) {
+                            wordColor = isActive ? Colors.white : Colors.white.withOpacity(0.2);
+                          } else if (adjustedPosition >= word.start && adjustedPosition < word.end) {
+                            wordColor = isActive ? Theme.of(context).colorScheme.primary : Colors.white.withOpacity(0.2);
+                          } else {
+                            wordColor = isActive ? Colors.white.withOpacity(0.3) : Colors.white.withOpacity(0.1);
+                          }
+                          
+                          spans.add(TextSpan(
+                            text: word.text + (i < line.words.length - 1 ? ' ' : ''),
+                            style: baseStyle.copyWith(color: wordColor),
+                          ));
+                        }
+                        textWidget = RichText(
+                          text: TextSpan(children: spans),
+                          textAlign: settings.playerLyricsAlignment == 'left' 
+                              ? TextAlign.left 
+                              : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      } else {
+                        textWidget = AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 400),
                           curve: Curves.easeOut,
-                          style: TextStyle(
+                          style: baseStyle.copyWith(
                             color: isActive ? Colors.white : Colors.white.withOpacity(0.2),
-                            fontSize: isActive ? settings.playerLyricsFontSize + 4 : settings.playerLyricsFontSize,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
-                            height: 1.2,
                           ),
                           child: Text(
                             line.text,
@@ -2538,7 +2841,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
+                        );
+                      }
+
+                      return Container(
+                        height: itemHeight,
+                        alignment: settings.playerLyricsAlignment == 'left' 
+                            ? Alignment.centerLeft 
+                            : (settings.playerLyricsAlignment == 'right' ? Alignment.centerRight : Alignment.center),
+                        child: textWidget,
                       );
                     },
                   ),
@@ -2568,7 +2879,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                         const SizedBox(width: 12),
                         Text(
                           '${_lyricsOffset.inMilliseconds >= 0 ? '+' : ''}${(_lyricsOffset.inMilliseconds / 1000).toStringAsFixed(1)}s',
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(width: 12),
                         GestureDetector(
@@ -2591,7 +2902,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen>
                                 _lyricsOffset = Duration.zero;
                               });
                             },
-                            child: const Icon(Icons.restore_rounded, color: AppleMusicTheme.primaryPink, size: 18),
+                            child: Icon(Icons.restore_rounded, color: Theme.of(context).colorScheme.primary, size: 18),
                           ),
                         ]
                       ],
@@ -2781,17 +3092,14 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
                     children: [
                       Text(
                         'Song Info',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white,
+                          fontWeight: FontWeight.bold,),
                       ),
                       if (_isFetching)
                         SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
                         ),
                     ],
                   ),
@@ -2801,7 +3109,7 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('Fix Metadata'),
+                    label: Text('Fix Metadata'),
                     style: ElevatedButton.styleFrom(
                       minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -2877,20 +3185,14 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
               width: 80,
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 13,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white54,),
               ),
             ),
             Expanded(
               child: Text(
                 value,
-                style: TextStyle(
-                  color: onTap != null ? AppleMusicTheme.primaryPink : Colors.white,
-                  fontSize: 14,
-                  fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: onTap != null ? Theme.of(context).colorScheme.primary : Colors.white,
+                  fontWeight: onTap != null ? FontWeight.w600 : FontWeight.normal,),
               ),
             ),
           ],
@@ -3003,13 +3305,13 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
                   children: [
                     Text(
                       'Choose Source',
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                     if (isSearching)
-                      const SizedBox(
+                      SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
                       )
                     else
                       IconButton(
@@ -3082,7 +3384,7 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Text(
         title,
-        style: const TextStyle(color: AppleMusicTheme.primaryPink, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, letterSpacing: 1.2),
       ),
     );
   }
@@ -3105,13 +3407,13 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
       ),
       title: Text(
         meta?.trackName ?? parsed.title,
-        style: TextStyle(color: isActive ? AppleMusicTheme.primaryPink : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
+        style: TextStyle(color: isActive ? Theme.of(context).colorScheme.primary : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
       ),
       subtitle: Text(
         '${_limitArtists(meta?.artistName ?? parsed.artist)} • Library • ${file.formattedSize}',
-        style: const TextStyle(color: Colors.white54, fontSize: 12),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
       ),
-      trailing: isActive ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink, size: 20) : null,
+      trailing: isActive ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20) : null,
       onTap: isActive ? null : () => _switchSource(
         url: 'https://lazy.torbox.internal/${file.torrentId}/${file.id}',
         torrentId: file.torrentId,
@@ -3142,13 +3444,13 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
       ),
       title: Text(
         _unescapeHtml(result.title),
-        style: TextStyle(color: isActive ? AppleMusicTheme.primaryPink : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
+        style: TextStyle(color: isActive ? Theme.of(context).colorScheme.primary : Colors.white, fontWeight: isActive ? FontWeight.bold : FontWeight.normal),
       ),
       subtitle: Text(
         '${result.artist.isNotEmpty ? "${_unescapeHtml(_limitArtists(result.artist))} • " : ""}${result.source} • ${result.format}',
-        style: const TextStyle(color: Colors.white54, fontSize: 12),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
       ),
-      trailing: isActive ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink, size: 20) : null,
+      trailing: isActive ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 20) : null,
       onTap: isActive ? null : () => _switchSource(
         url: result.url,
         torrentId: -1,
@@ -3414,7 +3716,10 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                    'fileId': match.id,
                    'size': match.size,
                    'localPath': match.localPath,
-                } : <String, dynamic>{},
+                } : <String, dynamic>{
+                   'torrentId': -1,
+                   'fileId': -(t.trackId != 0 ? t.trackId : ('${t.trackName}|${t.artistName}'.hashCode)).abs(),
+                },
               };
             }).toList();
             await audioHandler.customAction('updateUpNext', {'items': items});
@@ -3447,7 +3752,10 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                     'fileId': match.id,
                     'size': match.size,
                     'localPath': match.localPath,
-                } : <String, dynamic>{},
+                } : <String, dynamic>{
+                    'torrentId': -1,
+                    'fileId': -(t.trackId != 0 ? t.trackId : ('${t.trackName}|${t.artistName}'.hashCode)).abs(),
+                },
                };
              }).toList();
              await audioHandler.customAction('updateUpNext', {'items': items});
@@ -3479,7 +3787,7 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
             padding: const EdgeInsets.only(top: 20, bottom: 10, left: 24, right: 24),
             child: Row(
               children: [
-                 const Text('Up Next', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                 Text('Up Next', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
                  const Spacer(),
                  StreamBuilder<MediaItem?>(
                    stream: audioHandler.mediaItem,
@@ -3490,12 +3798,12 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                        child: Column(
                          crossAxisAlignment: CrossAxisAlignment.end,
                          children: [
-                           const Text('Playing from', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                           Text('Playing from', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
                            Text(
                              track.artist ?? 'Library', 
                              maxLines: 1, 
                              overflow: TextOverflow.ellipsis, 
-                             style: const TextStyle(color: AppleMusicTheme.primaryPink, fontSize: 14, fontWeight: FontWeight.w600)
+                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)
                            ),
                          ]
                        )
@@ -3522,14 +3830,11 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                     selected: isSelected,
                     onSelected: (_) => _onChipSelected(chip),
                     backgroundColor: AppleMusicTheme.darkCard,
-                    selectedColor: AppleMusicTheme.primaryPink.withOpacity(0.2),
-                    labelStyle: TextStyle(
-                      color: isSelected ? AppleMusicTheme.primaryPink : Colors.white70,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      fontSize: 13,
-                    ),
+                    selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                    labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isSelected ? Theme.of(context).colorScheme.primary : Colors.white70,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,),
                     side: BorderSide(
-                      color: isSelected ? AppleMusicTheme.primaryPink.withOpacity(0.5) : Colors.transparent,
+                      color: isSelected ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
                     ),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
@@ -3542,7 +3847,7 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
           const Divider(color: Colors.white10, height: 1),
           Expanded(
             child: _isLoading 
-              ? const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink))
+              ? Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary))
               : StreamBuilder<List<MediaItem>>(
                   stream: audioHandler.queue,
                   builder: (context, snapshot) {
@@ -3570,11 +3875,11 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                               key: ValueKey('queue-item-${item.id}-$i'),
                               children: [
                                 if (isNext)
-                                  const Padding(
+                                  Padding(
                                     padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                                     child: Align(
                                       alignment: Alignment.centerLeft,
-                                      child: Text('UPCOMING', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2))
+                                      child: Text('UPCOMING', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54, fontWeight: FontWeight.bold, letterSpacing: 1.2))
                                     )
                                   ),
                                 ListTile(
@@ -3597,7 +3902,7 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: isCurrent ? AppleMusicTheme.primaryPink : Colors.white,
+                                      color: isCurrent ? Theme.of(context).colorScheme.primary : Colors.white,
                                       fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
                                     ),
                                   ),
@@ -3605,10 +3910,10 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                                     item.artist ?? 'Unknown Artist', 
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.white54, fontSize: 13)
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white54,)
                                   ),
                                   trailing: isCurrent 
-                                    ? const Icon(Icons.equalizer, color: AppleMusicTheme.primaryPink) 
+                                    ? Icon(Icons.equalizer, color: Theme.of(context).colorScheme.primary) 
                                     : const Icon(Icons.drag_handle, color: Colors.white24),
                                   onTap: () {
                                     audioHandler.skipToQueueItem(i);
@@ -3710,21 +4015,15 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
                       children: [
                         Text(
                           'SLEEP TIMER',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
                             color: Colors.orange[300],
-                            letterSpacing: 1.2,
-                          ),
+                            letterSpacing: 1.2,),
                         ),
                         const SizedBox(height: 2),
-                        const Text(
+                        Text(
                           'Pick a duration',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+                            color: Colors.white,),
                         ),
                       ],
                     ),
@@ -3750,17 +4049,17 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     child: Text(
                       'Remaining time: ${h > 0 ? "${h}h " : ""}$m:$s',
-                      style: const TextStyle(color: AppleMusicTheme.primaryPink, fontSize: 14, fontWeight: FontWeight.w500),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
                     ),
                   );
                 },
               ),
             ] else if (widget.isEndOfTrackActive) ...[
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Text(
                   'Active: Stops at end of current track',
-                  style: TextStyle(color: AppleMusicTheme.primaryPink, fontSize: 14, fontWeight: FontWeight.w500),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
                 ),
               ),
             ],
@@ -3770,7 +4069,7 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
               leading: const Icon(Icons.access_time_rounded, color: Colors.white54),
               title: Text(
                 preset.label,
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w400),
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
               ),
               onTap: () => widget.onSet(preset.duration),
             )),
@@ -3778,13 +4077,13 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
             // End of current track
             ListTile(
               leading: const Icon(Icons.music_note_rounded, color: Colors.white54),
-              title: const Text(
+              title: Text(
                 'End of current track',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w400),
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
               ),
-              subtitle: const Text(
+              subtitle: Text(
                 'Pauses the moment this song finishes',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38,),
               ),
               onTap: () => widget.onSet(Duration.zero),
             ),
@@ -3794,9 +4093,9 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
               const Divider(color: Colors.white10, height: 1),
               ListTile(
                 leading: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
-                title: const Text(
+                title: Text(
                   'Turn off timer',
-                  style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.w500),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.redAccent, fontWeight: FontWeight.w500),
                 ),
                 onTap: widget.onCancel,
               ),
@@ -3804,6 +4103,113 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class BounceButton extends StatefulWidget {
+  final Widget child;
+  final VoidCallback onTap;
+
+  const BounceButton({
+    super.key,
+    required this.child,
+    required this.onTap,
+  });
+
+  @override
+  State<BounceButton> createState() => _BounceButtonState();
+}
+
+class _BounceButtonState extends State<BounceButton> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        widget.onTap();
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.85 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class SpotifyCanvasBackground extends StatefulWidget {
+  final String videoUrl;
+
+  const SpotifyCanvasBackground({
+    super.key,
+    required this.videoUrl,
+  });
+
+  @override
+  State<SpotifyCanvasBackground> createState() => _SpotifyCanvasBackgroundState();
+}
+
+class _SpotifyCanvasBackgroundState extends State<SpotifyCanvasBackground> {
+  late final Player player = Player();
+  late final VideoController controller = VideoController(player);
+  StreamSubscription<PlaybackState>? _playbackSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePlayer();
+    
+    _playbackSubscription = audioHandler.playbackState.listen((state) {
+      if (!mounted) return;
+      if (state.playing) {
+        player.play();
+      } else {
+        player.pause();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(SpotifyCanvasBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videoUrl != widget.videoUrl) {
+      player.open(Media(widget.videoUrl), play: audioHandler.playbackState.value.playing);
+    }
+  }
+
+  void _initializePlayer() {
+    player.setPlaylistMode(PlaylistMode.single);
+    player.setVolume(0.0);
+    player.open(Media(widget.videoUrl), play: true);
+    
+    // Double check state alignment
+    if (!audioHandler.playbackState.value.playing) {
+       player.pause();
+    }
+  }
+
+  @override
+  void dispose() {
+    _playbackSubscription?.cancel();
+    player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Video(
+        controller: controller,
+        fit: BoxFit.cover,
+        controls: NoVideoControls,
       ),
     );
   }

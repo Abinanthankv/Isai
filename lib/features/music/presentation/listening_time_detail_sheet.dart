@@ -39,18 +39,18 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
       context: context,
       initialDateRange: _customRange,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: DateTime.now().add(Duration(days: 1)),
       builder: (context, child) {
         final isDark = Theme.of(context).brightness == Brightness.dark;
         return Theme(
           data: isDark
               ? ThemeData.dark().copyWith(
-                  colorScheme: const ColorScheme.dark(
-                    primary: AppleMusicTheme.primaryPink,
+                  colorScheme: ColorScheme.dark(
+                    primary: Theme.of(context).colorScheme.primary,
                     onPrimary: Colors.white,
                     surface: Color(0xFF1C1C1E),
                     onSurface: Colors.white,
-                    secondary: AppleMusicTheme.primaryPink,
+                    secondary: Theme.of(context).colorScheme.primary,
                   ),
                   appBarTheme: const AppBarTheme(
                     backgroundColor: Color(0xFF1C1C1E),
@@ -60,24 +60,24 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                   datePickerTheme: DatePickerThemeData(
                     headerBackgroundColor: const Color(0xFF1C1C1E),
                     headerForegroundColor: Colors.white,
-                    backgroundColor: const Color(0xFF1C1C1E),
+                    backgroundColor: Color(0xFF1C1C1E),
                     rangeSelectionOverlayColor: WidgetStateProperty.all(
-                      AppleMusicTheme.primaryPink.withValues(alpha: 0.15),
+                      Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
                     ),
-                    rangeSelectionBackgroundColor: AppleMusicTheme.primaryPink.withValues(alpha: 0.15),
+                    rangeSelectionBackgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
                   ),
                 )
               : ThemeData.light().copyWith(
-                  colorScheme: const ColorScheme.light(
-                    primary: AppleMusicTheme.primaryPink,
+                  colorScheme: ColorScheme.light(
+                    primary: Theme.of(context).colorScheme.primary,
                     onPrimary: Colors.white,
                     surface: Colors.white,
                     onSurface: Colors.black,
-                    secondary: AppleMusicTheme.primaryPink,
+                    secondary: Theme.of(context).colorScheme.primary,
                   ),
-                  appBarTheme: const AppBarTheme(
+                  appBarTheme: AppBarTheme(
                     backgroundColor: Colors.white,
-                    iconTheme: IconThemeData(color: AppleMusicTheme.primaryPink),
+                    iconTheme: IconThemeData(color: Theme.of(context).colorScheme.primary),
                   ),
                   dialogBackgroundColor: Colors.white,
                   datePickerTheme: DatePickerThemeData(
@@ -85,9 +85,9 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                     headerForegroundColor: Colors.black,
                     backgroundColor: Colors.white,
                     rangeSelectionOverlayColor: WidgetStateProperty.all(
-                      AppleMusicTheme.primaryPink.withValues(alpha: 0.12),
+                      Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                     ),
-                    rangeSelectionBackgroundColor: AppleMusicTheme.primaryPink.withValues(alpha: 0.12),
+                    rangeSelectionBackgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                   ),
                 ),
           child: child!,
@@ -205,12 +205,9 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Listening History',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
                   ),
                   IconButton(
                     icon: Icon(Icons.close, color: isDark ? Colors.white70 : Colors.black54),
@@ -249,11 +246,11 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.calendar_month, color: AppleMusicTheme.primaryPink, size: 18),
+                        Icon(Icons.calendar_month, color: Theme.of(context).colorScheme.primary, size: 18),
                         const SizedBox(width: 8),
                         Text(
                           '${_formatDate(_customRange!.start)} - ${_formatDate(_customRange!.end)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,),
                         ),
                         const SizedBox(width: 4),
                         const Icon(Icons.arrow_drop_down, size: 18),
@@ -307,12 +304,9 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
 
               // Top Tracks for this period
               if (displayTopTracks.isNotEmpty) ...[
-                const Text(
+                Text(
                   'Top Tracks in Period',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold,),
                 ),
                 const SizedBox(height: 10),
                 ...displayTopTracks.asMap().entries.map((entry) {
@@ -324,11 +318,8 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                       children: [
                         Text(
                           '$idx',
-                          style: TextStyle(
-                            color: isDark ? Colors.white24 : Colors.black26,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white24 : Colors.black26,
+                            fontWeight: FontWeight.bold,),
                         ),
                         const SizedBox(width: 12),
                         ClipRRect(
@@ -356,16 +347,13 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                             children: [
                               Text(
                                 track['title'] as String,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 track['artist'] as String,
-                                style: TextStyle(
-                                  color: isDark ? Colors.white54 : Colors.black54,
-                                  fontSize: 11,
-                                ),
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -376,16 +364,13 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppleMusicTheme.primaryPink.withOpacity(0.1),
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '${track['count']} plays',
-                            style: const TextStyle(
-                              color: AppleMusicTheme.primaryPink,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 10,
-                            ),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,),
                           ),
                         ),
                       ],
@@ -393,12 +378,12 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
                   );
                 }),
               ] else ...[
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
                   child: Center(
                     child: Text(
                       'No playback activity recorded in this period.',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey,),
                     ),
                   ),
                 ),
@@ -426,20 +411,17 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? AppleMusicTheme.primaryPink
+                ? Theme.of(context).colorScheme.primary
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
                 color: isSelected
                     ? Colors.white
-                    : (isDark ? Colors.white60 : Colors.black54),
-              ),
+                    : (isDark ? Colors.white60 : Colors.black54),),
             ),
           ),
         ),
@@ -462,27 +444,24 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: AppleMusicTheme.primaryPink),
+              Icon(icon, size: 14, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isDark ? Colors.white60 : Colors.black54,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white60 : Colors.black54,
+                  fontWeight: FontWeight.w500,),
               ),
             ],
           ),
           const Spacer(),
           Text(
             value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 1),
           Text(
             subValue,
-            style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
           ),
         ],
       ),

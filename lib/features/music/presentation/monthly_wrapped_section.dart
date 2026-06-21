@@ -130,22 +130,16 @@ class _MonthlyWrappedSectionState
               children: [
                 Text(
                   _monthNames[month.month - 1],
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900,
                     letterSpacing: 1.2,
-                    color: isDark ? Colors.white : AppleMusicTheme.lightText,
-                  ),
+                    color: isDark ? Colors.white : AppleMusicTheme.lightText,),
                 ),
                 Text(
                   '${month.year}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500,
                     color: isDark
                         ? Colors.white38
-                        : AppleMusicTheme.lightTextSecondary,
-                  ),
+                        : AppleMusicTheme.lightTextSecondary,),
                 ),
               ],
             ),
@@ -158,14 +152,11 @@ class _MonthlyWrappedSectionState
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
+            child: Text(
               'MONTHLY RECAP',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                 color: Colors.white,
-                letterSpacing: 0.8,
-              ),
+                letterSpacing: 0.8,),
             ),
           ),
           const SizedBox(width: 12),
@@ -202,19 +193,13 @@ class _MonthlyWrappedSectionState
             const SizedBox(height: 12),
             Text(
               'No listening data this month',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white54 : Colors.black45,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white54 : Colors.black45,),
             ),
             const SizedBox(height: 4),
             Text(
               'Navigate to a month with playback history',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white30 : Colors.black26,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white30 : Colors.black26,),
             ),
           ],
         ),
@@ -236,7 +221,7 @@ class _MonthlyWrappedSectionState
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(3),
             color: isActive
-                ? AppleMusicTheme.primaryPink
+                ? Theme.of(context).colorScheme.primary
                 : (isDark ? Colors.white24 : Colors.black12),
           ),
         );
@@ -300,23 +285,17 @@ class _TopAlbumsCard extends ConsumerWidget {
                     children: [
                       Text(
                         '${_monthNamesShort[month.month - 1].toUpperCase()} ${month.year}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
                           letterSpacing: 1,
-                          color: isDark ? Colors.white54 : Colors.black45,
-                        ),
+                          color: isDark ? Colors.white54 : Colors.black45,),
                       ),
                     ],
                   ),
                   Text(
                     'MY TOP ALBUMS',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                       letterSpacing: 0.5,
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
+                      color: isDark ? Colors.white70 : Colors.black54,),
                   ),
                 ],
               ),
@@ -379,22 +358,16 @@ class _AlbumRingWidget extends StatelessWidget {
                   children: [
                     Text(
                       '$centerCount',
-                      style: TextStyle(
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
+                      style: Theme.of(context).textTheme.displayMedium?.copyWith(fontWeight: FontWeight.w900,
                         color: isDark ? Colors.white : const Color(0xFF1D1D1F),
-                        height: 1,
-                      ),
+                        height: 1,),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'ALBUMS',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
                         letterSpacing: 1.5,
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
+                        color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                   ],
                 ),
@@ -501,20 +474,14 @@ class _AlbumGridFallback extends StatelessWidget {
       children: [
         Text(
           '$centerCount',
-          style: TextStyle(
-            fontSize: 48,
-            fontWeight: FontWeight.w900,
-            color: isDark ? Colors.white : const Color(0xFF1D1D1F),
-          ),
+          style: Theme.of(context).textTheme.displayMedium?.copyWith(fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : const Color(0xFF1D1D1F),),
         ),
         Text(
           'ALBUMS',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
             letterSpacing: 1.5,
-            color: isDark ? Colors.white54 : Colors.black45,
-          ),
+            color: isDark ? Colors.white54 : Colors.black45,),
         ),
         const SizedBox(height: 16),
         Row(
@@ -591,21 +558,15 @@ class _TopArtistsCalendarCard extends ConsumerWidget {
                 children: [
                   Text(
                     '${_monthNamesShort[month.month - 1].toUpperCase()} ${month.year}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
                       letterSpacing: 1,
-                      color: isDark ? Colors.white54 : Colors.black45,
-                    ),
+                      color: isDark ? Colors.white54 : Colors.black45,),
                   ),
                   Text(
                     'MY TOP ARTISTS',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                       letterSpacing: 0.5,
-                      color: isDark ? Colors.white70 : Colors.black54,
-                    ),
+                      color: isDark ? Colors.white70 : Colors.black54,),
                   ),
                 ],
               ),
@@ -619,7 +580,7 @@ class _TopArtistsCalendarCard extends ConsumerWidget {
                   gradient: LinearGradient(
                     colors: [
                       AppleMusicTheme.primaryPurple.withOpacity(isDark ? 0.3 : 0.15),
-                      AppleMusicTheme.primaryPink.withOpacity(isDark ? 0.2 : 0.1),
+                      Theme.of(context).colorScheme.primary.withOpacity(isDark ? 0.2 : 0.1),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(8),
@@ -627,12 +588,9 @@ class _TopArtistsCalendarCard extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     'TOP ARTISTS EACH DAY OF THE MONTH',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                       letterSpacing: 0.8,
-                      color: isDark ? Colors.white : AppleMusicTheme.lightText,
-                    ),
+                      color: isDark ? Colors.white : AppleMusicTheme.lightText,),
                   ),
                 ),
               ),
@@ -645,11 +603,8 @@ class _TopArtistsCalendarCard extends ConsumerWidget {
                           child: Center(
                             child: Text(
                               d,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white38 : Colors.black38,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white38 : Colors.black38,),
                             ),
                           ),
                         ))
@@ -698,33 +653,21 @@ class _TopArtistsCalendarCard extends ConsumerWidget {
                   children: [
                     Text(
                       _formatNumber(uniqueArtists),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: AppleMusicTheme.primaryPink,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800,
+                        color: Theme.of(context).colorScheme.primary,),
                     ),
                     Text(
                       ' artists  •  ',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                     Text(
                       _formatNumber(totalMinutes),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: AppleMusicTheme.primaryPurple,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800,
+                        color: AppleMusicTheme.primaryPurple,),
                     ),
                     Text(
                       ' minutes',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                   ],
                 ),
@@ -779,11 +722,8 @@ class _CalendarDayCell extends StatelessWidget {
                   child: Center(
                     child: Text(
                       '$day',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white30 : Colors.black26,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white30 : Colors.black26,),
                     ),
                   ),
                 ),
@@ -793,11 +733,8 @@ class _CalendarDayCell extends StatelessWidget {
             Center(
               child: Text(
                 '$day',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white30 : Colors.black26,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white30 : Colors.black26,),
               ),
             ),
 
@@ -808,14 +745,11 @@ class _CalendarDayCell extends StatelessWidget {
               left: 2,
               child: Text(
                 '$day',
-                style: TextStyle(
-                  fontSize: 7,
-                  fontWeight: FontWeight.w800,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                   color: Colors.white.withOpacity(0.8),
                   shadows: const [
                     Shadow(color: Colors.black54, blurRadius: 2),
-                  ],
-                ),
+                  ],),
               ),
             ),
         ],
@@ -897,11 +831,8 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
                         const SizedBox(width: 4),
                         Text(
                           'You',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white70 : Colors.black54,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white70 : Colors.black54,),
                         ),
                       ],
                     ),
@@ -954,31 +885,22 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
                         children: [
                           Text(
                             'NEXT MILESTONE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800,
                               letterSpacing: 0.8,
-                              color: isDark ? Colors.white38 : Colors.black38,
-                            ),
+                              color: isDark ? Colors.white38 : Colors.black38,),
                           ),
                           Text(
                             '${((totalPlays / nextThreshold) * 100).toStringAsFixed(0)}%',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: AppleMusicTheme.primaryPink,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800,
+                              color: Theme.of(context).colorScheme.primary,),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         '${_formatNumber(totalPlays)} / ${_formatNumber(nextThreshold)} Plays',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: isDark ? Colors.white : AppleMusicTheme.lightText,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : AppleMusicTheme.lightText,),
                       ),
                       const SizedBox(height: 8),
                       ClipRRect(
@@ -987,8 +909,8 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
                           value: (totalPlays / nextThreshold).clamp(0.0, 1.0),
                           backgroundColor:
                               isDark ? Colors.white12 : Colors.black12,
-                          valueColor: const AlwaysStoppedAnimation(
-                              AppleMusicTheme.primaryPink),
+                          valueColor: AlwaysStoppedAnimation(
+                              Theme.of(context).colorScheme.primary),
                           minHeight: 8,
                         ),
                       ),
@@ -1004,12 +926,9 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
                     'Your milestones so far:',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500,
                       fontStyle: FontStyle.italic,
-                      color: isDark ? Colors.white54 : Colors.black45,
-                    ),
+                      color: isDark ? Colors.white54 : Colors.black45,),
                   ),
                 ),
 
@@ -1019,10 +938,7 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
                     ? Center(
                         child: Text(
                           'Keep listening to earn milestones!',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.white38 : Colors.black26,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white38 : Colors.black26,),
                         ),
                       )
                     : ListView.separated(
@@ -1054,18 +970,15 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? AppleMusicTheme.primaryPink : Colors.transparent,
+          color: isActive ? Theme.of(context).colorScheme.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
             color: isActive
                 ? Colors.white
-                : (isDark ? Colors.white54 : Colors.black45),
-          ),
+                : (isDark ? Colors.white54 : Colors.black45),),
         ),
       ),
     );
@@ -1121,11 +1034,8 @@ class _MilestoneRow extends StatelessWidget {
             child: Center(
               child: Text(
                 milestone.label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white,
+                  fontWeight: FontWeight.w900,),
               ),
             ),
           ),
@@ -1138,19 +1048,13 @@ class _MilestoneRow extends StatelessWidget {
               children: [
                 Text(
                   '${_formatNumber(milestone.threshold)} Plays',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: milestone.primaryColor,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700,
+                    color: milestone.primaryColor,),
                 ),
                 Text(
                   milestone.trackTitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isDark ? Colors.white : AppleMusicTheme.lightText,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700,
+                    color: isDark ? Colors.white : AppleMusicTheme.lightText,),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1159,10 +1063,7 @@ class _MilestoneRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         milestone.artist,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDark ? Colors.white54 : Colors.black45,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1170,10 +1071,7 @@ class _MilestoneRow extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '•  $relativeTime',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: isDark ? Colors.white30 : Colors.black26,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white30 : Colors.black26,),
                     ),
                   ],
                 ),

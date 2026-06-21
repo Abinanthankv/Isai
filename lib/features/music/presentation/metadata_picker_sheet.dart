@@ -126,12 +126,9 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                const Text(
+                Text(
                   'Fix Metadata',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
                 ),
                 const Spacer(),
                 IconButton(
@@ -186,7 +183,7 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
           // Results
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink))
+                ? Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary))
                 : _error != null
                     ? Center(child: Text(_error!))
                     : _results.isEmpty
@@ -254,29 +251,20 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
                                           children: [
                                             Text(
                                               _unescapeHtml(meta.trackName ?? 'Unknown'),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 16,
-                                              ),
+                                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold,),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             Text(
                                               _unescapeHtml(meta.artistName ?? 'Unknown Artist'),
-                                              style: TextStyle(
-                                                color: isDark ? Colors.white70 : Colors.black87,
-                                                fontSize: 14,
-                                              ),
+                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             if (meta.album != null)
                                               Text(
                                                 _unescapeHtml(meta.album!),
-                                                style: TextStyle(
-                                                  color: isDark ? Colors.white54 : Colors.black45,
-                                                  fontSize: 12,
-                                                ),
+                                                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
@@ -321,18 +309,15 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: isSelected
-                ? AppleMusicTheme.primaryPink
+                ? Theme.of(context).colorScheme.primary
                 : (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 13,
-              color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),),
           ),
         ),
       ),

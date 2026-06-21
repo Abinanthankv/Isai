@@ -338,6 +338,20 @@ class AppDatabase extends _$AppDatabase {
         .write(FilesCompanion(localPath: Value(path)));
   }
 
+  Future<void> clearAllLocalPaths() async {
+    await (update(files)).write(const FilesCompanion(localPath: Value(null)));
+    await (delete(files)..where((t) => t.torrentId.equals(-1))).go();
+  }
+
+  Future<void> clearAllLibraryData() async {
+    await transaction(() async {
+      await delete(torrents).go();
+      await delete(files).go();
+      await delete(trackMetadata).go();
+      await delete(syncMeta).go();
+    });
+  }
+
   // --- Playlists ---
 
   Future<int> createPlaylist(PlaylistsCompanion entry) => into(playlists).insert(entry);

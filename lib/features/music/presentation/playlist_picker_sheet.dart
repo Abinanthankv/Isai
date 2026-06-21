@@ -72,22 +72,16 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Add to Playlist',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
+                        color: Colors.white,),
                     ),
                     if (_selectedPlaylistIds.isNotEmpty)
                       Text(
                         '${_selectedPlaylistIds.length} selected',
-                        style: const TextStyle(
-                          color: AppleMusicTheme.primaryPink,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w500,),
                       ),
                   ],
                 ),
@@ -99,14 +93,14 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                   leading: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppleMusicTheme.primaryPink.withOpacity(0.1),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.add_rounded, color: AppleMusicTheme.primaryPink),
+                    child: Icon(Icons.add_rounded, color: Theme.of(context).colorScheme.primary),
                   ),
-                  title: const Text(
+                  title: Text(
                     'New Playlist...',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.white),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
                   ),
                   onTap: () => _showCreatePlaylistDialog(context),
                 ),
@@ -161,7 +155,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                             subtitle: Text('${p.count} songs', style: const TextStyle(color: Colors.white54)),
                             trailing: Checkbox(
                               value: isSelected,
-                              activeColor: AppleMusicTheme.primaryPink,
+                              activeColor: Theme.of(context).colorScheme.primary,
                               checkColor: Colors.white,
                               side: const BorderSide(color: Colors.white30, width: 1.5),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
@@ -189,7 +183,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                       ),
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+                  loading: () => Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
                   error: (e, _) => Text('Error loading playlists: $e', style: const TextStyle(color: Colors.redAccent)),
                 ),
 
@@ -199,7 +193,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                   width: double.infinity,
                   child: AppleMusicButton(
                     label: 'Done',
-                    backgroundColor: _selectedPlaylistIds.isEmpty ? Colors.white24 : AppleMusicTheme.primaryPink,
+                    backgroundColor: _selectedPlaylistIds.isEmpty ? Colors.white24 : Theme.of(context).colorScheme.primary,
                     foregroundColor: _selectedPlaylistIds.isEmpty ? Colors.white30 : Colors.white,
                     onTap: _selectedPlaylistIds.isEmpty
                         ? null
@@ -243,7 +237,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
           content: Text(addedCount > 0 
               ? 'Added to $addedCount playlist${addedCount > 1 ? 's' : ''}'
               : 'Already in the selected playlist${_selectedPlaylistIds.length > 1 ? 's' : ''}'),
-          backgroundColor: addedCount > 0 ? Colors.green.withOpacity(0.9) : AppleMusicTheme.primaryPink.withOpacity(0.9),
+          backgroundColor: addedCount > 0 ? Colors.green.withOpacity(0.9) : Theme.of(context).colorScheme.primary.withOpacity(0.9),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -254,7 +248,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('New Playlist'),
+        title: Text('New Playlist'),
         content: TextField(
           controller: _nameController,
           autofocus: true,
@@ -265,7 +259,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text('Cancel'),
           ),
           TextButton(
             onPressed: () async {
@@ -280,7 +274,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                 }
               }
             },
-            child: const Text('Create'),
+            child: Text('Create'),
           ),
         ],
       ),

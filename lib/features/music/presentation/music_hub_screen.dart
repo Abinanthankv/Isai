@@ -11,11 +11,14 @@ import 'discovery_screen.dart';
 import 'for_you_screen.dart';
 import '../../player/presentation/mini_player.dart';
 import '../../../core/theme/apple_music_theme.dart';
-import '../../../core/theme/glassmorphism.dart';
+import '../../../core/theme/glassmorphism.dart' hide GlassCard;
 import '../../../core/theme/theme_provider.dart';
+import '../../../core/theme/theme_extensions.dart';
 import '../../../features/player/presentation/player_providers.dart';
 import 'package:isai/main.dart';
 import 'package:isai/core/updater/app_updater.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' show GlassCard, LiquidRoundedSuperellipse, LiquidGlassSettings;
+
 
 
 class MusicHubScreen extends ConsumerStatefulWidget {
@@ -83,18 +86,9 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Consumer(
-            builder: (context, ref, child) {
-              final isPlayerOpen = ref.watch(isPlayerOpenProvider);
-              return Visibility(
-                visible: !isPlayerOpen,
-                maintainState: true,
-                child: const Padding(
-                  padding: EdgeInsets.only(bottom: 8.0),
-                  child: MiniPlayer(),
-                ),
-              );
-            },
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8.0),
+            child: MiniPlayer(),
           ),
           _GlassNavigationBar(
             selectedIndex: _tab,
@@ -106,7 +100,7 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
   }
 }
 
-class _GlassNavigationBar extends StatelessWidget {
+class _GlassNavigationBar extends ConsumerWidget {
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
 
@@ -116,18 +110,16 @@ class _GlassNavigationBar extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            height: 70,
-            decoration: BoxDecoration(
+    final settings = ref.watch(settingsProvider);
+    final useLiquid = settings.appThemeStyle == 'apple' && settings.appleUseLiquidGlass;
+
+    final navBarContent = Container(
+      height: 70,
+      decoration: useLiquid
+          ? null
+          : BoxDecoration(
               color: isDark
                   ? Colors.black.withOpacity(0.7)
                   : Colors.white.withOpacity(0.8),
@@ -138,47 +130,76 @@ class _GlassNavigationBar extends StatelessWidget {
                     : Colors.white.withOpacity(0.3),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _NavItem(
-                  icon: Icons.explore_outlined,
-                  selectedIcon: Icons.explore,
-                  label: 'Discover',
-                  isSelected: selectedIndex == 0,
-                  onTap: () => onDestinationSelected(0),
-                ),
-                _NavItem(
-                  icon: Icons.auto_awesome_outlined,
-                  selectedIcon: Icons.auto_awesome,
-                  label: 'For You',
-                  isSelected: selectedIndex == 1,
-                  onTap: () => onDestinationSelected(1),
-                ),
-                _NavItem(
-                  icon: Icons.library_music_outlined,
-                  selectedIcon: Icons.library_music,
-                  label: 'Library',
-                  isSelected: selectedIndex == 2,
-                  onTap: () => onDestinationSelected(2),
-                ),
-                _NavItem(
-                  icon: Icons.search,
-                  selectedIcon: Icons.search,
-                  label: 'Search',
-                  isSelected: selectedIndex == 3,
-                  onTap: () => onDestinationSelected(3),
-                ),
-                _NavItem(
-                  icon: Icons.settings_outlined,
-                  selectedIcon: Icons.settings,
-                  label: 'Settings',
-                  isSelected: selectedIndex == 4,
-                  onTap: () => onDestinationSelected(4),
-                ),
-              ],
-            ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _NavItem(
+            icon: Icons.explore_outlined,
+            selectedIcon: Icons.explore,
+            label: 'Discover',
+            isSelected: selectedIndex == 0,
+            onTap: () => onDestinationSelected(0),
           ),
+          _NavItem(
+            icon: Icons.auto_awesome_outlined,
+            selectedIcon: Icons.auto_awesome,
+            label: 'For You',
+            isSelected: selectedIndex == 1,
+            onTap: () => onDestinationSelected(1),
+          ),
+          _NavItem(
+            icon: Icons.library_music_outlined,
+            selectedIcon: Icons.library_music,
+            label: 'Library',
+            isSelected: selectedIndex == 2,
+            onTap: () => onDestinationSelected(2),
+          ),
+          _NavItem(
+            icon: Icons.search,
+            selectedIcon: Icons.search,
+            label: 'Search',
+            isSelected: selectedIndex == 3,
+            onTap: () => onDestinationSelected(3),
+          ),
+          _NavItem(
+            icon: Icons.settings_outlined,
+            selectedIcon: Icons.settings,
+            label: 'Settings',
+            isSelected: selectedIndex == 4,
+            onTap: () => onDestinationSelected(4),
+          ),
+        ],
+      ),
+    );
+
+    final double radius = useLiquid ? 30.0 : 24.0;
+
+    if (useLiquid) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: GlassCard(
+          padding: EdgeInsets.zero,
+          margin: EdgeInsets.zero,
+          useOwnLayer: true,
+          shape: LiquidRoundedSuperellipse(borderRadius: radius),
+          settings: LiquidGlassSettings(
+            glassColor: (isDark ? Colors.black : Colors.white)
+                .withOpacity(settings.appleLiquidGlassOpacity),
+            thickness: 20,
+            blur: 15,
+          ),
+          child: navBarContent,
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: navBarContent,
         ),
       ),
     );
@@ -207,13 +228,13 @@ class _NavItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           gradient: isSelected
               ? LinearGradient(
                   colors: [
-                    AppleMusicTheme.primaryPink.withOpacity(0.2),
-                    AppleMusicTheme.primaryPurple.withOpacity(0.2),
+                    context.accentColor.withOpacity(0.2),
+                    context.accentGradientEnd.withOpacity(0.2),
                   ],
                 )
               : null,
@@ -228,7 +249,7 @@ class _NavItem extends StatelessWidget {
                 isSelected ? selectedIcon : icon,
                 key: ValueKey(isSelected),
                 color: isSelected
-                    ? AppleMusicTheme.primaryPink
+                    ? context.accentColor
                     : (Theme.of(context).brightness == Brightness.dark
                         ? Colors.white54
                         : Colors.black45),
@@ -238,15 +259,12 @@ class _NavItem extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: isSelected
-                    ? AppleMusicTheme.primaryPink
+                    ? context.accentColor
                     : (Theme.of(context).brightness == Brightness.dark
                         ? Colors.white54
-                        : Colors.black45),
-              ),
+                        : Colors.black45),),
             ),
           ],
         ),

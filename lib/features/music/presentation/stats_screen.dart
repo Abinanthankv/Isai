@@ -78,7 +78,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Your Stats', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24)),
+        title: Text('Your Stats', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -93,7 +93,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       body: viewMode == StatsViewMode.local
           ? statsListAsync.when(
               data: (history) => history.isEmpty ? _buildEmptyState(isDark) : _buildContent(context, ref, isDark),
-              loading: () => const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+              loading: () => Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
               error: (e, _) => Center(child: Text('Error: $e')),
             )
           : _buildLastfmContent(context, ref, isDark),
@@ -135,17 +135,14 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? AppleMusicTheme.primaryPink : Colors.transparent,
+          color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Center(
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: isSelected ? Colors.white : (isDark ? Colors.white60 : Colors.black54),
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.white : (isDark ? Colors.white60 : Colors.black54),),
           ),
         ),
       ),
@@ -156,7 +153,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
-        title: const Text('Your Stats', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text('Your Stats', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -166,12 +163,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           children: [
             Icon(Icons.bar_chart_outlined, size: 80, color: Colors.grey.withOpacity(0.3)),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No stats available yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Start playing music to see your insights',
               style: TextStyle(color: Colors.grey),
             ),
@@ -279,7 +276,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
-      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.2),
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.2),
     );
   }
 
@@ -301,23 +298,23 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           children: [
             Row(
               children: [
-                Icon(icon, size: 16, color: AppleMusicTheme.primaryPink),
+                Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54, fontWeight: FontWeight.w500),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white60 : Colors.black54, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
             const Spacer(),
             Text(
               value,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 2),
             Text(
               subValue,
-              style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black38),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
             ),
           ],
         ),
@@ -356,7 +353,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         children: [
           Text(
             title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppleMusicTheme.primaryPink),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
           ),
           const SizedBox(height: 12),
           ...items.asMap().entries.map((e) => rowBuilder(isDark, e.value, e.key + 1)).toList(),
@@ -375,7 +372,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           Expanded(
             child: Text(
               item['name'],
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -383,7 +380,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           const SizedBox(width: 8),
           Text(
             '${item['count']} plays',
-            style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.black38),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
           ),
         ],
       ),
@@ -440,15 +437,15 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(subtitle, style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(subtitle, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
           const SizedBox(width: 4),
           Text(
             '$count plays',
-            style: TextStyle(fontSize: 9, color: isDark ? Colors.white38 : Colors.black38),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
           ),
         ],
       ),
@@ -460,7 +457,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       width: 16,
       child: Text(
         index.toString(),
-        style: TextStyle(color: isDark ? Colors.white24 : Colors.black26, fontWeight: FontWeight.bold, fontSize: 12),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white24 : Colors.black26, fontWeight: FontWeight.bold,),
         textAlign: TextAlign.center,
       ),
     );
@@ -480,7 +477,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('By Day of Week', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text('By Day of Week', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,)),
           const SizedBox(height: 16),
           ...List.generate(7, (index) {
             final count = weekdayCounts[index + 1] ?? 0;
@@ -489,7 +486,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Row(
                 children: [
-                  SizedBox(width: 32, child: Text(weekdays[index], style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54))),
+                  SizedBox(width: 32, child: Text(weekdays[index], style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white60 : Colors.black54))),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Stack(
@@ -503,7 +500,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           child: Container(
                             height: 10,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]),
+                              gradient: LinearGradient(colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]),
                               borderRadius: BorderRadius.circular(5),
                             ),
                           ),
@@ -512,7 +509,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  SizedBox(width: 20, child: Text(count.toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.end)),
+                  SizedBox(width: 20, child: Text(count.toString(), style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.end)),
                 ],
               ),
             );
@@ -526,7 +523,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final genres = ref.watch(genreBreakdownProvider);
     if (genres.isEmpty) return const SizedBox.shrink();
 
-    final colors = [AppleMusicTheme.primaryPink, Colors.orangeAccent, Colors.tealAccent, Colors.blueAccent, Colors.purpleAccent];
+    final colors = [Theme.of(context).colorScheme.primary, Colors.orangeAccent, Colors.tealAccent, Colors.blueAccent, Colors.purpleAccent];
 
     return GlassCard(
       padding: const EdgeInsets.all(16),
@@ -534,7 +531,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Genre Distribution', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text('Genre Distribution', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,)),
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
@@ -568,7 +565,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   const SizedBox(width: 6),
                   Text(
                     '${item['genre']} (${item['percentage'].toStringAsFixed(1)}%)',
-                    style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : Colors.black87),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white70 : Colors.black87),
                   ),
                 ],
               );
@@ -628,7 +625,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                   child: Center(
                     child: Text(
                       'Scrobbling since ${DateTime.fromMillisecondsSinceEpoch((int.tryParse(profile['registered'].toString()) ?? 0) * 1000).year}',
-                      style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 12),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
                     ),
                   ),
                 ),
@@ -665,7 +662,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+      loading: () => Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
       error: (e, _) => Center(child: Text('Error: $e')),
     );
   }
@@ -678,7 +675,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,)),
           const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
         ],
       ),
@@ -706,7 +703,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           Expanded(
             child: Text(
               item['name'],
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -714,7 +711,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           const SizedBox(width: 8),
           Text(
             '${item['playcount']} scrobbles',
-            style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.black38),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
           ),
         ],
       ),
@@ -774,15 +771,15 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(subtitle, style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(subtitle, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
           const SizedBox(width: 8),
           Text(
             '$count',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppleMusicTheme.primaryPink.withOpacity(0.8)),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary.withOpacity(0.8)),
           ),
         ],
       ),
@@ -824,7 +821,7 @@ class _StreakCard extends StatelessWidget {
             children: [
               Text(
                 highestEarned?.emoji ?? '🔥',
-                style: const TextStyle(fontSize: 28),
+                style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -833,16 +830,13 @@ class _StreakCard extends StatelessWidget {
                   children: [
                     Text(
                       '$streak Day${streak == 1 ? '' : 's'} Streak',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                     ),
                     if (highestEarned != null)
                       Text(
                         highestEarned.title,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: highestEarned.primaryColor,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
+                          color: highestEarned.primaryColor,),
                       ),
                   ],
                 ),
@@ -861,7 +855,7 @@ class _StreakCard extends StatelessWidget {
                     children: [
                       Text(
                         'Next: ${next!.emoji} ${next!.title}',
-                        style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : Colors.black54),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white60 : Colors.black54),
                       ),
                       const SizedBox(height: 6),
                       ClipRRect(
@@ -879,7 +873,7 @@ class _StreakCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   '${next!.days - streak} to go',
-                  style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black38, fontWeight: FontWeight.w600),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -890,7 +884,7 @@ class _StreakCard extends StatelessWidget {
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 12),
-            Text('Badges Earned', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : Colors.black54)),
+            Text('Badges Earned', style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: isDark ? Colors.white60 : Colors.black54)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -906,9 +900,9 @@ class _StreakCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(m.emoji, style: const TextStyle(fontSize: 14)),
+                      Text(m.emoji, style: Theme.of(context).textTheme.bodyMedium),
                       const SizedBox(width: 4),
-                      Text(m.title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: m.primaryColor)),
+                      Text(m.title, style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: m.primaryColor)),
                     ],
                   ),
                 );
@@ -951,12 +945,12 @@ class _PersonalityCard extends StatelessWidget {
         children: [
           Text(
             'Your Music Personality',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? Colors.white54 : Colors.black45, letterSpacing: 0.5),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600, color: isDark ? Colors.white54 : Colors.black45, letterSpacing: 0.5),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Text(personality.emoji, style: const TextStyle(fontSize: 36)),
+              Text(personality.emoji, style: Theme.of(context).textTheme.displayMedium),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -964,11 +958,11 @@ class _PersonalityCard extends StatelessWidget {
                   children: [
                     Text(
                       personality.title,
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: personality.primaryColor),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: personality.primaryColor),
                     ),
                     Text(
                       '${personality.timeEmoji} ${personality.timeTitle}',
-                      style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white60 : Colors.black54),
                     ),
                   ],
                 ),
@@ -978,7 +972,7 @@ class _PersonalityCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             personality.description,
-            style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87, height: 1.4),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87, height: 1.4),
           ),
         ],
       ),
@@ -1043,26 +1037,23 @@ class _MilestoneCelebrationOverlayState extends State<_MilestoneCelebrationOverl
                     final scale = 1.0 + (_pulseController.value * 0.15);
                     return Transform.scale(scale: scale, child: child);
                   },
-                  child: Text(m.emoji, style: const TextStyle(fontSize: 72)),
+                  child: Text(m.emoji, style: Theme.of(context).textTheme.displayMedium),
                 ),
                 const SizedBox(height: 24),
                 // Title
                 Text(
                   m.title,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
                     foreground: Paint()
                       ..shader = LinearGradient(colors: [m.primaryColor, m.secondaryColor])
-                          .createShader(const Rect.fromLTWH(0, 0, 200, 40)),
-                  ),
+                          .createShader(const Rect.fromLTWH(0, 0, 200, 40)),),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
                 // Description
                 Text(
                   m.description,
-                  style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.4),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white70, height: 1.4),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -1096,7 +1087,7 @@ class _MilestoneCelebrationOverlayState extends State<_MilestoneCelebrationOverl
                     ),
                     child: Text(
                       isLast ? 'Awesome!' : 'Next Badge',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
                     ),
                   ),
                 ),

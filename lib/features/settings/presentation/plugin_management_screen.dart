@@ -175,8 +175,17 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
     final installedJs = _pluginManager.plugins;
     final installedEclipse = _pluginManager.eclipseAddons;
     
-    // Combine for a unified list
+    final priority = ref.watch(settingsProvider).addonPriority;
     final allItems = <dynamic>[...installedJs, ...installedEclipse];
+    allItems.sort((a, b) {
+      final idA = a is JsPlugin ? a.id : 'eclipse_${a.id}';
+      final idB = b is JsPlugin ? b.id : 'eclipse_${b.id}';
+      int idxA = priority.indexOf(idA);
+      int idxB = priority.indexOf(idB);
+      if (idxA == -1) idxA = 999999;
+      if (idxB == -1) idxB = 999999;
+      return idxA.compareTo(idxB);
+    });
 
     return Container(
       decoration: BoxDecoration(
@@ -217,10 +226,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                 children: [
                   Text(
                     'Enter a raw JS plugin file URL hosted on GitHub or any server.',
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black87,
-                      fontSize: 13,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -243,9 +249,9 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                     width: double.infinity,
                     child: GlassButton(
                       onPressed: _isInstalling ? null : () => _installPlugin(_urlController.text),
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         colors: [
-                          AppleMusicTheme.primaryPink,
+                          Theme.of(context).colorScheme.primary,
                           AppleMusicTheme.primaryPurple,
                         ],
                       ),
@@ -258,7 +264,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
+                          : Text(
                               'Install Plugin',
                               style: TextStyle(
                                 color: Colors.white,
@@ -276,10 +282,10 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
             // Curated / Featured Gallery
             AppleMusicSectionHeader(title: 'Featured Plugins'),
             _isLoadingFeatured
-                ? const SizedBox(
+                ? SizedBox(
                     height: 160,
                     child: Center(
-                      child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                      child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                     ),
                   )
                 : SizedBox(
@@ -305,20 +311,17 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
-                                        color: AppleMusicTheme.primaryPink.withOpacity(0.15),
+                                        color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Icon(Icons.music_note, color: AppleMusicTheme.primaryPink, size: 20),
+                                      child: Icon(Icons.music_note, color: Theme.of(context).colorScheme.primary, size: 20),
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         name,
-                                        style: TextStyle(
-                                          color: isDark ? Colors.white : Colors.black,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                                          fontWeight: FontWeight.bold,),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -328,10 +331,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                 const Spacer(),
                                 Text(
                                   'Dynamic search and stream resolution for $name.',
-                                  style: TextStyle(
-                                    color: isDark ? Colors.white54 : Colors.black54,
-                                    fontSize: 11,
-                                  ),
+                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -344,7 +344,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: isAlreadyInstalled 
                                           ? (isDark ? Colors.white10 : Colors.black.withOpacity(0.05))
-                                          : AppleMusicTheme.primaryPink,
+                                          : Theme.of(context).colorScheme.primary,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
                                       ),
@@ -352,13 +352,10 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                     ),
                                     child: Text(
                                       isAlreadyInstalled ? 'Reinstall' : 'Install',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
+                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
                                         color: isAlreadyInstalled 
                                             ? (isDark ? Colors.white70 : Colors.black87)
-                                            : Colors.white,
-                                      ),
+                                            : Colors.white,),
                                     ),
                                   ),
                                 ),
@@ -390,8 +387,24 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
             else
               GlassCard(
                 padding: EdgeInsets.zero,
-                child: Column(
-                  children: allItems.map((item) {
+                child: ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: allItems.length,
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) {
+                      newIndex -= 1;
+                    }
+                    final item = allItems.removeAt(oldIndex);
+                    allItems.insert(newIndex, item);
+                    
+                    final newPriority = allItems.map<String>((x) {
+                      return x is JsPlugin ? x.id : 'eclipse_${x.id}';
+                    }).toList();
+                    ref.read(settingsProvider.notifier).setAddonPriority(newPriority);
+                  },
+                  itemBuilder: (context, index) {
+                    final item = allItems[index];
                     final isEclipse = item is !JsPlugin; // item is EclipseAddon
                     final id = isEclipse ? item.id : item.id;
                     final name = isEclipse ? item.name : item.name;
@@ -399,8 +412,10 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                     final version = isEclipse ? item.version : item.version;
                     final description = isEclipse ? item.description : item.description;
                     final enabled = isEclipse ? item.enabled : item.enabled;
+                    final keyVal = isEclipse ? 'eclipse_$id' : id;
 
                     return Column(
+                      key: ValueKey(keyVal),
                       children: [
                         ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -417,13 +432,13 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                     child: Image.network(
                                       icon,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(
+                                      errorBuilder: (_, __, ___) => Icon(
                                         Icons.extension,
-                                        color: AppleMusicTheme.primaryPink,
+                                        color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
                                   )
-                                : const Icon(Icons.extension, color: AppleMusicTheme.primaryPink),
+                                : Icon(Icons.extension, color: Theme.of(context).colorScheme.primary),
                           ),
                           title: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -447,7 +462,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                     ),
                                     child: Text(
                                       'v$version',
-                                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 9),
+                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                                     ),
                                   ),
                                 ],
@@ -460,9 +475,9 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                     color: Colors.cyan.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text(
+                                  child: Text(
                                     'Eclipse API',
-                                    style: TextStyle(color: Colors.cyanAccent, fontSize: 9),
+                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.cyanAccent,),
                                   ),
                                 ),
                               ],
@@ -470,7 +485,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                           ),
                           subtitle: Text(
                             description,
-                            style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 12),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -479,7 +494,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                             children: [
                               Switch(
                                 value: enabled,
-                                activeColor: AppleMusicTheme.primaryPink,
+                                activeColor: Theme.of(context).colorScheme.primary,
                                 onChanged: (val) async {
                                   if (isEclipse) {
                                     await _pluginManager.toggleEclipseAddon(id, val);
@@ -500,6 +515,10 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                   _refreshPlugins();
                                 },
                               ),
+                              Icon(
+                                Icons.drag_handle_rounded,
+                                color: isDark ? Colors.white30 : Colors.black26,
+                              ),
                             ],
                           ),
                         ),
@@ -507,7 +526,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                           Divider(height: 1, indent: 72, color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
                       ],
                     );
-                  }).toList(),
+                  },
                 ),
               ),
 
@@ -522,10 +541,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                 children: [
                   Text(
                     'Query your installed plugins live to verify search and stream resolution output.',
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black87,
-                      fontSize: 13,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -575,7 +591,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                         borderSide: BorderSide.none,
                       ),
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.send, color: AppleMusicTheme.primaryPink),
+                        icon: Icon(Icons.send, color: Theme.of(context).colorScheme.primary),
                         onPressed: _isTesting ? null : _testPluginSearch,
                       ),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -584,14 +600,14 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                   
                   if (_isTesting) ...[
                     const SizedBox(height: 24),
-                    const Center(
-                      child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                    Center(
+                      child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                     ),
                   ] else if (_testResults.isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(
                       'Search returned ${_testResults.length} result(s):',
-                      style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 13),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.greenAccent, fontWeight: FontWeight.bold,),
                     ),
                     const SizedBox(height: 12),
                     ..._testResults.map((result) {
@@ -602,7 +618,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                           title: Text(result.title, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
                           subtitle: Text(
                             'Artist: ${result.artist} · Formats: ${result.format}',
-                            style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                           ),
                           trailing: IconButton(
                             icon: const Icon(Icons.play_arrow_rounded, color: Colors.greenAccent),

@@ -107,9 +107,9 @@ class CategoryDetailScreen extends ConsumerWidget {
                 ),
               );
             },
-            loading: () => const SliverFillRemaining(
+            loading: () => SliverFillRemaining(
               child: Center(
-                child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
               ),
             ),
             error: (err, stack) => SliverFillRemaining(

@@ -91,7 +91,7 @@ class _TorrentPickerSheetState extends ConsumerState<TorrentPickerSheet> {
                             result.name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -108,35 +108,23 @@ class _TorrentPickerSheetState extends ConsumerState<TorrentPickerSheet> {
                         const SizedBox(width: 4),
                         Text(
                           '${result.seeders}',
-                          style: const TextStyle(
-                            color: Colors.greenAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.greenAccent,
+                            fontWeight: FontWeight.bold,),
                         ),
                         Text(
                           ' seeders',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant, 
-                            fontSize: 12,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant,),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           '· ${result.formattedSize}',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant, 
-                            fontSize: 12,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant,),
                         ),
                         if (isCached) ...[
                           const SizedBox(width: 8),
                           Text(
                             '· ',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant, 
-                              fontSize: 12,
-                            ),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant,),
                           ),
                          
                         ],
@@ -216,12 +204,9 @@ class _SourceBadge extends StatelessWidget {
       ),
       child: Text(
         source.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color,
           fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
+          letterSpacing: 0.5,),
       ),
     );
   }

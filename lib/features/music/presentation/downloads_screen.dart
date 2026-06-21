@@ -85,12 +85,12 @@ class DownloadsScreen extends ConsumerWidget {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppleMusicTheme.primaryPink.withOpacity(0.1),
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.library_music_rounded,
-                            color: AppleMusicTheme.primaryPink,
+                            color: Theme.of(context).colorScheme.primary,
                             size: 24,
                           ),
                         ),
@@ -100,18 +100,12 @@ class DownloadsScreen extends ConsumerWidget {
                           children: [
                             Text(
                               '${downloadedFiles.length} Songs',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: isDark ? Colors.white : Colors.black,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black,),
                             ),
                             Text(
                               'Total runtime: $durationString',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: isDark ? Colors.white60 : Colors.black54,
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white60 : Colors.black54,),
                             ),
                           ],
                         ),
@@ -125,10 +119,7 @@ class DownloadsScreen extends ConsumerWidget {
                 child: Center(
                   child: Text(
                     'No offline songs found',
-                    style: TextStyle(
-                      color: isDark ? Colors.white54 : Colors.black45, 
-                      fontSize: 16,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                   ),
                 ),
               )
@@ -196,10 +187,7 @@ class _DownloadTrackTileState extends ConsumerState<_DownloadTrackTile> {
           if (meta?.trackTimeMillis != null)
             Text(
               ItunesTrack.formatDuration(meta!.trackTimeMillis),
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white30 : Colors.black26,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white30 : Colors.black26,),
             ),
           const SizedBox(width: 8),
           Icon(

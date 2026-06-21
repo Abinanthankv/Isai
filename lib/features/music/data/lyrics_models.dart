@@ -1,10 +1,19 @@
 import 'dart:convert';
 
+class LyricWord {
+  final Duration start;
+  final Duration end;
+  final String text;
+
+  LyricWord({required this.start, required this.end, required this.text});
+}
+
 class LyricLine {
   final Duration timestamp;
   final String text;
+  final List<LyricWord> words;
 
-  LyricLine({required this.timestamp, required this.text});
+  LyricLine({required this.timestamp, required this.text, this.words = const []});
 
   @override
   String toString() => '${timestamp.inMilliseconds}: $text';

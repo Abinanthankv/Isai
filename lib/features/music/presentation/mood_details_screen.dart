@@ -61,15 +61,12 @@ class MoodDetailsScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
                         child: Text(
                           'Related Playlists',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.5,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,),
                         ),
                       ),
                       SizedBox(
@@ -130,11 +127,8 @@ class MoodDetailsScreen extends ConsumerWidget {
                                       width: 120,
                                       child: Text(
                                         playlist.title,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                          color: isDark ? Colors.white : Colors.black,
-                                        ),
+                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                                          color: isDark ? Colors.white : Colors.black,),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -146,26 +140,23 @@ class MoodDetailsScreen extends ConsumerWidget {
                           },
                         ),
                       ),
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
                         child: Text(
                           'Top Songs',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: -0.5,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,),
                         ),
                       ),
                     ],
                   ),
                 );
               },
-              loading: () => const SliverToBoxAdapter(
+              loading: () => SliverToBoxAdapter(
                 child: SizedBox(
                   height: 150,
                   child: Center(
-                    child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                    child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                   ),
                 ),
               ),
@@ -187,9 +178,9 @@ class MoodDetailsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            loading: () => const SliverFillRemaining(
+            loading: () => SliverFillRemaining(
               child: Center(
-                child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
               ),
             ),
             error: (e, _) => SliverFillRemaining(
@@ -431,21 +422,15 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
                 children: [
                   Text(
                     widget.track.trackName,
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
                     widget.track.artistName,
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black54,
-                      fontSize: 14,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black54,),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -454,7 +439,7 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
             ),
             Icon(
               _matchingFile != null ? Icons.play_circle_fill_rounded : Icons.add_circle_outline_rounded,
-              color: AppleMusicTheme.primaryPink,
+              color: Theme.of(context).colorScheme.primary,
               size: 32,
             ),
           ],

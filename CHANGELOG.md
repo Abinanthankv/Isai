@@ -1,27 +1,22 @@
 # Changelog
 
-## [1.0.2] - June 2026
+## [1.0.3] - June 2026
 
 ### Added
-- External plain-text link sharing: Intercept Spotify and YouTube song links shared from other apps and play them instantly using high-quality lazy source resolution.
-- YouTube and Spotify playlist URL importing: Automatically detect and import entire playlists into local databases when sharing playlist links from external apps.
-- Integrated `ShareHandlerService` and updated `AndroidManifest.xml` to handle incoming `SEND` sharing intents.
-- Added `receive_sharing_intent` package to dependencies.
-- Portable Linux `.AppImage` build integration added alongside `.tar.gz` in GitHub release Actions workflow.
-- Native tactile haptic feedback on song selections, long presses, buttons, and filter chips across presentation screens.
-- Interactive synced lyrics offset controls (+/- 0.5s) to delay or speed up lyrics sync.
+- **Maximum Screen Smoothness**: Added support for 90Hz, 120Hz, and 144Hz displays, making animations and scrolling feel incredibly fluid on devices with high refresh rate screens.
+- **Dynamic Artwork Colors**: The app now automatically styles itself using colors extracted from the currently playing song's artwork, blending themes beautifully.
+- **Google Material 3 Theme Style**: Added a clean, dynamic card-based design style as a fresh look alongside the classic Apple Music layout.
+- **Interactive Mini Player Gestures**: Swipe left or right on the bottom mini player to skip songs, complete with springy dragging physics.
+- **Import Playlists & Links**: Share Spotify or YouTube links from other apps directly to Isai to import whole playlists or stream tracks instantly.
+- **Liquid Glass Settings**: Customize the frosted glass background transparency with a new slider in the appearance settings.
 
 ### Fixed & Improved
-
-- Redesigned and cleaned up UI layout/spacing on Discovery, Album, and Settings screens for cleaner layouts and improved responsiveness.
-- Surfaced download directory configuration warnings with direct settings redirect links on the Now Playing player screen.
-- Prevented automatic recommendations rebuilding/re-fetching on the "For You" page by loading history profile via direct database queries.
-
-## [1.0.1] - June 2026
-
-### Fixed
-- Fixed JioSaavn playlist queue playback bug where it repeated the first song.
-- Fixed missing artist names in the playback source selection sheets.
+- **Cleaner Screen Transitions**: Closing the full player now fades out the background smoothly while the song artwork flies directly into its place on the mini-player, removing the distracting sliding blur effect.
+- **Buttons & Menus Visibility**: Fixed unreadable text on the album screen Play/Shuffle buttons, and polished the 3-dot options menu layout for better contrast in light mode.
+- **Theme Color Fixes**: Fixed issues where black icons or text would show on dark backgrounds when switching between light and dark modes.
+- **Queue Playback Fixes**: Fixed a bug where the music queue would sometimes repeat the same song instead of playing the next.
+- **Stream Reliability**: Improved backend retrying when streaming tracks so songs load more reliably on slower networks.
+- **UI Spacing Polish**: Cleaned up alignments, margins, and layouts on settings, album, and discovery screens for a cleaner appearance.
 
 ## [1.0.0] - June 2026
 

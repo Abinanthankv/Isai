@@ -79,20 +79,17 @@ class NowPlayingShareCard extends StatelessWidget {
                   children: [
                     Container(
                       width: 7, height: 7,
-                      decoration: const BoxDecoration(
-                        color: AppleMusicTheme.primaryPink,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'ISAI',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,
                         letterSpacing: 4,
-                        fontWeight: FontWeight.w600,
-                      ),
+                        fontWeight: FontWeight.w600,),
                     ),
                   ],
                 ),
@@ -130,13 +127,10 @@ class NowPlayingShareCard extends StatelessWidget {
                 // Track name
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white,
                     fontWeight: FontWeight.bold,
                     letterSpacing: -0.5,
-                    height: 1.2,
-                  ),
+                    height: 1.2,),
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -146,11 +140,8 @@ class NowPlayingShareCard extends StatelessWidget {
                 // Artist
                 Text(
                   artist,
-                  style: const TextStyle(
-                    color: AppleMusicTheme.primaryPink,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w500,),
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -161,7 +152,7 @@ class NowPlayingShareCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     album!,
-                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38,),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -178,13 +169,10 @@ class NowPlayingShareCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: Colors.white.withOpacity(0.15)),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Listening on Isai',
-                    style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 12,
-                      letterSpacing: 0.5,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white60,
+                      letterSpacing: 0.5,),
                   ),
                 ),
               ],

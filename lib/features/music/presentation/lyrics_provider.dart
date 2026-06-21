@@ -2,34 +2,79 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/lyrics_models.dart';
 import '../data/scrapers/lyrics_scraper.dart';
 
+enum LyricsProviderType {
+  auto,
+  unison,
+  lrclib,
+}
+
 class LyricsState {
   final LyricsData? lyrics;
   final bool isLoading;
   final String? error;
+  final LyricsProviderType selectedProvider;
 
-  LyricsState({this.lyrics, this.isLoading = false, this.error});
+  LyricsState({
+    this.lyrics,
+    this.isLoading = false,
+    this.error,
+    this.selectedProvider = LyricsProviderType.auto,
+  });
 
-  LyricsState copyWith({LyricsData? lyrics, bool? isLoading, String? error}) {
+  LyricsState copyWith({
+    LyricsData? lyrics,
+    bool? isLoading,
+    String? error,
+    LyricsProviderType? selectedProvider,
+  }) {
     return LyricsState(
       lyrics: lyrics ?? this.lyrics,
       isLoading: isLoading ?? this.isLoading,
       error: error ?? this.error,
+      selectedProvider: selectedProvider ?? this.selectedProvider,
     );
   }
 }
 
 class LyricsNotifier extends Notifier<LyricsState> {
-  final LyricsScraper _scraper = LrclibScraper();
+  final LyricsScraper _unisonScraper = UnisonScraper();
+  final LyricsScraper _lrclibScraper = LrclibScraper();
   String? _currentTrackKey;
   int _lastRequestId = 0;
+  
+  // Cache of trackKey -> Map of providerName -> LyricsData
+  final Map<String, Map<String, LyricsData>> _lyricsCache = {};
 
   @override
   LyricsState build() => LyricsState();
 
   Future<void> fetchLyrics(String track, String artist, {String? album, int? durationMs, bool force = false}) async {
     final trackKey = '$artist-$track-${durationMs ?? 0}';
-    
-    // Skip if already loading or already have lyrics for this track
+    final providerKey = state.selectedProvider.name;
+
+    // Check cache first to avoid refetching loaded lyrics
+    final cachedTrack = _lyricsCache[trackKey];
+    if (cachedTrack != null) {
+      if (state.selectedProvider == LyricsProviderType.auto) {
+        final unisonLyrics = cachedTrack[LyricsProviderType.unison.name];
+        final lrclibLyrics = cachedTrack[LyricsProviderType.lrclib.name];
+        final autoLyrics = unisonLyrics ?? lrclibLyrics;
+        if (autoLyrics != null) {
+          state = state.copyWith(lyrics: autoLyrics, isLoading: false, error: null);
+          _currentTrackKey = trackKey;
+          return;
+        }
+      } else {
+        final cachedLyrics = cachedTrack[providerKey];
+        if (cachedLyrics != null) {
+          state = state.copyWith(lyrics: cachedLyrics, isLoading: false, error: null);
+          _currentTrackKey = trackKey;
+          return;
+        }
+      }
+    }
+
+    // Skip if already loading or already have lyrics for this track (unless forced)
     if (!force && _currentTrackKey == trackKey && (state.lyrics != null || state.isLoading)) {
       return;
     }
@@ -37,11 +82,34 @@ class LyricsNotifier extends Notifier<LyricsState> {
     _currentTrackKey = trackKey;
     final requestId = ++_lastRequestId;
     
-    // Clear previous state on new fetch
-    state = LyricsState(isLoading: true);
+    // Clear previous lyrics but keep the selected provider state on new fetch
+    state = state.copyWith(lyrics: null, isLoading: true, error: null);
+
+    // Build the list of scrapers based on selected provider
+    final scrapers = <MapEntry<LyricsProviderType, LyricsScraper>>[];
+    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.unison) {
+      scrapers.add(MapEntry(LyricsProviderType.unison, _unisonScraper));
+    }
+    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.lrclib) {
+      scrapers.add(MapEntry(LyricsProviderType.lrclib, _lrclibScraper));
+    }
 
     try {
-      final lyrics = await _scraper.getLyrics(track, artist, album: album, durationMs: durationMs);
+      LyricsData? lyrics;
+      for (final entry in scrapers) {
+        // Double check cache for individual scraper
+        final cached = _lyricsCache[trackKey]?[entry.key.name];
+        if (cached != null) {
+          lyrics = cached;
+          break;
+        }
+
+        lyrics = await entry.value.getLyrics(track, artist, album: album, durationMs: durationMs);
+        if (lyrics != null) {
+          _lyricsCache.putIfAbsent(trackKey, () => {})[entry.key.name] = lyrics;
+          break;
+        }
+      }
       
       // Only update if this is still the latest request
       if (requestId == _lastRequestId) {
@@ -58,13 +126,21 @@ class LyricsNotifier extends Notifier<LyricsState> {
     }
   }
 
+  void setProvider(LyricsProviderType provider, String track, String artist, {String? album, int? durationMs}) {
+    if (state.selectedProvider != provider) {
+      state = state.copyWith(selectedProvider: provider);
+      fetchLyrics(track, artist, album: album, durationMs: durationMs, force: true);
+    }
+  }
+
   void clear() {
     _currentTrackKey = null;
     _lastRequestId++;
-    state = LyricsState();
+    state = LyricsState(selectedProvider: state.selectedProvider);
   }
 }
 
 final lyricsProvider = NotifierProvider<LyricsNotifier, LyricsState>(() {
   return LyricsNotifier();
 });
+

@@ -91,6 +91,16 @@ class SettingsState {
   final double visualizerBaseLift;
   final double visualizerBarSpacing;
   final double visualizerCornerRadius;
+  final int maxSongCacheSize;
+  final int maxImageCacheSize;
+  final List<String> addonPriority;
+  final String appThemeStyle;
+  final String appFontFamily;
+  final bool appleUseLiquidGlass;
+  final double appleLiquidGlassOpacity;
+  final bool miniPlayerSwipeEnabled;
+  final double miniPlayerSwipeSensitivity;
+  final bool playerSpotifyCanvasEnabled;
 
   SettingsState({
     this.apiKey = '',
@@ -128,6 +138,16 @@ class SettingsState {
     this.visualizerBaseLift = 105.0,
     this.visualizerBarSpacing = 0.0,
     this.visualizerCornerRadius = 0.0,
+    this.maxSongCacheSize = 1024,
+    this.maxImageCacheSize = 512,
+    this.addonPriority = const [],
+    this.appThemeStyle = 'material3',
+    this.appFontFamily = 'Roboto Flex',
+    this.appleUseLiquidGlass = true,
+    this.appleLiquidGlassOpacity = 0.5,
+    this.miniPlayerSwipeEnabled = true,
+    this.miniPlayerSwipeSensitivity = 40.0,
+    this.playerSpotifyCanvasEnabled = true,
   });
 
   SettingsState copyWith({
@@ -166,6 +186,16 @@ class SettingsState {
     double? visualizerBaseLift,
     double? visualizerBarSpacing,
     double? visualizerCornerRadius,
+    int? maxSongCacheSize,
+    int? maxImageCacheSize,
+    List<String>? addonPriority,
+    String? appThemeStyle,
+    String? appFontFamily,
+    bool? appleUseLiquidGlass,
+    double? appleLiquidGlassOpacity,
+    bool? miniPlayerSwipeEnabled,
+    double? miniPlayerSwipeSensitivity,
+    bool? playerSpotifyCanvasEnabled,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -203,6 +233,16 @@ class SettingsState {
       visualizerBaseLift: visualizerBaseLift ?? this.visualizerBaseLift,
       visualizerBarSpacing: visualizerBarSpacing ?? this.visualizerBarSpacing,
       visualizerCornerRadius: visualizerCornerRadius ?? this.visualizerCornerRadius,
+      maxSongCacheSize: maxSongCacheSize ?? this.maxSongCacheSize,
+      maxImageCacheSize: maxImageCacheSize ?? this.maxImageCacheSize,
+      addonPriority: addonPriority ?? this.addonPriority,
+      appThemeStyle: appThemeStyle ?? this.appThemeStyle,
+      appFontFamily: appFontFamily ?? this.appFontFamily,
+      appleUseLiquidGlass: appleUseLiquidGlass ?? this.appleUseLiquidGlass,
+      appleLiquidGlassOpacity: appleLiquidGlassOpacity ?? this.appleLiquidGlassOpacity,
+      miniPlayerSwipeEnabled: miniPlayerSwipeEnabled ?? this.miniPlayerSwipeEnabled,
+      miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
+      playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
     );
   }
 }
@@ -249,7 +289,52 @@ class SettingsNotifier extends Notifier<SettingsState> {
       visualizerBaseLift: _settings.visualizerBaseLift,
       visualizerBarSpacing: _settings.visualizerBarSpacing,
       visualizerCornerRadius: _settings.visualizerCornerRadius,
+      maxSongCacheSize: _settings.maxSongCacheSize,
+      maxImageCacheSize: _settings.maxImageCacheSize,
+      addonPriority: _settings.addonPriority,
+      appThemeStyle: _settings.appThemeStyle,
+      appFontFamily: _settings.appFontFamily,
+      appleUseLiquidGlass: _settings.appleUseLiquidGlass,
+      appleLiquidGlassOpacity: _settings.appleLiquidGlassOpacity,
+      miniPlayerSwipeEnabled: _settings.miniPlayerSwipeEnabled,
+      miniPlayerSwipeSensitivity: _settings.miniPlayerSwipeSensitivity,
+      playerSpotifyCanvasEnabled: _settings.playerSpotifyCanvasEnabled,
     );
+  }
+
+  Future<void> setMaxSongCacheSize(int sizeInMb) async {
+    await _settings.setMaxSongCacheSize(sizeInMb);
+    state = state.copyWith(maxSongCacheSize: sizeInMb);
+  }
+
+  Future<void> setMaxImageCacheSize(int sizeInMb) async {
+    await _settings.setMaxImageCacheSize(sizeInMb);
+    state = state.copyWith(maxImageCacheSize: sizeInMb);
+  }
+
+  Future<void> setAddonPriority(List<String> priority) async {
+    await _settings.setAddonPriority(priority);
+    state = state.copyWith(addonPriority: priority);
+  }
+
+  Future<void> setAppThemeStyle(String style) async {
+    state = state.copyWith(appThemeStyle: style);
+    await _settings.setAppThemeStyle(style);
+  }
+
+  Future<void> setAppFontFamily(String font) async {
+    state = state.copyWith(appFontFamily: font);
+    await _settings.setAppFontFamily(font);
+  }
+
+  Future<void> setAppleUseLiquidGlass(bool value) async {
+    state = state.copyWith(appleUseLiquidGlass: value);
+    await _settings.setAppleUseLiquidGlass(value);
+  }
+
+  Future<void> setAppleLiquidGlassOpacity(double value) async {
+    state = state.copyWith(appleLiquidGlassOpacity: value);
+    await _settings.setAppleLiquidGlassOpacity(value);
   }
 
   Future<bool> saveAndValidateApiKey(String key) async {
@@ -267,6 +352,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
   void loadExistingKey() {
     final key = _settings.apiKey ?? '';
     state = state.copyWith(apiKey: key, isValid: key.isNotEmpty);
+  }
+
+  Future<void> clearApiKey() async {
+    await _settings.setApiKey('');
+    state = state.copyWith(apiKey: '', isValid: false, error: null);
   }
 
   Future<void> setArchiveScraperEnabled(bool enabled) async {
@@ -382,6 +472,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(playerControlLayout: layout);
   }
 
+  Future<void> setPlayerSpotifyCanvasEnabled(bool enabled) async {
+    await _settings.setPlayerSpotifyCanvasEnabled(enabled);
+    state = state.copyWith(playerSpotifyCanvasEnabled: enabled);
+  }
+
   // ── Visualizer Setters ──────────────────────────────────────────────────
   Future<void> setVisualizerEnabled(bool enabled) async {
     await _settings.setVisualizerEnabled(enabled);
@@ -446,6 +541,16 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setVisualizerCornerRadius(double radius) async {
     await _settings.setVisualizerCornerRadius(radius);
     state = state.copyWith(visualizerCornerRadius: radius);
+  }
+
+  Future<void> setMiniPlayerSwipeEnabled(bool enabled) async {
+    await _settings.setMiniPlayerSwipeEnabled(enabled);
+    state = state.copyWith(miniPlayerSwipeEnabled: enabled);
+  }
+
+  Future<void> setMiniPlayerSwipeSensitivity(double sensitivity) async {
+    await _settings.setMiniPlayerSwipeSensitivity(sensitivity);
+    state = state.copyWith(miniPlayerSwipeSensitivity: sensitivity);
   }
 }
 
@@ -1222,6 +1327,12 @@ class LibraryNotifier extends Notifier<LibraryState> {
     }
     
     _syncLocalFoldersInBackground();
+  }
+
+  Future<void> clearLibrary() async {
+    state = LibraryState(isLoading: true);
+    await _db.clearAllLibraryData();
+    state = LibraryState(torrents: []);
   }
 
   Future<void> _loadFromDb() async {

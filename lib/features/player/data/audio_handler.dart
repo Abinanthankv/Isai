@@ -7,6 +7,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/plugins/plugin_manager.dart';
+import '../../music/data/plugins/js_plugin.dart';
+import '../../music/data/plugins/eclipse_addon.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/database/database.dart';
 import '../../music/data/music_models.dart';
@@ -24,6 +26,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   /// Expose the Android audio session ID for the native Visualizer API.
   /// Returns null on non-Android platforms.
   int? get androidAudioSessionIdSync => _player.androidAudioSessionId;
+  double get volume => _player.volume;
+  Stream<double> get volumeStream => _player.volumeStream;
   final _playlist = ConcatenatingAudioSource(children: []);
   final Set<int> _resolvingIndices = {}; // resolution lock
   final Map<String, MediaItem> _enrichedItems = {}; // cache to persist metadata across sequence updates
@@ -38,8 +42,13 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   
   List<MediaItem> _originalItems = [];
   AudioServiceShuffleMode _shuffleModeState = AudioServiceShuffleMode.none;
+  AudioServiceRepeatMode _repeatModeState = AudioServiceRepeatMode.none;
   bool _isCurrentTrackLiked = false;
   int _linuxIndex = 0;
+  int _currentSongPlayCount = 1;
+  int? _lastIndex;
+  Duration? _lastKnownPosition;
+  bool _isLoopingBack = false;
 
   MyAudioHandler() {
     _init();
@@ -172,6 +181,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     // 5. Monitor position to record history after 50% progress
     _player.positionStream.listen((position) async {
        final item = mediaItem.value;
+       if (item != null) {
+         _lastKnownPosition = position;
+       }
        if (item == null || _currentTrackRecorded || item.duration == null || item.duration! == Duration.zero) return;
 
        final double progress = position.inMilliseconds / item.duration!.inMilliseconds;
@@ -230,6 +242,33 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
     _player.currentIndexStream.listen((index) async {
       if (io.Platform.isLinux) return;
+
+      if (_isLoopingBack) {
+        _isLoopingBack = false;
+        _lastIndex = index;
+        return;
+      }
+
+      final repeatMode = playbackState.value.repeatMode;
+      if (index != null && _lastIndex != null && index != _lastIndex) {
+        if (repeatMode == AudioServiceRepeatMode.one && _currentSongPlayCount < 2) {
+          final lastPosition = _lastKnownPosition;
+          final lastDuration = mediaItem.value?.duration;
+          final wasAutoTransition = lastPosition != null && lastDuration != null &&
+              (lastPosition >= lastDuration - const Duration(seconds: 2));
+
+          if (wasAutoTransition) {
+            _currentSongPlayCount++;
+            _isLoopingBack = true;
+            _lastKnownPosition = null;
+            await _player.seek(Duration.zero, index: _lastIndex);
+            return;
+          }
+        }
+        _currentSongPlayCount = 1;
+      }
+      _lastIndex = index;
+
       _isCurrentTrackLiked = false; // Reset immediately to prevent visual like state leaking from previous track
       final sequence = _player.sequence;
       if (index == null || sequence == null || index >= sequence.length) return;
@@ -820,6 +859,51 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
         
         resolvedLinkType = pluginId;
+        
+        // Priority fallback: if original plugin resolution fails, try other active/prioritized plugins
+        if (realUrl == null || realUrl.isEmpty) {
+          print('[AudioHandler] Primary plugin $pluginId failed. Trying alternative plugins in priority order...');
+          final prioritized = pluginManager.prioritizedActiveAddons;
+          final title = item.title;
+          final artist = item.artist ?? '';
+          
+          for (final altPlugin in prioritized) {
+            final altId = altPlugin is JsPlugin ? altPlugin.id : 'eclipse_${(altPlugin as EclipseAddon).id}';
+            if (altId == pluginId) continue;
+            
+            try {
+              print('[AudioHandler] Falling back to alternative addon: $altId');
+              List<ScraperResult> results;
+              if (altId.startsWith('eclipse_')) {
+                results = await pluginManager.searchEclipse(altId.replaceFirst('eclipse_', ''), '$artist $title');
+              } else {
+                results = await pluginManager.search(altId, '$artist $title');
+              }
+              
+              if (results.isNotEmpty) {
+                final match = results.first;
+                final altTrackId = match.extras?['trackId'] as String? ?? match.url;
+                
+                String? resolvedUrl;
+                if (altId.startsWith('eclipse_')) {
+                  resolvedUrl = await pluginManager.resolveEclipseStream(altId.replaceFirst('eclipse_', ''), altTrackId);
+                } else {
+                  resolvedUrl = await pluginManager.resolveStream(altId, altTrackId);
+                }
+                
+                if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+                  print('[AudioHandler] Successfully resolved fallback URL from $altId: $resolvedUrl');
+                  realUrl = resolvedUrl;
+                  resolvedLinkType = altId;
+                  break;
+                }
+              }
+            } catch (e) {
+              print('[AudioHandler] Failed fallback search/resolve on $altId: $e');
+            }
+          }
+        }
+        
         torrentId = -1;
         fileId = (item.extras?['fileId'] as num?)?.toInt() ?? (realUrl != null ? -realUrl.hashCode.abs() : -1);
       } else if (linkType == 'soundcloud') {
@@ -870,9 +954,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           print('[AudioHandler] Using persistent local file: $localPath');
           final newItem = item.copyWith(
             id: Uri.file(localPath).toString(), 
-            duration: null,
+            duration: item.duration,
             extras: {
               ...?item.extras,
+              'torrentId': torrentId,
+              'fileId': fileId,
               'originalId': item.extras?['originalId'] ?? item.id,
             },
           );
@@ -931,9 +1017,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
         final newItem = item.copyWith(
           id: realUrl, 
-          duration: null,
+          duration: item.duration,
           extras: {
             ...?item.extras,
+            'torrentId': torrentId,
+            'fileId': fileId,
             'originalId': item.extras?['originalId'] ?? item.id,
             if (isFlac) 'linkType': resolvedLinkType ?? 'flac',
           },
@@ -999,6 +1087,27 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> pause() async {
     await _player.pause();
+    playbackState.add(_transformEvent(_player.playbackEvent));
+  }
+
+  @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    _repeatModeState = repeatMode;
+    switch (repeatMode) {
+      case AudioServiceRepeatMode.none:
+        await _player.setLoopMode(LoopMode.off);
+        break;
+      case AudioServiceRepeatMode.one:
+        await _player.setLoopMode(LoopMode.off); // Custom play-once-more logic in currentIndexStream
+        break;
+      case AudioServiceRepeatMode.all:
+        await _player.setLoopMode(LoopMode.one); // Loops the single track infinitely
+        break;
+      default:
+        break;
+    }
+    // Reset play count when mode changes
+    _currentSongPlayCount = 1;
     playbackState.add(_transformEvent(_player.playbackEvent));
   }
 
@@ -1520,6 +1629,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       speed: _player.speed,
       queueIndex: event.currentIndex,
       shuffleMode: _shuffleModeState,
+      repeatMode: _repeatModeState,
     );
   }
 

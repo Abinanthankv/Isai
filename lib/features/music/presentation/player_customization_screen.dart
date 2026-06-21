@@ -35,7 +35,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                 text: 'Customize Player',
                 fontSize: 20,
                 colors: isDark
-                    ? [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]
+                    ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                     : [const Color(0xFF667eea), const Color(0xFF764ba2)],
               ),
             ),
@@ -85,23 +85,17 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Icon(Icons.photo_size_select_large, color: AppleMusicTheme.primaryPink, size: 20),
+                            Icon(Icons.photo_size_select_large, color: Theme.of(context).colorScheme.primary, size: 20),
                             const SizedBox(width: 12),
                              Text(
                               'Artwork Size',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
                             ),
                             const Spacer(),
                             Text(
                               '${settings.playerArtworkSize.round()} px',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppleMusicTheme.primaryPink,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.bold,),
                             ),
                           ],
                         ),
@@ -109,7 +103,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           value: settings.playerArtworkSize,
                           min: 150,
                           max: 320,
-                          activeColor: AppleMusicTheme.primaryPink,
+                          activeColor: Theme.of(context).colorScheme.primary,
                           inactiveColor: theme.colorScheme.onSurface.withValues(alpha: 0.1),
                           onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerArtworkSize(val),
                         ),
@@ -131,6 +125,14 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                            subtitle: 'Enhance artwork with a dynamic shadow',
                            value: settings.playerShowGlow,
                            onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerShowGlow(val),
+                         ),
+                         const Divider(height: 1, indent: 16),
+                         _CustomizationSwitchTile(
+                           icon: Icons.video_library_rounded,
+                           title: 'Spotify Canvas',
+                           subtitle: 'Show looping background video if available',
+                           value: settings.playerSpotifyCanvasEnabled,
+                           onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerSpotifyCanvasEnabled(val),
                          ),
                       ],
                     ),
@@ -212,7 +214,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Clean and minimal line',
                           isSelected: settings.playerSeekBarStyle == 'default',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerSeekBarStyle('default'),
-                          preview: Container(height: 2, width: 40, color: AppleMusicTheme.primaryPink),
+                          preview: Container(height: 2, width: 40, color: Theme.of(context).colorScheme.primary),
                         ),
                         const Divider(height: 1, indent: 16),
                         _SeekBarStyleOption(
@@ -235,7 +237,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Playful sine-wave motion',
                           isSelected: settings.playerSeekBarStyle == 'wavy',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerSeekBarStyle('wavy'),
-                          preview: const Icon(Icons.waves, color: AppleMusicTheme.primaryPink, size: 20),
+                          preview: Icon(Icons.waves, color: Theme.of(context).colorScheme.primary, size: 20),
                         ),
                         const Divider(height: 1, indent: 16),
                         _SeekBarStyleOption(
@@ -247,7 +249,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                             height: 3,
                             width: 40,
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(colors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]),
+                              gradient: LinearGradient(colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]),
                               borderRadius: BorderRadius.circular(1.5),
                             ),
                           ),
@@ -262,7 +264,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                             height: 8,
                             width: 40,
                             decoration: BoxDecoration(
-                              color: AppleMusicTheme.primaryPink,
+                              color: Theme.of(context).colorScheme.primary,
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
@@ -273,7 +275,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Futuristic glowing drop-shadow',
                           isSelected: settings.playerSeekBarStyle == 'neon',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerSeekBarStyle('neon'),
-                          preview: const Icon(Icons.blur_on, color: AppleMusicTheme.primaryPink, size: 20),
+                          preview: Icon(Icons.blur_on, color: Theme.of(context).colorScheme.primary, size: 20),
                         ),
                         const Divider(height: 1, indent: 16),
                         _SeekBarStyleOption(
@@ -281,7 +283,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Retro audio segmented progress',
                           isSelected: settings.playerSeekBarStyle == 'dashed',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerSeekBarStyle('dashed'),
-                          preview: const Icon(Icons.linear_scale, color: AppleMusicTheme.primaryPink, size: 20),
+                          preview: Icon(Icons.linear_scale, color: Theme.of(context).colorScheme.primary, size: 20),
                         ),
                         const Divider(height: 1, indent: 16),
                         _SeekBarStyleOption(
@@ -289,7 +291,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Elegant minimalist dotted track',
                           isSelected: settings.playerSeekBarStyle == 'dotted',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerSeekBarStyle('dotted'),
-                          preview: const Icon(Icons.more_horiz, color: AppleMusicTheme.primaryPink, size: 20),
+                          preview: Icon(Icons.more_horiz, color: Theme.of(context).colorScheme.primary, size: 20),
                         ),
                       ],
                     ),
@@ -336,18 +338,18 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.format_size, color: AppleMusicTheme.primaryPink, size: 20),
+                            Icon(Icons.format_size, color: Theme.of(context).colorScheme.primary, size: 20),
                             const SizedBox(width: 12),
                             Text('Font Size', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
                             const Spacer(),
-                            Text('${settings.playerLyricsFontSize.round()}', style: const TextStyle(color: AppleMusicTheme.primaryPink, fontWeight: FontWeight.bold)),
+                            Text('${settings.playerLyricsFontSize.round()}', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         Slider(
                           value: settings.playerLyricsFontSize,
                           min: 14,
                           max: 32,
-                          activeColor: AppleMusicTheme.primaryPink,
+                          activeColor: Theme.of(context).colorScheme.primary,
                           onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerLyricsFontSize(val),
                         ),
                         const Divider(height: 24),
@@ -396,6 +398,59 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           isSelected: settings.playerControlLayout == 'minimalist',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerControlLayout('minimalist'),
                         ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+
+                  // --- Mini Player Settings ---
+                  AppleMusicSectionHeader(title: 'Mini Player Gestures'),
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _CustomizationSwitchTile(
+                          icon: Icons.swipe_left_rounded,
+                          title: 'Swipe Gestures',
+                          subtitle: 'Swipe left/right to change tracks',
+                          value: settings.miniPlayerSwipeEnabled,
+                          onChanged: (val) => ref.read(settingsProvider.notifier).setMiniPlayerSwipeEnabled(val),
+                        ),
+                        if (settings.miniPlayerSwipeEnabled) ...[
+                          const Divider(height: 1, indent: 16),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.tune_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Swipe Sensitivity',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      '${settings.miniPlayerSwipeSensitivity.round()} px',
+                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
+                                        fontWeight: FontWeight.bold,),
+                                    ),
+                                  ],
+                                ),
+                                Slider(
+                                  value: settings.miniPlayerSwipeSensitivity,
+                                  min: 15,
+                                  max: 100,
+                                  activeColor: Theme.of(context).colorScheme.primary,
+                                  inactiveColor: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                                  onChanged: (val) => ref.read(settingsProvider.notifier).setMiniPlayerSwipeSensitivity(val),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -454,7 +509,7 @@ class _PlayerPreview extends StatelessWidget {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            AppleMusicTheme.primaryPink.withValues(alpha: 0.2),
+                            Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                             AppleMusicTheme.primaryPurple.withValues(alpha: 0.2),
                             Colors.blue.withValues(alpha: 0.1),
                           ],
@@ -474,19 +529,13 @@ class _PlayerPreview extends StatelessWidget {
                     children: [
                       Text(
                         displayTitle,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,),
                         textAlign: TextAlign.center,
                       ),
                       Text(
                         displayArtist,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7),),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -514,7 +563,7 @@ class _PlayerPreview extends StatelessWidget {
                       Icon(
                         settings.playerLikeIcon == 'heart' ? Icons.favorite : 
                         (settings.playerLikeIcon == 'thumb' ? Icons.thumb_up : Icons.card_giftcard),
-                        color: AppleMusicTheme.primaryPink,
+                        color: Theme.of(context).colorScheme.primary,
                         size: 24,
                       ),
                     ],
@@ -605,7 +654,7 @@ class _PlayerPreview extends StatelessWidget {
             thumbShape: settings.playerSeekBarStyle == 'capsule'
                 ? SliderComponentShape.noThumb
                 : const RoundSliderThumbShape(enabledThumbRadius: 4),
-            activeTrackColor: AppleMusicTheme.primaryPink,
+            activeTrackColor: Theme.of(context).colorScheme.primary,
             inactiveTrackColor: theme.colorScheme.onSurface.withValues(alpha: 0.1),
             trackShape: settings.playerSeekBarStyle == 'rainbow' 
                 ? RainbowSliderTrackShape() 
@@ -628,8 +677,8 @@ class _PlayerPreview extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('1:50', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
-            Text('4:20', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
+            Text('1:50', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
+            Text('4:20', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
           ],
         ),
       ],
@@ -673,28 +722,25 @@ class _ShapeOption extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isSelected 
-                  ? AppleMusicTheme.primaryPink.withValues(alpha: 0.1) 
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) 
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? AppleMusicTheme.primaryPink : Colors.transparent,
+                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
                 width: 2,
               ),
             ),
             child: Icon(
               icon,
               size: 32,
-              color: isSelected ? AppleMusicTheme.primaryPink : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+              color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ),
           const SizedBox(height: 8),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              color: isSelected ? AppleMusicTheme.primaryPink : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.7),),
           ),
         ],
       ),
@@ -729,12 +775,9 @@ class _BackgroundOption extends StatelessWidget {
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(
-          fontSize: 12,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-        ),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6),),
       ),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink) : null,
+      trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) : null,
     );
   }
 }
@@ -762,14 +805,14 @@ class _IconStyleOption extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? AppleMusicTheme.primaryPink.withValues(alpha: 0.1) : Colors.transparent,
+              color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
               shape: BoxShape.circle,
-              border: Border.all(color: isSelected ? AppleMusicTheme.primaryPink : Colors.transparent),
+              border: Border.all(color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent),
             ),
-            child: Icon(icon, color: isSelected ? AppleMusicTheme.primaryPink : theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+            child: Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5)),
           ),
           const SizedBox(height: 8),
-          Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
         ],
       ),
     );
@@ -806,8 +849,8 @@ class _SeekBarStyleOption extends StatelessWidget {
         child: Center(child: preview),
       ),
       title: Text(title, style: TextStyle(color: theme.colorScheme.onSurface)),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink) : null,
+      subtitle: Text(subtitle, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+      trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) : null,
     );
   }
 }
@@ -835,7 +878,7 @@ class _CustomizationSwitchTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Icon(icon, color: AppleMusicTheme.primaryPink, size: 24),
+          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 24),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -843,18 +886,12 @@ class _CustomizationSwitchTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: theme.colorScheme.onSurface,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500,
+                    color: theme.colorScheme.onSurface,),
                 ),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5),),
                 ),
               ],
             ),
@@ -862,7 +899,7 @@ class _CustomizationSwitchTile extends StatelessWidget {
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeTrackColor: AppleMusicTheme.primaryPink,
+            activeTrackColor: Theme.of(context).colorScheme.primary,
           ),
         ],
       ),
@@ -893,14 +930,14 @@ class _AnimationOption extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? AppleMusicTheme.primaryPink.withValues(alpha: 0.1) : Colors.transparent,
+              color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isSelected ? AppleMusicTheme.primaryPink : Colors.transparent),
+              border: Border.all(color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent),
             ),
-            child: Icon(icon, color: isSelected ? AppleMusicTheme.primaryPink : theme.colorScheme.onSurface.withValues(alpha: 0.5), size: 28),
+            child: Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5), size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
         ],
       ),
     );
@@ -926,11 +963,11 @@ class _AlignmentOption extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? AppleMusicTheme.primaryPink.withValues(alpha: 0.1) : Colors.transparent,
+          color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: isSelected ? AppleMusicTheme.primaryPink : Colors.transparent),
+          border: Border.all(color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent),
         ),
-        child: Icon(icon, color: isSelected ? AppleMusicTheme.primaryPink : theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+        child: Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5)),
       ),
     );
   }
@@ -955,8 +992,8 @@ class _LayoutOption extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       title: Text(title, style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
-      trailing: isSelected ? const Icon(Icons.check_circle, color: AppleMusicTheme.primaryPink) : null,
+      subtitle: Text(subtitle, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+      trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) : null,
     );
   }
 }

@@ -68,7 +68,7 @@ class _LastfmLovedTracksScreenState extends ConsumerState<LastfmLovedTracksScree
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: Icon(Icons.arrow_back_ios, color: AppleMusicTheme.primaryPink),
+                icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => Navigator.pop(context),
               ),
               flexibleSpace: FlexibleSpaceBar(
@@ -84,8 +84,8 @@ class _LastfmLovedTracksScreenState extends ConsumerState<LastfmLovedTracksScree
               ),
             ),
             if (state.isLoading)
-              const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+              SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
               )
             else if (state.error != null)
               SliverFillRemaining(
@@ -100,9 +100,9 @@ class _LastfmLovedTracksScreenState extends ConsumerState<LastfmLovedTracksScree
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= state.tracks.length) {
-                      return const Padding(
+                      return Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink)),
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary)),
                       );
                     }
 
@@ -116,7 +116,7 @@ class _LastfmLovedTracksScreenState extends ConsumerState<LastfmLovedTracksScree
                       subtitle: artist,
                       imageUrl: imageUrl,
                       onTap: () => _playVirtualTrack(item, state.tracks, index),
-                      trailing: Icon(Icons.favorite, color: AppleMusicTheme.primaryPink.withValues(alpha: 0.4), size: 20),
+                      trailing: Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4), size: 20),
                     );
                   },
                   childCount: state.tracks.length + (state.currentPage < state.totalPages ? 1 : 0),

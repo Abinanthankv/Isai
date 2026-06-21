@@ -69,21 +69,15 @@ class TrackActionSheet extends ConsumerWidget {
                       children: [
                         Text(
                           track.trackName,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           track.artistName,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppleMusicTheme.primaryPink,
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w500,),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -248,11 +242,8 @@ class TrackActionSheet extends ConsumerWidget {
       ),
       title: Text(
         label,
-        style: TextStyle(
-          color: color,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: color,
+          fontWeight: FontWeight.w500,),
       ),
       trailing: Icon(Icons.chevron_right_rounded, color: color.withOpacity(0.2)),
       onTap: onTap,

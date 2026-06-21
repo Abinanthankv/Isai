@@ -29,9 +29,25 @@ final lastfmGlobalTopTracksProvider = FutureProvider<List<Map<String, dynamic>>>
   final service = getIt<LastFmService>();
   final itunes = getIt<ItunesMetadataService>();
   
-  final tracks = await service.getGlobalTopTracks(limit: 15);
+  // Fetch more tracks so we have a diverse pool to filter from
+  final tracks = await service.getGlobalTopTracks(limit: 45);
   
-  return Future.wait(tracks.map((track) async {
+  final List<Map<String, dynamic>> diverseTracks = [];
+  final Map<String, int> artistCounts = {};
+  
+  for (final track in tracks) {
+    final artist = track['artist'] as String? ?? 'Unknown';
+    final count = artistCounts[artist] ?? 0;
+    if (count < 2) {
+      diverseTracks.add(track);
+      artistCounts[artist] = count + 1;
+    }
+    if (diverseTracks.length >= 15) {
+      break;
+    }
+  }
+  
+  return Future.wait(diverseTracks.map((track) async {
     final name = track['name'] as String;
     final artist = track['artist'] as String;
     String imageUrl = track['image_url'] as String? ?? '';

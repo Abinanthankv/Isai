@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'features/music/presentation/music_hub_screen.dart';
 import 'features/music/presentation/music_providers.dart';
@@ -13,6 +14,7 @@ import 'features/music/data/plugins/plugin_manager.dart';
 import 'features/player/data/audio_handler.dart';
 import 'features/settings/data/torbox_settings_repository.dart';
 import 'core/theme/apple_music_theme.dart';
+import 'core/theme/material3_theme.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/theme/glassmorphism.dart';
 import 'core/theme/apple_music_components.dart';
@@ -20,6 +22,11 @@ import 'features/player/presentation/mini_player.dart';
 import 'features/player/presentation/player_providers.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'core/services/share_handler_service.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' show LiquidGlassWidgets;
+import 'package:flutter_displaymode/flutter_displaymode.dart';
+
+import 'core/theme/dynamic_color_provider.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 
 late AudioHandler audioHandler;
 
@@ -36,7 +43,16 @@ void main() async {
   HttpOverrides.global = MyHttpOverrides();
   print('[HttpOverrides] Bypassing SSL certificate verification for diagnostics');
   
-  if (!Platform.isLinux) {
+  if (Platform.isAndroid) {
+    try {
+      await FlutterDisplayMode.setHighRefreshRate();
+      print('[FlutterDisplayMode] High refresh rate mode enabled successfully');
+    } catch (e) {
+      print('[FlutterDisplayMode] Failed to set high display refresh rate: $e');
+    }
+  }
+
+  if (!Platform.isLinux && !Platform.isAndroid) {
     await Permission.notification.request();
   }
   
@@ -44,9 +60,12 @@ void main() async {
     JustAudioMediaKit.ensureInitialized();
   }
   
+  MediaKit.ensureInitialized();
+  
   await configureInjection();
   await getIt<PluginManager>().init();
 
+  await LiquidGlassWidgets.initialize();
 
   audioHandler = await AudioService.init(
     builder: () => MyAudioHandler(),
@@ -61,7 +80,7 @@ void main() async {
 
   ShareHandlerService.init();
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(LiquidGlassWidgets.wrap(child: const ProviderScope(child: MyApp())));
 }
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -72,15 +91,45 @@ class MyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
+    final appThemeStyle = ref.watch(settingsProvider).appThemeStyle;
+    final appFontFamily = ref.watch(settingsProvider).appFontFamily;
+    final dynamicColors = ref.watch(dynamicColorProvider);
     
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'Isai',
-      debugShowCheckedModeBanner: false,
-      theme: AppleMusicTheme.lightTheme(),
-      darkTheme: AppleMusicTheme.darkTheme(),
-      themeMode: themeMode,
-      home: const AppGate(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        ColorScheme lightScheme = dynamicColors.lightScheme;
+        ColorScheme darkScheme = dynamicColors.darkScheme;
+
+        // If M3 theme is used and we don't have artwork colors, use system dynamic colors if available
+        if (appThemeStyle == 'material3' && !dynamicColors.hasExtractedColors) {
+          if (lightDynamic != null) {
+            lightScheme = lightDynamic.harmonized();
+          }
+          if (darkDynamic != null) {
+            darkScheme = darkDynamic.harmonized();
+          }
+        }
+
+        final lightTheme = appThemeStyle == 'material3'
+            ? Material3Theme.lightThemeFromScheme(lightScheme, fontFamily: appFontFamily)
+            : AppleMusicTheme.lightTheme(fontFamily: appFontFamily);
+            
+        final darkTheme = appThemeStyle == 'material3'
+            ? Material3Theme.darkThemeFromScheme(darkScheme, fontFamily: appFontFamily)
+            : AppleMusicTheme.darkTheme(fontFamily: appFontFamily);
+
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          title: 'Isai',
+          debugShowCheckedModeBanner: false,
+          theme: lightTheme,
+          darkTheme: darkTheme,
+          themeMode: themeMode,
+          themeAnimationDuration: const Duration(milliseconds: 400),
+          themeAnimationCurve: Curves.easeInOut,
+          home: const AppGate(),
+        );
+      },
     );
   }
 }
@@ -161,7 +210,7 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                   child: Icon(
                     Icons.music_note_rounded,
                     size: 80,
-                    color: AppleMusicTheme.primaryPink,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -169,16 +218,13 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                   text: 'Isai',
                   fontSize: 32,
                   colors: isDark 
-                      ? [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]
+                      ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                       : [Colors.white, Colors.white],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Powered by TorBox',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: isDark ? Colors.white60 : Colors.white70,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white60 : Colors.white70,),
                 ),
                 const Spacer(),
                 GlassContainer(
@@ -229,13 +275,10 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                             },
                             child: Text(
                               'Find at torbox.app → Account → API Keys',
-                              style: TextStyle(
-                                color: isDark 
-                                    ? AppleMusicTheme.primaryPink.withOpacity(0.8) 
-                                    : AppleMusicTheme.primaryPink,
-                                fontSize: 11,
-                                decoration: TextDecoration.underline,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark 
+                                    ? Theme.of(context).colorScheme.primary.withOpacity(0.8) 
+                                    : Theme.of(context).colorScheme.primary,
+                                decoration: TextDecoration.underline,),
                             ),
                           ),
                         ),
@@ -258,12 +301,12 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                                   .saveAndValidateApiKey(_controller.text.trim()),
                           gradient: LinearGradient(
                             colors: [
-                              AppleMusicTheme.primaryPink,
+                              Theme.of(context).colorScheme.primary,
                               AppleMusicTheme.primaryPurple,
                             ],
                           ),
                           child: settings.isValidating
-                              ? const Row(
+                              ? Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     SizedBox(
@@ -277,26 +320,20 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                                     SizedBox(width: 12),
                                     Text(
                                       'Connecting...',
-                                      style: TextStyle(
-                                        fontSize: 16, 
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
+                                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                                        color: Colors.white,),
                                     ),
                                   ],
                                 )
-                              : const Row(
+                              : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Icon(Icons.play_arrow_rounded, color: Colors.white),
                                     SizedBox(width: 8),
                                     Text(
                                       'Connect',
-                                      style: TextStyle(
-                                        fontSize: 16, 
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
+                                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                                        color: Colors.white,),
                                     ),
                                   ],
                                 ),
@@ -327,11 +364,8 @@ class _SetupScreenState extends ConsumerState<_SetupScreen> {
                         },
                         child: Text(
                           'Don\'t have an account? Sign up',
-                          style: TextStyle(
-                            color: AppleMusicTheme.primaryPink,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w600,),
                         ),
                       ),
                     ],

@@ -111,7 +111,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: AppleMusicTheme.primaryPink),
+                icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => Navigator.pop(context),
               ),
               actions: widget.mode == SongListMode.all 
@@ -121,7 +121,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
                           canvasColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
                         ),
                         child: PopupMenuButton<SongSortOption>(
-                          icon: const Icon(Icons.sort_rounded, color: AppleMusicTheme.primaryPink),
+                          icon: Icon(Icons.sort_rounded, color: Theme.of(context).colorScheme.primary),
                           onSelected: (option) {
                             setState(() {
                               _sortBy = option;
@@ -132,7 +132,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
                               value: SongSortOption.recentlyAdded,
                               child: Row(
                                 children: [
-                                  Icon(Icons.history_rounded, size: 18, color: _sortBy == SongSortOption.recentlyAdded ? AppleMusicTheme.primaryPink : Colors.grey),
+                                  Icon(Icons.history_rounded, size: 18, color: _sortBy == SongSortOption.recentlyAdded ? Theme.of(context).colorScheme.primary : Colors.grey),
                                   const SizedBox(width: 8),
                                   Text('Recently Added', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == SongSortOption.recentlyAdded ? FontWeight.bold : FontWeight.normal)),
                                 ],
@@ -142,7 +142,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
                               value: SongSortOption.alphabetic,
                               child: Row(
                                 children: [
-                                  Icon(Icons.sort_by_alpha_rounded, size: 18, color: _sortBy == SongSortOption.alphabetic ? AppleMusicTheme.primaryPink : Colors.grey),
+                                  Icon(Icons.sort_by_alpha_rounded, size: 18, color: _sortBy == SongSortOption.alphabetic ? Theme.of(context).colorScheme.primary : Colors.grey),
                                   const SizedBox(width: 8),
                                   Text('Alphabetical (A-Z)', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == SongSortOption.alphabetic ? FontWeight.bold : FontWeight.normal)),
                                 ],
@@ -152,7 +152,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
                               value: SongSortOption.artist,
                               child: Row(
                                 children: [
-                                  Icon(Icons.person_outline_rounded, size: 18, color: _sortBy == SongSortOption.artist ? AppleMusicTheme.primaryPink : Colors.grey),
+                                  Icon(Icons.person_outline_rounded, size: 18, color: _sortBy == SongSortOption.artist ? Theme.of(context).colorScheme.primary : Colors.grey),
                                   const SizedBox(width: 8),
                                   Text('Artist Name', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == SongSortOption.artist ? FontWeight.bold : FontWeight.normal)),
                                 ],
@@ -206,7 +206,7 @@ class _SongsScreenState extends ConsumerState<SongsScreen> {
                       const SizedBox(height: 16),
                       Text(
                         _searchQuery.isEmpty ? 'No songs found' : 'No matches for "$_searchQuery"',
-                        style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: textColor, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -302,10 +302,10 @@ class _SongTileState extends ConsumerState<_SongTile> {
                 );
               },
         trailing: isEnriching 
-          ? const SizedBox(
+          ? SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(AppleMusicTheme.primaryPink)),
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary)),
             )
           : Icon(
               Icons.play_arrow_rounded,

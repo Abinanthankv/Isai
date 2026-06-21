@@ -6,7 +6,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
   audio_decoder
   audiotags
   connectivity_plus
+  dynamic_color
   flutter_js
+  media_kit_libs_windows_video
+  media_kit_video
   permission_handler_windows
   share_plus
   sqlite3_flutter_libs

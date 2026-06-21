@@ -19,9 +19,9 @@ import '../../player/data/visualizer_service.dart';
 /// Global cache so we only extract colors once per artwork URL.
 final Map<String, Color> _artworkColorCache = {};
 
-Future<Color> _extractDominantColor(String? artworkUrl) async {
+Future<Color> _extractDominantColor(String? artworkUrl, Color fallbackColor) async {
   if (artworkUrl == null || artworkUrl.isEmpty) {
-    return AppleMusicTheme.primaryPink;
+    return fallbackColor;
   }
   if (_artworkColorCache.containsKey(artworkUrl)) {
     return _artworkColorCache[artworkUrl]!;
@@ -34,12 +34,12 @@ Future<Color> _extractDominantColor(String? artworkUrl) async {
     // Prefer muted color for a more subtle, blended look (like the screenshot)
     final color = paletteGenerator.mutedColor?.color
         ?? paletteGenerator.dominantColor?.color
-        ?? AppleMusicTheme.primaryPink;
+        ?? fallbackColor;
     _artworkColorCache[artworkUrl] = color;
     return color;
   } catch (e) {
     print('[VisualizerLayer] Color extraction failed: $e');
-    return AppleMusicTheme.primaryPink;
+    return fallbackColor;
   }
 }
 
@@ -60,7 +60,7 @@ Future<bool> requestVisualizerPermission(BuildContext context) async {
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF1C1C2E),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      icon: const Icon(Icons.equalizer_rounded, color: AppleMusicTheme.primaryPink, size: 48),
+      icon: Icon(Icons.equalizer_rounded, color: Theme.of(context).colorScheme.primary, size: 48),
       title: const Text(
         'Audio Visualizer',
         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -82,7 +82,7 @@ Future<bool> requestVisualizerPermission(BuildContext context) async {
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
           style: FilledButton.styleFrom(
-            backgroundColor: AppleMusicTheme.primaryPink,
+            backgroundColor: Theme.of(context).colorScheme.primary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: const Text('Allow', style: TextStyle(color: Colors.white)),
@@ -118,7 +118,7 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
   List<int>? _currentFft;
   List<double>? _smoothedFft;
   bool _vizStarted = false;
-  Color _artColor = AppleMusicTheme.primaryPink;
+  Color? _artColor;
   String? _lastArtUrl;
 
   static const double _smoothingFactor = 0.2;
@@ -169,10 +169,10 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
     _smoothedFft = null;
   }
 
-  Future<void> _updateArtworkColor(String? artUrl) async {
+  Future<void> _updateArtworkColor(String? artUrl, Color fallbackColor) async {
     if (artUrl == _lastArtUrl) return;
     _lastArtUrl = artUrl;
-    final color = await _extractDominantColor(artUrl);
+    final color = await _extractDominantColor(artUrl, fallbackColor);
     if (mounted) setState(() => _artColor = color);
   }
 
@@ -207,11 +207,11 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
   Color _resolveColor(SettingsState settings) {
     switch (settings.visualizerColorMode) {
       case 'albumArt':
-        return _artColor;
+        return _artColor ?? Theme.of(context).colorScheme.primary;
       case 'vibrant':
         return const Color(0xFF00E676);
       case 'custom':
-        return AppleMusicTheme.primaryPink;
+        return Theme.of(context).colorScheme.primary;
       case 'dynamic':
       default:
         final hue = (_controller.value * 360) % 360;
@@ -235,7 +235,7 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
       stream: audioHandler.mediaItem,
       builder: (context, mediaSnap) {
         final artUrl = mediaSnap.data?.artUri?.toString();
-        _updateArtworkColor(artUrl);
+        _updateArtworkColor(artUrl, Theme.of(context).colorScheme.primary);
         _updateBpm(mediaSnap.data);
 
         return StreamBuilder<PlaybackState>(

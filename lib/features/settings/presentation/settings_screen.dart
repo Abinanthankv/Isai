@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../music/presentation/lastfm_provider.dart';
 import '../../music/presentation/player_customization_screen.dart';
 import 'plugin_management_screen.dart';
+import 'storage_settings_screen.dart';
 import 'package:dio/dio.dart';
 import 'package:isai/core/updater/app_updater.dart';
 
@@ -83,7 +84,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                 text: 'Settings',
                 fontSize: 28,
                 colors: isDark
-                    ? [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]
+                    ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                     : [const Color(0xFF667eea), const Color(0xFF764ba2)],
               ),
             ),
@@ -97,7 +98,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                 children: [
                   const SizedBox(height: 5),
                   
-                  AppleMusicSectionHeader(title: 'Appearance'),
+                  AppleMusicSectionHeader(title: 'Appearance & Personalization'),
                   
                   GlassCard(
                     padding: EdgeInsets.zero,
@@ -111,10 +112,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                         ),
                         const Divider(height: 1, indent: 52),
                         _SettingsTile(
-                          icon: Icons.bar_chart_rounded,
-                          title: 'Stats',
-                          subtitle: 'View your listening habits',
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())),
+                          icon: Icons.style_outlined,
+                          title: 'Theme Style',
+                          subtitle: settings.appThemeStyle == 'apple' ? 'Apple Music' : 'Google Material 3',
+                          onTap: () => _showThemeStylePicker(context, ref, settings),
+                        ),
+                        const Divider(height: 1, indent: 52),
+                        _SettingsTile(
+                          icon: Icons.font_download_outlined,
+                          title: 'Font Style',
+                          subtitle: settings.appFontFamily,
+                          onTap: () => _showFontStylePicker(context, ref, settings),
                         ),
                         const Divider(height: 1, indent: 52),
                         _SettingsTile(
@@ -123,20 +131,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                           subtitle: 'Artwork shape, background & glow',
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerCustomizationScreen())),
                         ),
-                        const Divider(height: 1, indent: 52),
-                        _SettingsTile(
-                          icon: Icons.extension_outlined,
-                          title: 'Addon Manager',
-                          subtitle: 'Manage and test JS source plugins',
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PluginManagementScreen())),
-                        ),
                       ],
                     ),
                   ),
                   
                   const SizedBox(height: 12),
                   
-                  AppleMusicSectionHeader(title: 'Account'),
+                  AppleMusicSectionHeader(title: 'Account & Integrations'),
                   
                   GlassCard(
                     padding: EdgeInsets.zero,
@@ -151,17 +152,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                 children: [
                                   Icon(
                                     Icons.key,
-                                    color: AppleMusicTheme.primaryPink,
+                                    color: Theme.of(context).colorScheme.primary,
                                     size: 20,
                                   ),
                                   const SizedBox(width: 12),
                                   Text(
                                     'TorBox API Key',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark ? Colors.white : Colors.black,
-                                    ),
+                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white : Colors.black,),
                                   ),
                                 ],
                               ),
@@ -239,7 +237,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                               _apiKeyController.text.trim()),
                                   gradient: LinearGradient(
                                     colors: [
-                                      AppleMusicTheme.primaryPink,
+                                      Theme.of(context).colorScheme.primary,
                                       AppleMusicTheme.primaryPurple,
                                     ],
                                   ),
@@ -265,7 +263,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                             ),
                                           ],
                                         )
-                                      : const Text(
+                                      : Text(
                                           'Save & Validate',
                                           style: TextStyle(
                                             color: Colors.white,
@@ -275,6 +273,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                 ),
                               ),
                               const SizedBox(height: 12),
+                              if (settings.apiKey != null && settings.apiKey!.isNotEmpty)
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      _apiKeyController.clear();
+                                      ref.read(settingsProvider.notifier).clearApiKey();
+                                    },
+                                    icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20),
+                                    label: const Text(
+                                      'Clear API Key', 
+                                      style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
                               Center(
                                 child: TextButton(
                                   onPressed: () async {
@@ -285,11 +299,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                                   },
                                   child: Text(
                                     'Don\'t have an account? Sign up',
-                                    style: TextStyle(
-                                      color: AppleMusicTheme.primaryPink,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
+                                      fontWeight: FontWeight.w600,),
                                   ),
                                 ),
                               ),
@@ -308,28 +319,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                             ],
                           ),
                         ),
+                        Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                        const _LastfmSettingsSection(),
                       ],
                     ),
                   ),
                   
                   const SizedBox(height: 12),
-                  AppleMusicSectionHeader(title: 'Last.fm Scrobbling'),
                   
-                  GlassCard(
-                    padding: EdgeInsets.zero,
-                    child: const _LastfmSettingsSection(),
-                  ),
-                  
-                  const SizedBox(height: 24),
-
-
-                  
-                  AppleMusicSectionHeader(title: 'Downloads'),
+                  AppleMusicSectionHeader(title: 'Data & Storage'),
                   
                   GlassCard(
                     padding: EdgeInsets.zero,
                     child: Column(
                       children: [
+                        _SettingsTile(
+                          icon: Icons.storage_rounded,
+                          title: 'Storage',
+                          subtitle: 'Manage downloaded songs and cache limits',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StorageSettingsScreen())),
+                        ),
+                        Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
                         if (settings.downloadFolders.isEmpty)
                           Padding(
                             padding: const EdgeInsets.all(16),
@@ -378,6 +388,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                           title: 'Add Download Folder',
                           subtitle: 'Select a directory to save songs',
                           onTap: () => _pickDownloadFolder(),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  AppleMusicSectionHeader(title: 'Tools & Advanced'),
+                  
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _SettingsTile(
+                          icon: Icons.bar_chart_rounded,
+                          title: 'Stats',
+                          subtitle: 'View your listening habits',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())),
+                        ),
+                        const Divider(height: 1, indent: 52),
+                        _SettingsTile(
+                          icon: Icons.extension_outlined,
+                          title: 'Addon Manager',
+                          subtitle: 'Manage and test JS source plugins',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PluginManagementScreen())),
                         ),
                       ],
                     ),
@@ -474,11 +509,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           children: [
             Text(
               'Choose Theme',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,),
             ),
             const SizedBox(height: 20),
             _ThemeOption(
@@ -627,19 +659,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
               future: _fetchChangelog(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                  return Center(
+                    child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                   );
                 }
                 final text = snapshot.data ?? 'Could not load changelog. Please check your internet connection.';
                 return SingleChildScrollView(
                   child: Text(
                     text,
-                    style: TextStyle(
-                      color: isDark ? Colors.white70 : Colors.black87,
-                      fontSize: 14,
-                      fontFamily: 'monospace',
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
+                      fontFamily: 'monospace',),
                   ),
                 );
               },
@@ -648,11 +677,277 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close', style: TextStyle(color: AppleMusicTheme.primaryPink)),
+              child: Text('Close', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
             ),
           ],
         );
       },
+    );
+  }
+
+  void _showThemeStylePicker(BuildContext context, WidgetRef ref, SettingsState settings) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final textStyle = TextStyle(color: textColor, fontWeight: FontWeight.bold);
+    final subtitleColor = isDark ? Colors.white54 : Colors.black54;
+    final subtitleStyle = Theme.of(context).textTheme.labelSmall?.copyWith(color: subtitleColor,);
+    final labelColor = isDark ? Colors.white70 : Colors.black87;
+
+    Widget _buildColorSwatch(BuildContext context, String label, Color color, bool isDark) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isDark ? Colors.white24 : Colors.black12,
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white54 : Colors.black54,),
+          ),
+        ],
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final currentSettings = ref.watch(settingsProvider);
+          return GlassContainer(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Theme Style',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                    color: textColor,),
+                ),
+                const SizedBox(height: 20),
+                ListTile(
+                  leading: Icon(
+                    Icons.phone_iphone_rounded,
+                    color: currentSettings.appThemeStyle == 'apple' ? Theme.of(context).colorScheme.primary : subtitleColor,
+                  ),
+                  title: Text('Apple Music', style: textStyle),
+                  subtitle: Text('Acrylic glassmorphism & classic pink aesthetics', style: subtitleStyle),
+                  trailing: currentSettings.appThemeStyle == 'apple' ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(settingsProvider.notifier).setAppThemeStyle('apple');
+                    setModalState(() {});
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.android_rounded,
+                    color: currentSettings.appThemeStyle == 'material3' ? Theme.of(context).colorScheme.primary : subtitleColor,
+                  ),
+                  title: Text('Google Material 3 (Expressive)', style: textStyle),
+                  subtitle: Text('Dynamic artwork-based colors with expressive shapes', style: subtitleStyle),
+                  trailing: currentSettings.appThemeStyle == 'material3' ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(settingsProvider.notifier).setAppThemeStyle('material3');
+                    setModalState(() {});
+                  },
+                ),
+                if (currentSettings.appThemeStyle == 'material3') ...[
+                  Divider(color: isDark ? Colors.white12 : Colors.black12, height: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      'DYNAMIC PALETTE PREVIEW',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38, fontWeight: FontWeight.bold, letterSpacing: 1),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildColorSwatch(context, 'Primary', Theme.of(context).colorScheme.primary, isDark),
+                        _buildColorSwatch(context, 'Secondary', Theme.of(context).colorScheme.secondary, isDark),
+                        _buildColorSwatch(context, 'Tertiary', Theme.of(context).colorScheme.tertiary, isDark),
+                        _buildColorSwatch(context, 'Container', Theme.of(context).colorScheme.primaryContainer, isDark),
+                      ],
+                    ),
+                  ),
+                ],
+                if (currentSettings.appThemeStyle == 'apple') ...[
+                  Divider(color: isDark ? Colors.white12 : Colors.black12, height: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      'APPLE DESIGN OPTIONS',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38, fontWeight: FontWeight.bold, letterSpacing: 1),
+                    ),
+                  ),
+                  SwitchListTile(
+                    title: Text('Liquid Glass Backgrounds', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textColor,)),
+                    subtitle: Text('Animated mesh gradient for mini player & nav bar', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: subtitleColor,)),
+                    activeColor: Theme.of(context).colorScheme.primary,
+                    value: currentSettings.appleUseLiquidGlass,
+                    onChanged: (val) {
+                      ref.read(settingsProvider.notifier).setAppleUseLiquidGlass(val);
+                      setModalState(() {});
+                    },
+                  ),
+                  if (currentSettings.appleUseLiquidGlass) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        'Background Opacity',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: labelColor, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 8),
+                          Icon(Icons.opacity, color: subtitleColor, size: 20),
+                          Expanded(
+                            child: Slider(
+                              min: 0.0,
+                              max: 1.0,
+                              value: currentSettings.appleLiquidGlassOpacity,
+                              activeColor: Theme.of(context).colorScheme.primary,
+                              inactiveColor: isDark ? Colors.white12 : Colors.black12,
+                              onChanged: (val) {
+                                ref.read(settingsProvider.notifier).setAppleLiquidGlassOpacity(val);
+                                setModalState(() {});
+                              },
+                            ),
+                          ),
+                          Text(
+                            '${(currentSettings.appleLiquidGlassOpacity * 100).toInt()}%',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: labelColor, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 16),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showFontStylePicker(BuildContext context, WidgetRef ref, SettingsState settings) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final textStyle = TextStyle(color: textColor, fontWeight: FontWeight.bold);
+    
+    final fonts = [
+      'Roboto Flex',
+      'Inter',
+      'Roboto Mono',
+      'Noto Sans',
+      'Outfit'
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final currentSettings = ref.watch(settingsProvider);
+          return GlassContainer(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Font Style',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                    color: textColor,),
+                ),
+                const SizedBox(height: 16),
+                
+                // Real-time Preview Box
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Typography Preview',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'The quick brown fox jumps over the lazy dog.',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: textColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '1234567890 • !@#\$%^&*()',
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: isDark ? Colors.white54 : Colors.black54,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Font List
+                ...fonts.map((font) => ListTile(
+                  title: Text(font, style: textStyle.copyWith(fontFamily: font)),
+                  trailing: currentSettings.appFontFamily == font 
+                      ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) 
+                      : null,
+                  onTap: () {
+                    ref.read(settingsProvider.notifier).setAppFontFamily(font);
+                    setModalState(() {});
+                  },
+                )),
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -686,7 +981,7 @@ class _SettingsFolderTile extends StatelessWidget {
             children: [
               Icon(
                 isSelected ? Icons.check_circle : Icons.folder_outlined,
-                color: isSelected ? AppleMusicTheme.primaryPink : (isDark ? Colors.white54 : Colors.black45),
+                color: isSelected ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white54 : Colors.black45),
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -696,18 +991,12 @@ class _SettingsFolderTile extends StatelessWidget {
                   children: [
                     Text(
                       folderName,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black,),
                     ),
                     Text(
                       path,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? Colors.white38 : Colors.black38,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -755,7 +1044,7 @@ class _SettingsTile extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: AppleMusicTheme.primaryPink,
+                color: Theme.of(context).colorScheme.primary,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -765,18 +1054,12 @@ class _SettingsTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black,),
                     ),
                     Text(
                       subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                   ],
                 ),
@@ -823,23 +1106,20 @@ class _ThemeOption extends StatelessWidget {
               Icon(
                 icon,
                 color: isSelected 
-                    ? AppleMusicTheme.primaryPink 
+                    ? Theme.of(context).colorScheme.primary 
                     : (isDark ? Colors.white54 : Colors.black45),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,),
                 ),
               ),
               if (isSelected)
                 Icon(
                   Icons.check_circle,
-                  color: AppleMusicTheme.primaryPink,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
             ],
           ),
@@ -874,7 +1154,7 @@ class _SettingsSwitchTile extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color: AppleMusicTheme.primaryPink,
+            color: Theme.of(context).colorScheme.primary,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -884,18 +1164,12 @@ class _SettingsSwitchTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.white : Colors.black,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.white : Colors.black,),
                 ),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.white54 : Colors.black45,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                 ),
               ],
             ),
@@ -903,8 +1177,8 @@ class _SettingsSwitchTile extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: AppleMusicTheme.primaryPink,
-            activeTrackColor: AppleMusicTheme.primaryPink.withOpacity(0.3),
+            activeColor: Theme.of(context).colorScheme.primary,
+            activeTrackColor: Theme.of(context).colorScheme.primary.withOpacity(0.3),
           ),
         ],
       ),
@@ -949,33 +1223,27 @@ class _LastfmSettingsSection extends ConsumerWidget {
             children: [
               Icon(
                 Icons.music_note_rounded,
-                color: AppleMusicTheme.primaryPink,
+                color: Theme.of(context).colorScheme.primary,
                 size: 24,
               ),
               const SizedBox(width: 12),
               Text(
                 'Connect Last.fm',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black,
-                ),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
             'Keep track of every song you listen to and sync your history with Last.fm.',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.white70 : Colors.black87,
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
           ),
           if (lastfm.error != null) ...[
             const SizedBox(height: 12),
             Text(
               lastfm.error!,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.redAccent,),
             ),
           ],
           const SizedBox(height: 20),
@@ -995,7 +1263,7 @@ class _LastfmSettingsSection extends ConsumerWidget {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Connect'),
+                        : Text('Connect'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1007,11 +1275,11 @@ class _LastfmSettingsSection extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     gradient: LinearGradient(
                       colors: [
-                        AppleMusicTheme.primaryPink,
+                        Theme.of(context).colorScheme.primary,
                         AppleMusicTheme.primaryPurple,
                       ],
                     ),
-                    child: const Text(
+                    child: Text(
                       'Finish Setup',
                       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
@@ -1024,10 +1292,7 @@ class _LastfmSettingsSection extends ConsumerWidget {
           Center(
             child: Text(
               '1. Tap Connect -> 2. Approve in browser -> 3. Tap Finish',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.white38 : Colors.black38,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
             ),
           ),
         ],

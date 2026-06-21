@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppleMusicTheme {
   // Brand Colors
@@ -32,7 +33,7 @@ class AppleMusicTheme {
   static Color glassWhite = Colors.white.withOpacity(0.7);
   static Color glassBlack = Colors.black.withOpacity(0.5);
   
-  static ThemeData lightTheme() {
+  static ThemeData lightTheme({String fontFamily = 'Inter'}) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -59,7 +60,7 @@ class AppleMusicTheme {
         ),
         iconTheme: IconThemeData(color: lightText),
       ),
-      textTheme: const TextTheme(
+      textTheme: GoogleFonts.getTextTheme(fontFamily, const TextTheme(
         displayLarge: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: lightText),
         displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: lightText),
         displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: lightText),
@@ -70,7 +71,7 @@ class AppleMusicTheme {
         bodyMedium: TextStyle(fontSize: 15, color: lightText),
         bodySmall: TextStyle(fontSize: 13, color: lightTextSecondary),
         labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: lightTextSecondary),
-      ),
+      )),
       cardTheme: CardThemeData(
         color: lightCard,
         elevation: 0,
@@ -113,7 +114,7 @@ class AppleMusicTheme {
     );
   }
   
-  static ThemeData darkTheme() {
+  static ThemeData darkTheme({String fontFamily = 'Inter'}) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -140,7 +141,7 @@ class AppleMusicTheme {
         ),
         iconTheme: IconThemeData(color: darkText),
       ),
-      textTheme: const TextTheme(
+      textTheme: GoogleFonts.getTextTheme(fontFamily, const TextTheme(
         displayLarge: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: darkText),
         displayMedium: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: darkText),
         displaySmall: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: darkText),
@@ -151,7 +152,7 @@ class AppleMusicTheme {
         bodyMedium: TextStyle(fontSize: 15, color: darkText),
         bodySmall: TextStyle(fontSize: 13, color: darkTextSecondary),
         labelLarge: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: darkTextSecondary),
-      ),
+      )),
       cardTheme: CardThemeData(
         color: darkCard,
         elevation: 0,

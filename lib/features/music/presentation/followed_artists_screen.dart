@@ -41,9 +41,9 @@ class FollowedArtistsScreen extends ConsumerWidget {
                 icon: const Icon(Icons.arrow_back_ios_new, size: 20),
                 onPressed: () => Navigator.pop(context),
               ),
-              title: const Text(
+              title: Text(
                 'Artists',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             followedArtistsAsync.when(
@@ -62,11 +62,8 @@ class FollowedArtistsScreen extends ConsumerWidget {
                           const SizedBox(height: 16),
                           Text(
                             'No followed artists yet',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white54 : Colors.black54,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white54 : Colors.black54,),
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -116,19 +113,13 @@ class FollowedArtistsScreen extends ConsumerWidget {
                         ),
                         title: Text(
                           artist.name,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black,),
                         ),
                         subtitle: artist.genre != null
                             ? Text(
                                 artist.genre!,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: isDark ? Colors.white54 : Colors.black54,
-                                ),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                               )
                             : null,
                         trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.white24),
@@ -146,8 +137,8 @@ class FollowedArtistsScreen extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+              loading: () => SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
               ),
               error: (e, _) => SliverFillRemaining(
                 child: Center(child: Text('Error: $e')),

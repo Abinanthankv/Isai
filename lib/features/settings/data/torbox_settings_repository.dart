@@ -60,6 +60,9 @@ abstract class TorBoxSettingsRepository {
   Future<void> setPlayerControlLayout(String layout);
   String get playerControlLayout;
 
+  Future<void> setPlayerSpotifyCanvasEnabled(bool enabled);
+  bool get playerSpotifyCanvasEnabled;
+
   // ── Visualizer Settings ──────────────────────────────────────────────────
   Future<void> setVisualizerEnabled(bool enabled);
   bool get visualizerEnabled;
@@ -99,6 +102,33 @@ abstract class TorBoxSettingsRepository {
 
   Future<void> setVisualizerCornerRadius(double radius);
   double get visualizerCornerRadius;
+
+  Future<void> setMaxSongCacheSize(int sizeInMb);
+  int get maxSongCacheSize;
+
+  Future<void> setMaxImageCacheSize(int sizeInMb);
+  int get maxImageCacheSize;
+
+  Future<void> setAddonPriority(List<String> priority);
+  List<String> get addonPriority;
+
+  Future<void> setAppThemeStyle(String style);
+  String get appThemeStyle;
+
+  Future<void> setAppFontFamily(String font);
+  String get appFontFamily;
+
+  Future<void> setAppleUseLiquidGlass(bool value);
+  bool get appleUseLiquidGlass;
+
+  Future<void> setAppleLiquidGlassOpacity(double value);
+  double get appleLiquidGlassOpacity;
+
+  Future<void> setMiniPlayerSwipeEnabled(bool enabled);
+  bool get miniPlayerSwipeEnabled;
+
+  Future<void> setMiniPlayerSwipeSensitivity(double sensitivity);
+  double get miniPlayerSwipeSensitivity;
 }
 
 @LazySingleton(as: TorBoxSettingsRepository)
@@ -225,6 +255,12 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
   @override
   Future<void> setPlayerControlLayout(String layout) => _prefs.setString('player_control_layout', layout);
 
+  @override
+  bool get playerSpotifyCanvasEnabled => _prefs.getBool('player_spotify_canvas_enabled') ?? false;
+
+  @override
+  Future<void> setPlayerSpotifyCanvasEnabled(bool enabled) => _prefs.setBool('player_spotify_canvas_enabled', enabled);
+
   // ── Visualizer Settings Implementation ─────────────────────────────────
   @override
   bool get visualizerEnabled => _prefs.getBool('visualizer_enabled') ?? false;
@@ -303,4 +339,58 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setVisualizerCornerRadius(double radius) => _prefs.setDouble('visualizer_corner_radius', radius);
+
+  @override
+  int get maxSongCacheSize => _prefs.getInt('max_song_cache_size') ?? 1024;
+
+  @override
+  Future<void> setMaxSongCacheSize(int sizeInMb) => _prefs.setInt('max_song_cache_size', sizeInMb);
+
+  @override
+  int get maxImageCacheSize => _prefs.getInt('max_image_cache_size') ?? 512;
+
+  @override
+  Future<void> setMaxImageCacheSize(int sizeInMb) => _prefs.setInt('max_image_cache_size', sizeInMb);
+
+  @override
+  List<String> get addonPriority => _prefs.getStringList('addon_priority_order') ?? [];
+
+  @override
+  Future<void> setAddonPriority(List<String> priority) => _prefs.setStringList('addon_priority_order', priority);
+
+  @override
+  String get appThemeStyle => _prefs.getString('app_theme_style') ?? 'material3';
+
+  @override
+  Future<void> setAppThemeStyle(String style) => _prefs.setString('app_theme_style', style);
+
+  @override
+  String get appFontFamily => _prefs.getString('app_font_family') ?? 'Roboto Flex';
+
+  @override
+  Future<void> setAppFontFamily(String font) => _prefs.setString('app_font_family', font);
+
+  @override
+  bool get appleUseLiquidGlass => _prefs.getBool('apple_use_liquid_glass') ?? true;
+
+  @override
+  Future<void> setAppleUseLiquidGlass(bool value) => _prefs.setBool('apple_use_liquid_glass', value);
+
+  @override
+  double get appleLiquidGlassOpacity => _prefs.getDouble('apple_liquid_glass_opacity') ?? 0.5;
+
+  @override
+  Future<void> setAppleLiquidGlassOpacity(double value) => _prefs.setDouble('apple_liquid_glass_opacity', value);
+
+  @override
+  bool get miniPlayerSwipeEnabled => _prefs.getBool('mini_player_swipe_enabled') ?? true;
+
+  @override
+  Future<void> setMiniPlayerSwipeEnabled(bool enabled) => _prefs.setBool('mini_player_swipe_enabled', enabled);
+
+  @override
+  double get miniPlayerSwipeSensitivity => _prefs.getDouble('mini_player_swipe_sensitivity') ?? 40.0;
+
+  @override
+  Future<void> setMiniPlayerSwipeSensitivity(double sensitivity) => _prefs.setDouble('mini_player_swipe_sensitivity', sensitivity);
 }

@@ -55,12 +55,12 @@ class PlaylistsScreen extends ConsumerWidget {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: AppleMusicTheme.primaryPink),
+                icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
                 IconButton(
-                  icon: const Icon(Icons.add_circle_outline, color: AppleMusicTheme.primaryPink),
+                  icon: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
                   onPressed: () => _showImportOptions(context, ref),
                 ),
               ],
@@ -135,8 +135,8 @@ class PlaylistsScreen extends ConsumerWidget {
                         ),
                       );
               },
-              loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+              loading: () => SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
               ),
               error: (e, _) => SliverFillRemaining(
                 child: Center(child: Text('Error: $e')),
@@ -163,16 +163,16 @@ class PlaylistsScreen extends ConsumerWidget {
           decoration: InputDecoration(
             hintText: isSpotify ? 'Paste Spotify playlist link...' : 'Paste YouTube/Music link...',
             hintStyle: const TextStyle(color: Colors.white30),
-            enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: AppleMusicTheme.primaryPink)),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Theme.of(context).colorScheme.primary)),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child: Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppleMusicTheme.primaryPink),
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
             onPressed: () async {
               final url = controller.text.trim();
               if (url.isNotEmpty) {
@@ -197,7 +197,7 @@ class PlaylistsScreen extends ConsumerWidget {
                       context: context,
                       builder: (errorDialogContext) => AlertDialog(
                         backgroundColor: Colors.grey[900],
-                        title: const Text('Import Failed', style: TextStyle(color: Colors.white)),
+                        title: Text('Import Failed', style: TextStyle(color: Colors.white)),
                         content: Text(
                           e.toString().replaceAll('Exception: ', ''),
                           style: const TextStyle(color: Colors.white70),
@@ -205,7 +205,7 @@ class PlaylistsScreen extends ConsumerWidget {
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(errorDialogContext),
-                            child: const Text('OK', style: TextStyle(color: AppleMusicTheme.primaryPink)),
+                            child: Text('OK', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
                           ),
                         ],
                       ),
@@ -214,7 +214,7 @@ class PlaylistsScreen extends ConsumerWidget {
                 }
               }
             },
-            child: const Text('Import'),
+            child: Text('Import'),
           ),
         ],
       ),
@@ -228,39 +228,39 @@ class PlaylistsScreen extends ConsumerWidget {
       builder: (context) => Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1C1C1E) : Colors.white,
+          color: Theme.of(context).brightness == Brightness.dark ? Color(0xFF1C1C1E) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.link_rounded, color: AppleMusicTheme.primaryPink),
-              title: const Text('Import from YouTube Link'),
+              leading: Icon(Icons.link_rounded, color: Theme.of(context).colorScheme.primary),
+              title: Text('Import from YouTube Link'),
               onTap: () {
                 Navigator.pop(context);
                 _showImportDialog(context, ref);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.music_note_outlined, color: AppleMusicTheme.primaryPink),
-              title: const Text('Import from Spotify Link'),
+              leading: Icon(Icons.music_note_outlined, color: Theme.of(context).colorScheme.primary),
+              title: Text('Import from Spotify Link'),
               onTap: () {
                 Navigator.pop(context);
                 _showImportDialog(context, ref, isSpotify: true);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.file_open_outlined, color: AppleMusicTheme.primaryPink),
-              title: const Text('Import Playlists (JSON / Backup)'),
+              leading: Icon(Icons.file_open_outlined, color: Theme.of(context).colorScheme.primary),
+              title: Text('Import Playlists (JSON / Backup)'),
               onTap: () {
                 Navigator.pop(context);
                 _importPlaylistFromFile(context, ref);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.backup_table_outlined, color: AppleMusicTheme.primaryPink),
-              title: const Text('Export All Playlists (Backup)'),
+              leading: Icon(Icons.backup_table_outlined, color: Theme.of(context).colorScheme.primary),
+              title: Text('Export All Playlists (Backup)'),
               onTap: () {
                 Navigator.pop(context);
                 _exportAllPlaylists(context, ref);
@@ -368,15 +368,15 @@ class _PlaylistCard extends StatelessWidget {
             builder: (context, ref, _) => Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
               decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1C1C1E) : Colors.white,
+                color: Theme.of(context).brightness == Brightness.dark ? Color(0xFF1C1C1E) : Colors.white,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.share_outlined, color: AppleMusicTheme.primaryPink),
-                    title: const Text('Share Playlist', style: TextStyle(color: AppleMusicTheme.primaryPink)),
+                    leading: Icon(Icons.share_outlined, color: Theme.of(context).colorScheme.primary),
+                    title: Text('Share Playlist', style: TextStyle(color: Theme.of(context).colorScheme.primary)),
                     onTap: () {
                       Navigator.pop(context);
                       _sharePlaylistHelper(context, ref, item.playlist.id, item.playlist.name);
@@ -384,7 +384,7 @@ class _PlaylistCard extends StatelessWidget {
                   ),
                   ListTile(
                     leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                    title: const Text('Delete Playlist', style: TextStyle(color: Colors.red)),
+                    title: Text('Delete Playlist', style: TextStyle(color: Colors.red)),
                     onTap: () {
                       Navigator.pop(context);
                       _showDeleteConfirmation(context);
@@ -446,20 +446,14 @@ class _PlaylistCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             item.playlist.name,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-              color: isDark ? Colors.white : Colors.black,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black,),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           Text(
             '${item.count} songs',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.white54 : Colors.black54,
-            ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
           ),
         ],
       ),
@@ -472,7 +466,7 @@ class _PlaylistCard extends StatelessWidget {
       builder: (context) => Consumer(
         builder: (context, ref, _) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white)),
+          title: Text('Delete Playlist?', style: TextStyle(color: Colors.white)),
           content: Text(
             'Are you sure you want to delete "${item.playlist.name}"? This action cannot be undone.',
             style: const TextStyle(color: Colors.white70),
@@ -480,7 +474,7 @@ class _PlaylistCard extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              child: Text('Cancel', style: TextStyle(color: Colors.white70)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -488,7 +482,7 @@ class _PlaylistCard extends StatelessWidget {
                 ref.read(playlistProvider.notifier).deletePlaylist(item.playlist.id);
                 Navigator.pop(context);
               },
-              child: const Text('Delete'),
+              child: Text('Delete'),
             ),
           ],
         ),
@@ -565,7 +559,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
   /// Uses HSL manipulation to desaturate and darken the cover art color,
   /// creating a moody backdrop that isn't flat or overly saturated.
   List<Color> _buildGradientColors(bool isDark) {
-    final base = _dominantColor ?? _vibrantColor ?? _mutedColor ?? AppleMusicTheme.primaryPink;
+    final base = _dominantColor ?? _vibrantColor ?? _mutedColor ?? Theme.of(context).colorScheme.primary;
     final hsl = HSLColor.fromColor(base);
 
     if (isDark) {
@@ -754,7 +748,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                                   fit: BoxFit.cover,
                                   placeholder: (_, __) => Container(
                                     color: isDark ? Colors.grey[900] : Colors.grey[300],
-                                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink)),
+                                    child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary)),
                                   ),
                                   errorWidget: (_, __, ___) => Container(
                                     color: isDark ? Colors.grey[900] : Colors.grey[300],
@@ -772,13 +766,10 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                       // Playlist Title (centered)
                       Text(
                         title,
-                        style: TextStyle(
-                          color: Colors.white,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 22,
                           letterSpacing: -0.3,
-                          height: 1.2,
-                        ),
+                          height: 1.2,),
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -788,11 +779,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                       // Source label
                       Text(
                         sourceName,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.65),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 14,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.65),
+                          fontWeight: FontWeight.w500,),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 2),
@@ -800,11 +788,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                       // Track count & metadata
                       Text(
                         '${tracks.length} tracks',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.45),
+                          fontWeight: FontWeight.w400,),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
@@ -862,11 +847,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                                   const SizedBox(width: 4),
                                   Text(
                                     'Play',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16,
-                                    ),
+                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                                      fontWeight: FontWeight.w600,),
                                   ),
                                 ],
                               ),
@@ -926,7 +908,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                 ),
                 loading: () => SizedBox(
                   height: artSize + 160,
-                  child: const Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+                  child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
                 ),
                 error: (e, _) => SizedBox(
                   height: 200,
@@ -945,12 +927,12 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       if (index == tracks.length) {
-                        return const Padding(
+                        return Padding(
                           padding: EdgeInsets.symmetric(vertical: 32),
                           child: Center(
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: AppleMusicTheme.primaryPink,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         );
@@ -987,10 +969,10 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                   ),
                 );
               },
-              loading: () => const SliverToBoxAdapter(
+              loading: () => SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.only(top: 60),
-                  child: Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+                  child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
                 ),
               ),
               error: (e, _) => SliverToBoxAdapter(child: Center(child: Text('Error: $e'))),
@@ -1081,21 +1063,15 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                      fontWeight: FontWeight.w500,),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.55),
-                      fontSize: 13,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withValues(alpha: 0.55),),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1248,7 +1224,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
       builder: (context) => Consumer(
         builder: (context, ref, _) => AlertDialog(
           backgroundColor: Colors.grey[900],
-          title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white)),
+          title: Text('Delete Playlist?', style: TextStyle(color: Colors.white)),
           content: Text(
             'Are you sure you want to delete "${widget.localPlaylist!.name}"? This action cannot be undone.',
             style: const TextStyle(color: Colors.white70),
@@ -1256,7 +1232,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              child: Text('Cancel', style: TextStyle(color: Colors.white70)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -1265,7 +1241,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                 Navigator.pop(context); // Close dialog
                 Navigator.pop(context); // Back to playlists screen
               },
-              child: const Text('Delete'),
+              child: Text('Delete'),
             ),
           ],
         ),

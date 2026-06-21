@@ -43,8 +43,8 @@ class AppUpdater {
       loadingOverlay = OverlayEntry(
         builder: (context) => Container(
           color: Colors.black45,
-          child: const Center(
-            child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+          child: Center(
+            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
           ),
         ),
       );
@@ -332,22 +332,16 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
             // Title (e.g., 0.2.3-hotfix)
             Text(
               widget.versionName,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white,
                 fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
+                letterSpacing: -0.5,),
             ),
             const SizedBox(height: 4),
             // Subtitle status (e.g. A new version is ready to install / Downloading update...)
             Text(
               _statusText,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.6),
+                fontWeight: FontWeight.w500,),
             ),
             const SizedBox(height: 20),
 
@@ -363,19 +357,13 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
                 children: [
                   Text(
                     widget.cleanLatestVersion,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
+                      fontWeight: FontWeight.bold,),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '${widget.fileSizeMb.toStringAsFixed(1)} MB · ${widget.apkName}',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
-                      fontSize: 12,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white.withOpacity(0.4),),
                   ),
                   if (_isDownloading) ...[
                     const SizedBox(height: 16),
@@ -393,11 +381,8 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
                     // Downloading % text
                     Text(
                       'Downloading ${(_downloadProgress * 100).toInt()}%',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white.withOpacity(0.6),
+                        fontWeight: FontWeight.w600,),
                     ),
                   ],
                 ],
@@ -406,13 +391,10 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
             const SizedBox(height: 20),
 
             // Release Notes Section
-            const Text(
+            Text(
               'Release notes',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,
+                fontWeight: FontWeight.bold,),
             ),
             const SizedBox(height: 8),
             // Release Notes box
@@ -428,11 +410,8 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
               child: SingleChildScrollView(
                 child: Text(
                   widget.releaseNotes,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white.withOpacity(0.5),
+                    height: 1.4,),
                 ),
               ),
             ),
@@ -452,11 +431,8 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
                 ),
                 child: Text(
                   _isDownloading ? 'Downloading update...' : 'Update',
-                  style: TextStyle(
-                    color: _isDownloading ? Colors.white.withOpacity(0.2) : Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: _isDownloading ? Colors.white.withOpacity(0.2) : Colors.white,
+                    fontWeight: FontWeight.bold,),
                 ),
               ),
             ),
@@ -478,7 +454,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: const Text('Ignore', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: Text('Ignore', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -491,7 +467,7 @@ class _UpdateDialogContentState extends State<_UpdateDialogContent> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: const Text('Later', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: Text('Later', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],

@@ -41,13 +41,10 @@ class VisualizerSettingsSheet extends ConsumerWidget {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text(
+                child: Text(
                   'Done',
-                  style: TextStyle(
-                    color: AppleMusicTheme.primaryPink,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,),
                 ),
               ),
             ],
@@ -56,7 +53,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
               title: AppleMusicGradientText(
                 text: 'Visualizer',
                 fontSize: 20,
-                colors: const [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
+                colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
               ),
             ),
           ),
@@ -114,7 +111,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                     padding: const EdgeInsets.only(left: 16, top: 6, bottom: 16),
                     child: Text(
                       'Master toggle disables all visualizers. Individual toggles control each location.',
-                      style: TextStyle(fontSize: 12, color: Colors.white38),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
                     ),
                   ),
 
@@ -152,7 +149,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                             'Points control how many data points the ${settings.visualizerStyle} is built from. '
                             'Fewer points = bigger, rounder ocean swells. More points = detailed, ripply surface. '
                             '8–12 is a good starting point.',
-                            style: TextStyle(fontSize: 11, color: Colors.white38),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
                           ),
                         ),
                       ],
@@ -197,7 +194,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                               'Spacing controls the gap between bars. Corner radius '
                               'shapes bar tops — at 0 they\'re sharp rectangles, at 15 '
                               'they\'re rounded pills.',
-                              style: TextStyle(fontSize: 11, color: Colors.white38),
+                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
                             ),
                           ),
                         ],
@@ -296,7 +293,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                             'Each style remembers its own point count and sensitivity '
                             'independently. Switching styles never overwrites another '
                             'style\'s values.',
-                            style: TextStyle(fontSize: 11, color: Colors.white38),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
                           ),
                         ),
                       ],
@@ -327,12 +324,9 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
       child: Text(
         text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
           color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
-          letterSpacing: 1.2,
-        ),
+          letterSpacing: 1.2,),
       ),
     );
   }
@@ -359,10 +353,7 @@ class _ToggleTile extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: TextStyle(
-                fontSize: 16,
-                color: onChanged != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withValues(alpha: 0.4),
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: onChanged != null ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withValues(alpha: 0.4),),
             ),
           ),
           Switch.adaptive(
@@ -373,7 +364,7 @@ class _ToggleTile extends StatelessWidget {
                     onChanged!(v);
                   } 
                 : null,
-            activeTrackColor: AppleMusicTheme.primaryPink,
+            activeTrackColor: Theme.of(context).colorScheme.primary,
           ),
         ],
       ),
@@ -420,11 +411,8 @@ class _SegmentedSelector extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Text(
                   options[i],
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                    color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    color: isSelected ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withValues(alpha: 0.5),),
                 ),
               ),
             ),
@@ -464,25 +452,22 @@ class _SliderRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(fontSize: 15, color: theme.colorScheme.onSurface, fontWeight: FontWeight.w500),
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w500),
               ),
             ),
             Text(
               displayValue,
-              style: TextStyle(
-                fontSize: 14,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                fontWeight: FontWeight.w500,),
             ),
           ],
         ),
         SliderTheme(
           data: SliderThemeData(
-            activeTrackColor: AppleMusicTheme.primaryPink,
+            activeTrackColor: Theme.of(context).colorScheme.primary,
             inactiveTrackColor: theme.colorScheme.onSurface.withValues(alpha: 0.1),
-            thumbColor: isDark ? Colors.white : AppleMusicTheme.primaryPink,
-            overlayColor: AppleMusicTheme.primaryPink.withValues(alpha: 0.2),
+            thumbColor: isDark ? Colors.white : Theme.of(context).colorScheme.primary,
+            overlayColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
             trackHeight: 4,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
           ),

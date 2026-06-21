@@ -73,11 +73,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                             children: [
                               Text(
                                 'Tracks',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                                  color: isDark ? Colors.white : Colors.black,),
                               ),
                              
                             ],
@@ -119,9 +116,9 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
               ],
             );
           },
-          loading: () => const Center(
+          loading: () => Center(
             child: CircularProgressIndicator(
-              color: AppleMusicTheme.primaryPink,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
           error: (err, stack) => Center(
@@ -225,7 +222,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(
                                     colors: [
-                                      AppleMusicTheme.primaryPink.withOpacity(0.3),
+                                      Theme.of(context).colorScheme.primary.withOpacity(0.3),
                                       AppleMusicTheme.primaryPurple.withOpacity(0.3),
                                     ],
                                   ),
@@ -239,12 +236,9 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                   // Artist Name (Smaller, Colored)
                   Text(
                     widget.album.artistName.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppleMusicTheme.primaryPink,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+                      letterSpacing: 1.2,),
                   ),
                   const SizedBox(height: 6),
                   // Album Title (Big, Bold)
@@ -253,11 +247,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                     child: Text(
                       _cleanName(widget.album.collectionName),
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 24,
-                        color: isDark ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: isDark ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -302,16 +293,16 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                               ),
                               elevation: 0,
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.play_arrow_rounded, size: 24),
                                 SizedBox(width: 8),
                                 Text(
                                   'Play',
-                                  style: TextStyle(
-                                    fontSize: 16,
+                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                     fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.black : Colors.white,
                                   ),
                                 ),
                               ],
@@ -337,16 +328,16 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                               ),
                               elevation: 0,
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(Icons.shuffle_rounded, size: 20),
                                 SizedBox(width: 8),
                                 Text(
                                   'Shuffle',
-                                  style: TextStyle(
-                                    fontSize: 16,
+                                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                     fontWeight: FontWeight.bold,
+                                    color: isDark ? Colors.white : Colors.black,
                                   ),
                                 ),
                               ],
@@ -378,11 +369,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
-            color: isDark ? Colors.white54 : Colors.black45,
-            fontWeight: FontWeight.w500,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white54 : Colors.black45,
+            fontWeight: FontWeight.w500,),
         ),
       ],
     );
@@ -507,24 +495,25 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1c1c1e).withOpacity(0.95) : Colors.white.withOpacity(0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark 
+                ? const Color(0xFF1c1c1e).withOpacity(0.85) 
+                : Colors.white.withOpacity(0.75),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border.all(
+              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+              width: 0.5,
             ),
-          ],
-        ),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 48),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 48),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
               children: [
                 // Drag Handle
                 Container(
@@ -555,21 +544,15 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                         children: [
                           Text(
                             widget.album.collectionName,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? Colors.white : Colors.black,
-                            ),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black,),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             widget.album.artistName,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppleMusicTheme.primaryPink,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w500,),
                           ),
                         ],
                       ),
@@ -676,8 +659,9 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildActionItem({
     required IconData icon,
@@ -697,11 +681,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
       ),
       title: Text(
         label,
-        style: TextStyle(
-          color: isDark ? Colors.white : Colors.black,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+          fontWeight: FontWeight.w500,),
       ),
       trailing: Icon(Icons.chevron_right_rounded, color: isDark ? Colors.white24 : Colors.black26),
       onTap: onTap,
@@ -884,11 +865,11 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
       if (mounted) {
         if (audioHandler.playbackState.value.processingState != AudioProcessingState.idle) {
            ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Added to Next in Queue'),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 2),
-              backgroundColor: AppleMusicTheme.primaryPink,
+              backgroundColor: Theme.of(context).colorScheme.primary,
             ),
           );
         }
@@ -979,11 +960,8 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
                     widget.track.trackName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.w600,),
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -996,10 +974,7 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
                       const SizedBox(width: 4),
                       Text(
                         ItunesTrack.formatDuration(widget.track.trackTimeMillis),
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black45,
-                          fontSize: 12,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                       ),
                     ],
                   ),
@@ -1008,12 +983,12 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
             ),
             // Play Action
             if (_isCheckingSources)
-              const SizedBox(
+              SizedBox(
                 width: 36,
                 height: 36,
                 child: Padding(
                   padding: EdgeInsets.all(8.0),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink),
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
                 ),
               )
             else

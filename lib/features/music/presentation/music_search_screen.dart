@@ -122,7 +122,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                         text: 'Search',
                         fontSize: 28,
                         colors: isDark
-                            ? [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple]
+                            ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                             : [const Color(0xFF667eea), const Color(0xFF764ba2)],
                       ),
                       const SizedBox(height: 16),
@@ -150,7 +150,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                           children: [
                             AppleMusicChip(
                               label: 'Songs',
-                              gradientColors: [AppleMusicTheme.primaryPink, AppleMusicTheme.primaryPurple],
+                              gradientColors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
                               isSelected: searchState.searchMode == 'songs',
                               onTap: () {
                                 HapticFeedback.lightImpact();
@@ -184,11 +184,8 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                         const SizedBox(height: 12),
                         Text(
                           'Regional Languages',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,),
                         ),
                         const SizedBox(height: 12),
                         GridView.count(
@@ -258,11 +255,8 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                         const SizedBox(height: 24),
                         Text(
                           'Browse Categories',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,),
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -300,11 +294,11 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                             childCount: genres.length,
                           ),
                         ),
-                        loading: () => const SliverToBoxAdapter(
+                        loading: () => SliverToBoxAdapter(
                           child: Center(
                             child: Padding(
                               padding: EdgeInsets.all(20.0),
-                              child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                              child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                             ),
                           ),
                         ),
@@ -314,10 +308,10 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
               if (!_showChips)
                 SliverToBoxAdapter(
                   child: searchState.isLoading
-                      ? const Center(
+                      ? Center(
                           child: Padding(
                             padding: EdgeInsets.all(40.0),
-                            child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+                            child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
                           ),
                         )
                       : null,
@@ -435,14 +429,11 @@ class _FlacResultTile extends ConsumerWidget {
                     '${result.artist} · ${result.format}${result.size > 0 ? ' · ${result.formattedSize}' : ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? AppleMusicTheme.darkTextSecondary : AppleMusicTheme.lightTextSecondary,),
                   ),
                   Text(
                     'via ${result.source}',
-                    style: TextStyle(fontSize: 10, color: AppleMusicTheme.primaryPink.withOpacity(0.7)),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary.withOpacity(0.7)),
                   ),
                 ],
               ),
@@ -487,10 +478,10 @@ class _FlacResultTile extends ConsumerWidget {
     if (context.mounted) {
       if (audioHandler.playbackState.value.playing) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Added to Next in Queue'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: AppleMusicTheme.primaryPink,
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }
@@ -553,10 +544,10 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
       final playbackState = audioHandler.playbackState.value;
       if (playbackState.playing) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Added to Next in Queue'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: AppleMusicTheme.primaryPink,
+            backgroundColor: Theme.of(context).colorScheme.primary,
             duration: Duration(seconds: 2),
           ),
         );
@@ -616,10 +607,10 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
 
       if (audioHandler.playbackState.value.playing) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Added to Next in Queue'),
             behavior: SnackBarBehavior.floating,
-            backgroundColor: AppleMusicTheme.primaryPink,
+            backgroundColor: Theme.of(context).colorScheme.primary,
             duration: Duration(seconds: 2),
           ),
         );
@@ -660,7 +651,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Added to queue: ${widget.track.trackName}'),
-            backgroundColor: AppleMusicTheme.primaryPink.withOpacity(0.9),
+            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.9),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -695,7 +686,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Added to queue: ${widget.track.trackName}'),
-            backgroundColor: AppleMusicTheme.primaryPink.withOpacity(0.9),
+            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.9),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -847,32 +838,29 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
                       '${widget.track.artistName} · ${widget.track.collectionName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark 
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark 
                             ? AppleMusicTheme.darkTextSecondary 
-                            : AppleMusicTheme.lightTextSecondary,
-                      ),
+                            : AppleMusicTheme.lightTextSecondary,),
                     ),
                   ],
                 ),
               ),
               if (_isCheckingSources)
-                const SizedBox(
+                SizedBox(
                   width: 36,
                   height: 36,
                   child: Padding(
                     padding: EdgeInsets.all(8.0),
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppleMusicTheme.primaryPink),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
                   ),
                 )
               else
                 GlassIconButton(
                   icon: matchingFile != null ? Icons.play_arrow_rounded : Icons.search_rounded,
                   size: 36,
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     colors: [
-                      AppleMusicTheme.primaryPink,
+                      Theme.of(context).colorScheme.primary,
                       AppleMusicTheme.primaryPurple,
                     ],
                   ),
@@ -955,12 +943,9 @@ class _AlbumResultTile extends StatelessWidget {
                     album.artistName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark 
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark 
                           ? AppleMusicTheme.darkTextSecondary 
-                          : AppleMusicTheme.lightTextSecondary,
-                    ),
+                          : AppleMusicTheme.lightTextSecondary,),
                   ),
                 ],
               ),
@@ -1058,12 +1043,9 @@ class _ArtistResultTile extends ConsumerWidget {
                   ),
                   Text(
                     'Artist',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark
                           ? AppleMusicTheme.darkTextSecondary
-                          : AppleMusicTheme.lightTextSecondary,
-                    ),
+                          : AppleMusicTheme.lightTextSecondary,),
                   ),
                 ],
               ),

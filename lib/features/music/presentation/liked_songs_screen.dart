@@ -57,7 +57,7 @@ class LikedSongsScreen extends ConsumerWidget {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: Icon(Icons.arrow_back_ios, color: AppleMusicTheme.primaryPink),
+                icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => Navigator.pop(context),
               ),
               flexibleSpace: FlexibleSpaceBar(
@@ -84,12 +84,12 @@ class LikedSongsScreen extends ConsumerWidget {
                           const SizedBox(height: 16),
                           Text(
                             'No liked songs yet',
-                            style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: textColor, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Songs you like will appear here.',
-                            style: TextStyle(color: subTextColor, fontSize: 14),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: subTextColor,),
                           ),
                         ],
                       ),
@@ -122,7 +122,7 @@ class LikedSongsScreen extends ConsumerWidget {
                             IconButton(
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
-                              icon: const Icon(Icons.favorite, color: AppleMusicTheme.primaryPink, size: 22),
+                              icon: Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary, size: 22),
                               onPressed: () {
                                 HapticFeedback.lightImpact();
                                 ref.read(likedSongsProvider.notifier).toggleLike(
@@ -199,7 +199,7 @@ class LikedSongsScreen extends ConsumerWidget {
               loading: () => SliverFillRemaining(
                 child: Center(
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppleMusicTheme.primaryPink),
+                    valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
                   ),
                 ),
               ),
@@ -228,10 +228,10 @@ Widget _buildLastfmFolder(BuildContext context, String username) {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: AppleMusicTheme.primaryPink.withValues(alpha: 0.1),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.favorite, color: AppleMusicTheme.primaryPink),
+          child: Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary),
         ),
         onTap: () {
           Navigator.push(

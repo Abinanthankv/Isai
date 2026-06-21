@@ -69,7 +69,7 @@ class _YouTubePickerSheetState extends ConsumerState<YouTubePickerSheet> {
                     Expanded(
                       child: Text(
                         'YouTube Results for ${widget.track.trackName}',
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -103,8 +103,8 @@ class _YouTubePickerSheetState extends ConsumerState<YouTubePickerSheet> {
                                     errorWidget: (_, __, ___) => const Icon(Icons.video_collection, color: Colors.white54),
                                   ),
                                 ),
-                                title: Text(result.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                                subtitle: Text('${result.author} • ${result.duration}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                                title: Text(result.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,)),
+                                subtitle: Text('${result.author} • ${result.duration}', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
                                 trailing: IconButton(
                                   icon: const Icon(Icons.cloud_download, color: Colors.white54),
                                   onPressed: () => ref.read(youtubeSearchProvider.notifier).addWebDownload(result.videoUrl),

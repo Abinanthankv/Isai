@@ -67,7 +67,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => ref.read(libraryProvider.notifier).loadLibrary(force: true),
-          color: AppleMusicTheme.primaryPink,
+          color: Theme.of(context).colorScheme.primary,
           child: CustomScrollView(
             slivers: [
               // 1. Header
@@ -76,13 +76,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                   child: Row(
                     children: [
-                      const Text(
+                      Text(
                         'Library',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,
-                        ),
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,),
                       ),
                       const Spacer(),
                       
@@ -164,12 +161,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   child: Row(
                     children: [
-                      const Text(
+                      Text(
                         'Recently Played',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
                       ),
                     ],
                   ),
@@ -225,10 +219,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         );
       },
-      loading: () => const SliverToBoxAdapter(
+      loading: () => SliverToBoxAdapter(
         child: Center(child: Padding(
           padding: EdgeInsets.all(40.0),
-          child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+          child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
         )),
       ),
       error: (e, _) => SliverToBoxAdapter(child: Center(child: Text('Error: $e'))),
@@ -250,11 +244,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           const SizedBox(height: 16),
           Text(
             'Your library is empty',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white54 : Colors.black54,
-            ),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white54 : Colors.black54,),
           ),
           const SizedBox(height: 8),
           Text(
@@ -336,15 +327,15 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     child: Text(
                     meta?.trackName ?? parsed.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold,),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.edit_note_rounded, color: AppleMusicTheme.primaryPink),
-                    title: const Text('Fix Metadata'),
+                    leading: Icon(Icons.edit_note_rounded, color: Theme.of(context).colorScheme.primary),
+                    title: Text('Fix Metadata'),
                     onTap: () {
                       Navigator.pop(context);
                       showModalBottomSheet(
@@ -411,23 +402,17 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
                     meta?.trackName ?? parsed.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black,),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     parts.isNotEmpty ? parts.join(' • ') : widget.file.formattedSize,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isDark 
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark 
                           ? AppleMusicTheme.darkTextSecondary 
-                          : AppleMusicTheme.lightTextSecondary,
-                      fontSize: 12,
-                    ),
+                          : AppleMusicTheme.lightTextSecondary,),
                   ),
                 ],
               ),
@@ -439,7 +424,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
               size: 40,
               gradient: LinearGradient(
                 colors: [
-                  AppleMusicTheme.primaryPink.withOpacity(0.8),
+                  Theme.of(context).colorScheme.primary.withOpacity(0.8),
                   AppleMusicTheme.primaryPurple,
                 ],
               ),
@@ -468,14 +453,14 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
     final isDownloaded = ref.read(libraryProvider.notifier).isDownloaded(widget.file);
 
     if (isDownloading) {
-      return const SizedBox(
+      return SizedBox(
         width: 40,
         height: 40,
         child: Padding(
           padding: EdgeInsets.all(10),
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(AppleMusicTheme.primaryPink),
+            valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
           ),
         ),
       );
@@ -486,12 +471,12 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: AppleMusicTheme.primaryPink.withOpacity(0.1),
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
           shape: BoxShape.circle,
         ),
-        child: const Icon(
+        child: Icon(
           Icons.offline_pin_rounded,
-          color: AppleMusicTheme.primaryPink,
+          color: Theme.of(context).colorScheme.primary,
           size: 20,
         ),
       );
@@ -518,7 +503,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         borderRadius: BorderRadius.circular(10),
         gradient: LinearGradient(
           colors: [
-            AppleMusicTheme.primaryPink.withOpacity(0.3),
+            Theme.of(context).colorScheme.primary.withOpacity(0.3),
             AppleMusicTheme.primaryPurple.withOpacity(0.3),
           ],
         ),
@@ -605,31 +590,25 @@ class _CategoryCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppleMusicTheme.primaryPink.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon,
-                color: AppleMusicTheme.primaryPink,
+                color: Theme.of(context).colorScheme.primary,
                 size: 20,
               ),
             ),
             const Spacer(),
             Text(
               title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black,),
             ),
             const SizedBox(height: 2),
             Text(
               count,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white54 : Colors.black54,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
             ),
           ],
         ),
@@ -672,7 +651,7 @@ class LibraryAlbumsScreen extends ConsumerWidget {
               backgroundColor: Colors.transparent,
               elevation: 0,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios, color: AppleMusicTheme.primaryPink),
+                icon: Icon(Icons.arrow_back_ios, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => Navigator.pop(context),
               ),
               flexibleSpace: FlexibleSpaceBar(
@@ -726,8 +705,8 @@ class LibraryAlbumsScreen extends ConsumerWidget {
                         ),
                       );
               },
-              loading: () => const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator(color: AppleMusicTheme.primaryPink)),
+              loading: () => SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
               ),
               error: (e, _) => SliverFillRemaining(
                 child: Center(child: Text('Error: $e')),
@@ -805,20 +784,14 @@ class _LibraryAlbumCard extends ConsumerWidget {
               item.playlist.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: isDark ? Colors.white : Colors.black,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black,),
             ),
             const SizedBox(height: 2),
             Text(
               '${item.count} tracks',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.white54 : Colors.black54,
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,
+                fontWeight: FontWeight.w500,),
             ),
           ],
         ),

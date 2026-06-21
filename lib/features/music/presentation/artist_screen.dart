@@ -90,11 +90,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                   children: [
                     Text(
                       'Popular songs${topSongsAsync.asData?.value != null ? ' (${topSongsAsync.asData!.value.length})' : ''}',
-                      style: TextStyle(
-                        color: isDark ? Colors.white : Colors.black,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,),
                     ),
                     
                   ],
@@ -114,11 +111,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
                 child: Text(
                   'Top Albums${albumsAsync.asData?.value != null ? ' (${albumsAsync.asData!.value.length})' : ''}',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,),
                 ),
               ),
             ),
@@ -155,11 +149,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       centerTitle: true,
       title: Text(
         'Artist',
-        style: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.bold,
-          color: isDark ? Colors.white : Colors.black,
-        ),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
+          color: isDark ? Colors.white : Colors.black,),
       ),
       actions: [
         IconButton(
@@ -260,12 +251,9 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
             child: Text(
               widget.artistName,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900,
                 color: isDark ? Colors.white : Colors.black,
-                letterSpacing: -0.5,
-              ),
+                letterSpacing: -0.5,),
             ),
           ),
           
@@ -277,12 +265,9 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                       const SizedBox(height: 4),
                       Text(
                         details!.primaryGenreName!.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppleMusicTheme.primaryPink,
-                          letterSpacing: 1.2,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                          letterSpacing: 1.2,),
                       ),
                     ],
                   )
@@ -333,7 +318,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                       content: Text('Followed ${details.artistName}'),
                       behavior: SnackBarBehavior.floating,
                       duration: const Duration(seconds: 2),
-                      backgroundColor: AppleMusicTheme.primaryPink,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                     ),
                   );
                 }
@@ -342,21 +327,18 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
       style: OutlinedButton.styleFrom(
         side: BorderSide(
           color: isFollowed 
-              ? AppleMusicTheme.primaryPink.withOpacity(0.5)
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
               : (isDark ? Colors.white30 : Colors.black26)
         ),
-        backgroundColor: isFollowed ? AppleMusicTheme.primaryPink.withOpacity(0.1) : Colors.transparent,
+        backgroundColor: isFollowed ? Theme.of(context).colorScheme.primary.withOpacity(0.1) : Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
       ),
       child: Text(
         isFollowed ? 'FOLLOWING' : 'FOLLOW',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: isFollowed ? AppleMusicTheme.primaryPink : (isDark ? Colors.white : Colors.black),
-          letterSpacing: 1.0,
-        ),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
+          color: isFollowed ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white : Colors.black),
+          letterSpacing: 1.0,),
       ),
     );
   }
@@ -379,7 +361,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppleMusicTheme.primaryPink.withOpacity(0.8),
+            Theme.of(context).colorScheme.primary.withOpacity(0.8),
             AppleMusicTheme.primaryPurple.withOpacity(0.8),
           ],
         ),
@@ -450,12 +432,9 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.bold,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : Colors.black,
-            letterSpacing: 0.5,
-          ),
+            letterSpacing: 0.5,),
         ),
       ),
     );
@@ -509,11 +488,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
               child: Text(
                 'Top Tracks from Deezer (${tracks.length})',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.bold,),
               ),
             ),
             SizedBox(
@@ -551,11 +527,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
               child: Text(
                 'Artist Playlists (${playlists.length})',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.bold,),
               ),
             ),
             SizedBox(
@@ -601,18 +574,12 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                             playlist.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.w500,),
                           ),
                           Text(
                             '${playlist.nbTracks} tracks',
-                            style: TextStyle(
-                              color: isDark ? Colors.white54 : Colors.black54,
-                              fontSize: 12,
-                            ),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,),
                           ),
                         ],
                       ),
@@ -637,11 +604,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
           child: Text(
             'About',
-            style: TextStyle(
-              color: isDark ? Colors.white : Colors.black,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(color: isDark ? Colors.white : Colors.black,
+              fontWeight: FontWeight.bold,),
           ),
         ),
         
@@ -664,36 +628,27 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                    if (type != null) ...[
                       Text(
                         'TYPE: ${type.toUpperCase()}${gender != null ? " ($gender)" : ""}',
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black54,
-                          fontSize: 11,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
+                          letterSpacing: 0.5,),
                       ),
                       const SizedBox(height: 8),
                    ],
                    if (area != null) ...[
                       Text(
                         'ORIGIN: ${area}${country != null ? " ($country)" : ""}',
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black54,
-                          fontSize: 11,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
+                          letterSpacing: 0.5,),
                       ),
                       const SizedBox(height: 8),
                    ],
                    if (lifeSpan != null && lifeSpan['begin'] != null) ...[
                       Text(
                         'FORMED: ${lifeSpan['begin']}${lifeSpan['end'] != null ? " - ${lifeSpan['end']}" : ""}',
-                        style: TextStyle(
-                          color: isDark ? Colors.white54 : Colors.black54,
-                          fontSize: 11,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
-                        ),
+                          letterSpacing: 0.5,),
                       ),
                       const SizedBox(height: 8),
                    ],
@@ -702,11 +657,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                         spacing: 8,
                         children: tags.map((tag) => Text(
                           '#${tag.toUpperCase().replaceAll(" ", "")}',
-                          style: const TextStyle(
-                            color: AppleMusicTheme.primaryPink,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,),
                         )).toList(),
                       ),
                       const SizedBox(height: 16),
@@ -727,11 +679,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
                   wikiBio.length > 800 ? '${wikiBio.substring(0, 800).trim()}...' : wikiBio,
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 15,
-                    height: 1.5,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.5,),
                 ),
               );
             }
@@ -742,11 +691,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
                   bio,
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 15,
-                    height: 1.5,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.5,),
                 ),
               ) : const SizedBox.shrink(),
               loading: () => const SizedBox.shrink(),
@@ -758,11 +704,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
                   bio,
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 15,
-                    height: 1.5,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.5,),
                 ),
               ) : const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
@@ -773,11 +716,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
                   bio,
-                  style: TextStyle(
-                    color: isDark ? Colors.white70 : Colors.black87,
-                    fontSize: 15,
-                    height: 1.5,
-                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white70 : Colors.black87,
+                    height: 1.5,),
                 ),
               ) : const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
@@ -821,11 +761,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                   padding: const EdgeInsets.fromLTRB(20, 32, 20, 20),
                   child: Text(
                     'Similar Artists',
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.bold,),
                   ),
                 ),
                 SizedBox(
@@ -887,20 +824,14 @@ class _ArtistAlbumCard extends StatelessWidget {
             album.collectionName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: isDark ? Colors.white : Colors.black,
-            ),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black,),
           ),
           const SizedBox(height: 2),
           Text(
             album.releaseDate?.year.toString() ?? '',
             maxLines: 1,
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.white54 : Colors.black45,
-            ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
           ),
         ],
       ),
@@ -954,10 +885,10 @@ class _ArtistSongTileState extends ConsumerState<_ArtistSongTile> {
       if (mounted) {
         if (audioHandler.playbackState.value.playing) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Added to Next in Queue'),
               behavior: SnackBarBehavior.floating,
-              backgroundColor: AppleMusicTheme.primaryPink,
+              backgroundColor: Theme.of(context).colorScheme.primary,
             ),
           );
         }
@@ -1016,10 +947,10 @@ class _ArtistSongTileState extends ConsumerState<_ArtistSongTile> {
       if (mounted) {
         if (audioHandler.playbackState.value.playing) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text('Added to Next in Queue'),
               behavior: SnackBarBehavior.floating,
-              backgroundColor: AppleMusicTheme.primaryPink,
+              backgroundColor: Theme.of(context).colorScheme.primary,
             ),
           );
         }
@@ -1095,21 +1026,15 @@ class _ArtistSongTileState extends ConsumerState<_ArtistSongTile> {
                       widget.track.trackName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black,),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       widget.track.artistName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white54 : Colors.black45,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                   ],
                 ),
@@ -1184,12 +1109,9 @@ class _SimilarArtistAvatar extends ConsumerWidget {
               maxLines: 2,
               textAlign: TextAlign.center,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w500,
                 color: isDark ? Colors.white : Colors.black,
-                letterSpacing: -0.2,
-              ),
+                letterSpacing: -0.2,),
             ),
           ],
         ),

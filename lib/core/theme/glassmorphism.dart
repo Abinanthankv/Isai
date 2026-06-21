@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../features/music/presentation/music_providers.dart';
 
 class GlassContainer extends StatelessWidget {
   final Widget child;
@@ -207,7 +209,7 @@ class GlassButton extends StatelessWidget {
   }
 }
 
-class GlassIconButton extends StatelessWidget {
+class GlassIconButton extends ConsumerWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final double size;
@@ -224,9 +226,23 @@ class GlassIconButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isM3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
     
+    final effectiveGradient = isM3 ? null : gradient;
+    final effectiveColor = isM3
+        ? Theme.of(context).colorScheme.primary
+        : (gradient == null 
+            ? (isDark 
+                ? Colors.white.withOpacity(0.1) 
+                : Colors.white.withOpacity(0.7))
+            : null);
+            
+    final effectiveIconColor = isM3
+        ? Theme.of(context).colorScheme.onPrimary
+        : (iconColor ?? (isDark ? Colors.white : Colors.black));
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(size / 2),
       child: BackdropFilter(
@@ -240,13 +256,9 @@ class GlassIconButton extends StatelessWidget {
               width: size,
               height: size,
               decoration: BoxDecoration(
-                gradient: gradient,
+                gradient: effectiveGradient,
                 shape: BoxShape.circle,
-                color: gradient == null 
-                    ? (isDark 
-                        ? Colors.white.withOpacity(0.1) 
-                        : Colors.white.withOpacity(0.7))
-                    : null,
+                color: effectiveColor,
                 border: Border.all(
                   color: isDark 
                       ? Colors.white.withOpacity(0.15)
@@ -256,7 +268,7 @@ class GlassIconButton extends StatelessWidget {
               ),
               child: Icon(
                 icon,
-                color: iconColor ?? (isDark ? Colors.white : Colors.black),
+                color: effectiveIconColor,
                 size: size * 0.5,
               ),
             ),

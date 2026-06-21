@@ -8,6 +8,7 @@ import 'dart:ui';
 import '../../../core/theme/apple_music_theme.dart';
 import '../data/music_models.dart';
 import 'discovery_providers.dart';
+import 'music_providers.dart';
 import 'source_picker_sheet.dart';
 
 class DiscoverySwipeScreen extends ConsumerStatefulWidget {
@@ -101,9 +102,9 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
               Navigator.pop(context);
             },
           ),
-          title: const Text(
+          title: Text(
             'Vibe Swipe',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.5),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.5),
           ),
           centerTitle: true,
         ),
@@ -121,15 +122,12 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+          CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
           const SizedBox(height: 24),
           Text(
             'Finding your vibe...',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[500],
-              fontWeight: FontWeight.w500,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.grey[500],
+              fontWeight: FontWeight.w500,),
           ),
         ],
       ),
@@ -147,7 +145,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
             const SizedBox(height: 16),
             Text(
               'Couldn\'t load tracks',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey[600]),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             Text(error, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[500])),
@@ -163,7 +161,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: AppleMusicTheme.primaryPink),
+            CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 16),
             Text('Fetching more vibes...', style: TextStyle(color: Colors.grey[500])),
           ],
@@ -262,13 +260,10 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
                                       ),
                                       child: Text(
                                         isLikeSwipe ? 'LIKE' : 'NOPE',
-                                        style: TextStyle(
-                                          color: (isLikeSwipe ? Colors.green : Colors.red)
+                                        style: Theme.of(context).textTheme.displayMedium?.copyWith(color: (isLikeSwipe ? Colors.green : Colors.red)
                                               .withOpacity(feedbackOpacity),
-                                          fontSize: 42,
                                           fontWeight: FontWeight.w900,
-                                          letterSpacing: 4,
-                                        ),
+                                          letterSpacing: 4,),
                                       ),
                                     ),
                                   ),
@@ -292,6 +287,9 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
   }
 
   Widget _buildArtworkCard(DiscoveryTrack track, bool isDark, {required bool isTop}) {
+    final isM3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -320,10 +318,12 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      AppleMusicTheme.primaryPink.withOpacity(0.3),
-                      AppleMusicTheme.primaryPurple.withOpacity(0.3),
-                    ],
+                    colors: isM3
+                        ? [primaryColor.withOpacity(0.3), primaryColor.withOpacity(0.05)]
+                        : [
+                            Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                            AppleMusicTheme.primaryPurple.withOpacity(0.3),
+                          ],
                   ),
                 ),
                 child: const Center(
@@ -335,10 +335,12 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      AppleMusicTheme.primaryPink.withOpacity(0.3),
-                      AppleMusicTheme.primaryPurple.withOpacity(0.3),
-                    ],
+                    colors: isM3
+                        ? [primaryColor.withOpacity(0.3), primaryColor.withOpacity(0.05)]
+                        : [
+                            Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                            AppleMusicTheme.primaryPurple.withOpacity(0.3),
+                          ],
                   ),
                 ),
                 child: const Center(
@@ -359,7 +361,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
                     return LinearProgressIndicator(
                       value: _progressController.value,
                       backgroundColor: Colors.black.withOpacity(0.3),
-                      color: AppleMusicTheme.primaryPink,
+                      color: Theme.of(context).colorScheme.primary,
                       minHeight: 3,
                     );
                   },
@@ -380,12 +382,9 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
           // Song title
           Text(
             track.title,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800,
               color: isDark ? Colors.white : Colors.black,
-              letterSpacing: -0.5,
-            ),
+              letterSpacing: -0.5,),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -394,11 +393,8 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
           // Artist name
           Text(
             track.artist,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white60 : Colors.black54,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white60 : Colors.black54,),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -421,7 +417,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
               // Listen Full button
               _buildActionButton(
                 icon: Icons.play_arrow_rounded,
-                color: AppleMusicTheme.primaryPink,
+                color: Theme.of(context).colorScheme.primary,
                 size: 64,
                 iconSize: 38,
                 onTap: () {
@@ -468,11 +464,8 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
           // Hint text
           Text(
             '← Swipe left to skip  •  Swipe right to like →',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.white30 : Colors.black26,
-              fontWeight: FontWeight.w500,
-            ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white30 : Colors.black26,
+              fontWeight: FontWeight.w500,),
           ),
           const SizedBox(height: 8),
         ],

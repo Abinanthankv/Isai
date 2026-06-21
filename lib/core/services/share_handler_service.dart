@@ -34,7 +34,9 @@ class ShareHandlerService {
     // For sharing or opening when app is closed
     ReceiveSharingIntent.instance.getInitialMedia().then((value) {
       if (value.isNotEmpty) {
-        _handleSharedText(value.first.path);
+        Future.delayed(const Duration(milliseconds: 800), () {
+          _handleSharedText(value.first.path);
+        });
       }
     }).catchError((err) {
       print("[ShareHandler] Error receiving initial share: $err");
@@ -164,39 +166,165 @@ class ShareHandlerService {
     print("[ShareHandler] Processing YouTube Playlist: $url");
     _showStatus("Importing YouTube playlist...");
 
-    final yt = YoutubeExplode();
     try {
-      final playlist = await yt.playlists.get(url);
+      final cleanUrl = url.replaceAll('music.youtube.com', 'www.youtube.com');
+      final response = await _dio.get(
+        cleanUrl,
+        options: Options(headers: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        }),
+      );
+      final html = response.data as String;
       
+      final pattern = RegExp(r'var ytInitialData\s*=\s*(\{.*?\});\s*</script>');
+      final match = pattern.firstMatch(html);
+      if (match == null) {
+        throw Exception("Failed to extract YouTube playlist data");
+      }
+      
+      final data = jsonDecode(match.group(1)!);
+      
+      String playlistTitle = 'YouTube Playlist';
+      if (data['metadata'] != null && data['metadata']['playlistMetadataRenderer'] != null) {
+        playlistTitle = data['metadata']['playlistMetadataRenderer']['title'] ?? 'YouTube Playlist';
+      }
+      
+      String? playlistArtwork;
+      try {
+        final header = data['header']?['playlistHeaderRenderer'];
+        if (header != null && header['heroImage'] != null) {
+          final img = header['heroImage']['contentPreviewImageViewModel']?['image'];
+          if (img != null && img['sources'] != null && (img['sources'] as List).isNotEmpty) {
+            playlistArtwork = img['sources'].last['url'];
+          }
+        }
+      } catch (_) {}
+
+      final List<Map<String, dynamic>> parsedTracks = [];
+      _findTracksInJson(data, parsedTracks);
+
+      if (playlistArtwork == null && parsedTracks.isNotEmpty) {
+        playlistArtwork = parsedTracks.first['artworkUrl'];
+      }
+
       final db = getIt<AppDatabase>();
       final playlistId = await db.createPlaylist(PlaylistsCompanion.insert(
-        name: playlist.title,
-        artworkUrl: Value(playlist.thumbnails.highResUrl),
+        name: playlistTitle,
+        artworkUrl: Value(playlistArtwork),
         sourceUrl: Value(url),
         createdAt: DateTime.now().millisecondsSinceEpoch,
       ));
 
       final List<PlaylistTracksCompanion> tracks = [];
-      await for (final video in yt.playlists.getVideos(playlist.id)) {
+      for (final t in parsedTracks) {
         tracks.add(PlaylistTracksCompanion.insert(
           playlistId: playlistId,
-          title: video.title,
-          artist: video.author,
-          youtubeId: video.id.value,
-          duration: Value(video.duration?.inSeconds),
-          artworkUrl: Value(video.thumbnails.mediumResUrl),
+          title: t['title'] ?? 'Unknown Track',
+          artist: t['artist'] ?? 'Unknown Artist',
+          youtubeId: t['youtubeId'] ?? '',
+          duration: const Value(null),
+          artworkUrl: Value(t['artworkUrl']),
         ));
       }
 
       if (tracks.isNotEmpty) {
         await db.addTracksToPlaylist(tracks);
-        _showStatus("Imported '${playlist.title}' (${tracks.length} tracks)");
+        _showStatus("Imported '$playlistTitle' (${tracks.length} tracks)");
         _enrichPlaylistInBackground(playlistId);
       } else {
-        _showStatus("Imported empty playlist '${playlist.title}'");
+        _showStatus("Imported empty playlist '$playlistTitle'");
       }
-    } finally {
-      yt.close();
+    } catch (e) {
+      print("[ShareHandler] Error processing YouTube playlist: $e");
+      _showStatus("Error importing: $e");
+    }
+  }
+
+  static void _findTracksInJson(dynamic node, List<Map<String, dynamic>> results) {
+    if (node is Map) {
+      if (node.containsKey('lockupViewModel')) {
+        final item = node['lockupViewModel'];
+        final videoId = item['contentId'];
+        if (videoId != null && videoId.isNotEmpty) {
+          final metadata = item['metadata']?['lockupMetadataViewModel'];
+          String title = 'Unknown Title';
+          if (metadata != null && metadata['title'] != null) {
+            title = metadata['title']['content'] ?? 'Unknown Title';
+          }
+          
+          String artist = 'Unknown Artist';
+          if (metadata != null && metadata['metadata'] != null) {
+            final contentMeta = metadata['metadata']['contentMetadataViewModel'];
+            if (contentMeta != null && contentMeta['metadataRows'] != null && (contentMeta['metadataRows'] as List).isNotEmpty) {
+              final firstRow = contentMeta['metadataRows'][0];
+              if (firstRow['metadataParts'] != null && (firstRow['metadataParts'] as List).isNotEmpty) {
+                final firstPart = firstRow['metadataParts'][0];
+                if (firstPart['text'] != null) {
+                  artist = firstPart['text']['content'] ?? 'Unknown Artist';
+                }
+              }
+            }
+          }
+          
+          String thumb = '';
+          if (item['contentImage'] != null && item['contentImage']['thumbnailViewModel'] != null) {
+            final thumbModel = item['contentImage']['thumbnailViewModel'];
+            if (thumbModel['image'] != null && thumbModel['image']['sources'] != null) {
+              final sources = thumbModel['image']['sources'] as List;
+              if (sources.isNotEmpty) {
+                thumb = sources.last['url'] ?? '';
+              }
+            }
+          }
+          
+          results.add({
+            'title': title,
+            'artist': artist,
+            'youtubeId': videoId,
+            'artworkUrl': thumb,
+          });
+        }
+      } else if (node.containsKey('playlistVideoRenderer')) {
+        final item = node['playlistVideoRenderer'];
+        final videoId = item['videoId'];
+        if (videoId != null && videoId.isNotEmpty) {
+          String title = 'Unknown Title';
+          if (item['title'] != null) {
+            if (item['title']['runs'] != null && (item['title']['runs'] as List).isNotEmpty) {
+              title = item['title']['runs'][0]['text'] ?? 'Unknown Title';
+            } else {
+              title = item['title']['simpleText'] ?? 'Unknown Title';
+            }
+          }
+          
+          String artist = 'Unknown Artist';
+          if (item['shortBylineText'] != null && item['shortBylineText']['runs'] != null && (item['shortBylineText']['runs'] as List).isNotEmpty) {
+            artist = item['shortBylineText']['runs'][0]['text'] ?? 'Unknown Artist';
+          }
+          
+          String thumb = '';
+          if (item['thumbnail'] != null && item['thumbnail']['thumbnails'] != null) {
+            final sources = item['thumbnail']['thumbnails'] as List;
+            if (sources.isNotEmpty) {
+              thumb = sources.last['url'] ?? '';
+            }
+          }
+          
+          results.add({
+            'title': title,
+            'artist': artist,
+            'youtubeId': videoId,
+            'artworkUrl': thumb,
+          });
+        }
+      }
+      for (final val in node.values) {
+        _findTracksInJson(val, results);
+      }
+    } else if (node is List) {
+      for (final val in node) {
+        _findTracksInJson(val, results);
+      }
     }
   }
 

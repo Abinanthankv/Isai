@@ -9,6 +9,8 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'js_plugin.dart';
 import 'eclipse_addon.dart';
 import '../music_models.dart';
+import '../../../../core/di/injection.dart';
+import '../../../settings/data/torbox_settings_repository.dart';
 
 @lazySingleton
 class PluginManager {
@@ -20,10 +22,60 @@ class PluginManager {
   PluginManager(this._dio);
 
   List<JsPlugin> get plugins => List.unmodifiable(_plugins);
-  List<JsPlugin> get activePlugins => _plugins.where((p) => p.enabled).toList();
+  
+  List<JsPlugin> get activePlugins {
+    final active = _plugins.where((p) => p.enabled).toList();
+    try {
+      final priority = getIt<TorBoxSettingsRepository>().addonPriority;
+      if (priority.isEmpty) return active;
+      active.sort((a, b) {
+        int idxA = priority.indexOf(a.id);
+        int idxB = priority.indexOf(b.id);
+        if (idxA == -1) idxA = 999999;
+        if (idxB == -1) idxB = 999999;
+        return idxA.compareTo(idxB);
+      });
+    } catch (_) {}
+    return active;
+  }
 
   List<EclipseAddon> get eclipseAddons => List.unmodifiable(_eclipseAddons);
-  List<EclipseAddon> get activeEclipseAddons => _eclipseAddons.where((a) => a.enabled).toList();
+  
+  List<EclipseAddon> get activeEclipseAddons {
+    final active = _eclipseAddons.where((a) => a.enabled).toList();
+    try {
+      final priority = getIt<TorBoxSettingsRepository>().addonPriority;
+      if (priority.isEmpty) return active;
+      active.sort((a, b) {
+        int idxA = priority.indexOf('eclipse_${a.id}');
+        int idxB = priority.indexOf('eclipse_${b.id}');
+        if (idxA == -1) idxA = 999999;
+        if (idxB == -1) idxB = 999999;
+        return idxA.compareTo(idxB);
+      });
+    } catch (_) {}
+    return active;
+  }
+
+  List<dynamic> get prioritizedActiveAddons {
+    final activeJs = activePlugins;
+    final activeEclipse = activeEclipseAddons;
+    final all = <dynamic>[...activeJs, ...activeEclipse];
+    try {
+      final priority = getIt<TorBoxSettingsRepository>().addonPriority;
+      if (priority.isEmpty) return all;
+      all.sort((a, b) {
+        final idA = a is JsPlugin ? a.id : 'eclipse_${(a as EclipseAddon).id}';
+        final idB = b is JsPlugin ? b.id : 'eclipse_${(b as EclipseAddon).id}';
+        int idxA = priority.indexOf(idA);
+        int idxB = priority.indexOf(idB);
+        if (idxA == -1) idxA = 999999;
+        if (idxB == -1) idxB = 999999;
+        return idxA.compareTo(idxB);
+      });
+    } catch (_) {}
+    return all;
+  }
 
   /// Add a plugin to the in-memory list (useful for tests or custom scenarios)
   void registerPluginInMemory(JsPlugin plugin) {
