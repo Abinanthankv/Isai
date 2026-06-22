@@ -448,6 +448,7 @@ class MusicRepositoryImpl implements MusicRepository {
   Future<List<TorrentSearchResult>> searchAllTorrents(String query) async {
     final results = <TorrentSearchResult>[];
     final refinedQuery = _refineQuery(query);
+    print('[MusicRepository] searchAllTorrents: query="$query", refinedQuery="$refinedQuery"');
     
     final tasks = <Future<List<TorrentSearchResult>>>[
       searchTorrents(query).then((items) => items.map((r) => TorrentSearchResult.fromApibay(r)).toList()).catchError((_) => <TorrentSearchResult>[]),

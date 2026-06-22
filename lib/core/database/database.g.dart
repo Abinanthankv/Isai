@@ -4500,6 +4500,1115 @@ class FollowedArtistsCompanion extends UpdateCompanion<DbFollowedArtist> {
   }
 }
 
+class $AudiobookProgressTable extends AudiobookProgress
+    with TableInfo<$AudiobookProgressTable, DbAudiobookProgress> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AudiobookProgressTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chapterIndexMeta = const VerificationMeta(
+    'chapterIndex',
+  );
+  @override
+  late final GeneratedColumn<int> chapterIndex = GeneratedColumn<int>(
+    'chapter_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMillisMeta = const VerificationMeta(
+    'positionMillis',
+  );
+  @override
+  late final GeneratedColumn<int> positionMillis = GeneratedColumn<int>(
+    'position_millis',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _durationMillisMeta = const VerificationMeta(
+    'durationMillis',
+  );
+  @override
+  late final GeneratedColumn<int> durationMillis = GeneratedColumn<int>(
+    'duration_millis',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastListenedAtMeta = const VerificationMeta(
+    'lastListenedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastListenedAt =
+      GeneratedColumn<DateTime>(
+        'last_listened_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _isCompletedMeta = const VerificationMeta(
+    'isCompleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isCompleted = GeneratedColumn<bool>(
+    'is_completed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_completed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    bookId,
+    chapterIndex,
+    positionMillis,
+    durationMillis,
+    lastListenedAt,
+    isCompleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'audiobook_progress';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbAudiobookProgress> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('chapter_index')) {
+      context.handle(
+        _chapterIndexMeta,
+        chapterIndex.isAcceptableOrUnknown(
+          data['chapter_index']!,
+          _chapterIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_chapterIndexMeta);
+    }
+    if (data.containsKey('position_millis')) {
+      context.handle(
+        _positionMillisMeta,
+        positionMillis.isAcceptableOrUnknown(
+          data['position_millis']!,
+          _positionMillisMeta,
+        ),
+      );
+    }
+    if (data.containsKey('duration_millis')) {
+      context.handle(
+        _durationMillisMeta,
+        durationMillis.isAcceptableOrUnknown(
+          data['duration_millis']!,
+          _durationMillisMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_listened_at')) {
+      context.handle(
+        _lastListenedAtMeta,
+        lastListenedAt.isAcceptableOrUnknown(
+          data['last_listened_at']!,
+          _lastListenedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastListenedAtMeta);
+    }
+    if (data.containsKey('is_completed')) {
+      context.handle(
+        _isCompletedMeta,
+        isCompleted.isAcceptableOrUnknown(
+          data['is_completed']!,
+          _isCompletedMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbAudiobookProgress map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbAudiobookProgress(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      chapterIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chapter_index'],
+      )!,
+      positionMillis: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_millis'],
+      )!,
+      durationMillis: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_millis'],
+      )!,
+      lastListenedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_listened_at'],
+      )!,
+      isCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_completed'],
+      )!,
+    );
+  }
+
+  @override
+  $AudiobookProgressTable createAlias(String alias) {
+    return $AudiobookProgressTable(attachedDatabase, alias);
+  }
+}
+
+class DbAudiobookProgress extends DataClass
+    implements Insertable<DbAudiobookProgress> {
+  final int id;
+  final String bookId;
+  final int chapterIndex;
+  final int positionMillis;
+  final int durationMillis;
+  final DateTime lastListenedAt;
+  final bool isCompleted;
+  const DbAudiobookProgress({
+    required this.id,
+    required this.bookId,
+    required this.chapterIndex,
+    required this.positionMillis,
+    required this.durationMillis,
+    required this.lastListenedAt,
+    required this.isCompleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['book_id'] = Variable<String>(bookId);
+    map['chapter_index'] = Variable<int>(chapterIndex);
+    map['position_millis'] = Variable<int>(positionMillis);
+    map['duration_millis'] = Variable<int>(durationMillis);
+    map['last_listened_at'] = Variable<DateTime>(lastListenedAt);
+    map['is_completed'] = Variable<bool>(isCompleted);
+    return map;
+  }
+
+  AudiobookProgressCompanion toCompanion(bool nullToAbsent) {
+    return AudiobookProgressCompanion(
+      id: Value(id),
+      bookId: Value(bookId),
+      chapterIndex: Value(chapterIndex),
+      positionMillis: Value(positionMillis),
+      durationMillis: Value(durationMillis),
+      lastListenedAt: Value(lastListenedAt),
+      isCompleted: Value(isCompleted),
+    );
+  }
+
+  factory DbAudiobookProgress.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbAudiobookProgress(
+      id: serializer.fromJson<int>(json['id']),
+      bookId: serializer.fromJson<String>(json['bookId']),
+      chapterIndex: serializer.fromJson<int>(json['chapterIndex']),
+      positionMillis: serializer.fromJson<int>(json['positionMillis']),
+      durationMillis: serializer.fromJson<int>(json['durationMillis']),
+      lastListenedAt: serializer.fromJson<DateTime>(json['lastListenedAt']),
+      isCompleted: serializer.fromJson<bool>(json['isCompleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bookId': serializer.toJson<String>(bookId),
+      'chapterIndex': serializer.toJson<int>(chapterIndex),
+      'positionMillis': serializer.toJson<int>(positionMillis),
+      'durationMillis': serializer.toJson<int>(durationMillis),
+      'lastListenedAt': serializer.toJson<DateTime>(lastListenedAt),
+      'isCompleted': serializer.toJson<bool>(isCompleted),
+    };
+  }
+
+  DbAudiobookProgress copyWith({
+    int? id,
+    String? bookId,
+    int? chapterIndex,
+    int? positionMillis,
+    int? durationMillis,
+    DateTime? lastListenedAt,
+    bool? isCompleted,
+  }) => DbAudiobookProgress(
+    id: id ?? this.id,
+    bookId: bookId ?? this.bookId,
+    chapterIndex: chapterIndex ?? this.chapterIndex,
+    positionMillis: positionMillis ?? this.positionMillis,
+    durationMillis: durationMillis ?? this.durationMillis,
+    lastListenedAt: lastListenedAt ?? this.lastListenedAt,
+    isCompleted: isCompleted ?? this.isCompleted,
+  );
+  DbAudiobookProgress copyWithCompanion(AudiobookProgressCompanion data) {
+    return DbAudiobookProgress(
+      id: data.id.present ? data.id.value : this.id,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      chapterIndex: data.chapterIndex.present
+          ? data.chapterIndex.value
+          : this.chapterIndex,
+      positionMillis: data.positionMillis.present
+          ? data.positionMillis.value
+          : this.positionMillis,
+      durationMillis: data.durationMillis.present
+          ? data.durationMillis.value
+          : this.durationMillis,
+      lastListenedAt: data.lastListenedAt.present
+          ? data.lastListenedAt.value
+          : this.lastListenedAt,
+      isCompleted: data.isCompleted.present
+          ? data.isCompleted.value
+          : this.isCompleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbAudiobookProgress(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('positionMillis: $positionMillis, ')
+          ..write('durationMillis: $durationMillis, ')
+          ..write('lastListenedAt: $lastListenedAt, ')
+          ..write('isCompleted: $isCompleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    bookId,
+    chapterIndex,
+    positionMillis,
+    durationMillis,
+    lastListenedAt,
+    isCompleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbAudiobookProgress &&
+          other.id == this.id &&
+          other.bookId == this.bookId &&
+          other.chapterIndex == this.chapterIndex &&
+          other.positionMillis == this.positionMillis &&
+          other.durationMillis == this.durationMillis &&
+          other.lastListenedAt == this.lastListenedAt &&
+          other.isCompleted == this.isCompleted);
+}
+
+class AudiobookProgressCompanion extends UpdateCompanion<DbAudiobookProgress> {
+  final Value<int> id;
+  final Value<String> bookId;
+  final Value<int> chapterIndex;
+  final Value<int> positionMillis;
+  final Value<int> durationMillis;
+  final Value<DateTime> lastListenedAt;
+  final Value<bool> isCompleted;
+  const AudiobookProgressCompanion({
+    this.id = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.chapterIndex = const Value.absent(),
+    this.positionMillis = const Value.absent(),
+    this.durationMillis = const Value.absent(),
+    this.lastListenedAt = const Value.absent(),
+    this.isCompleted = const Value.absent(),
+  });
+  AudiobookProgressCompanion.insert({
+    this.id = const Value.absent(),
+    required String bookId,
+    required int chapterIndex,
+    this.positionMillis = const Value.absent(),
+    this.durationMillis = const Value.absent(),
+    required DateTime lastListenedAt,
+    this.isCompleted = const Value.absent(),
+  }) : bookId = Value(bookId),
+       chapterIndex = Value(chapterIndex),
+       lastListenedAt = Value(lastListenedAt);
+  static Insertable<DbAudiobookProgress> custom({
+    Expression<int>? id,
+    Expression<String>? bookId,
+    Expression<int>? chapterIndex,
+    Expression<int>? positionMillis,
+    Expression<int>? durationMillis,
+    Expression<DateTime>? lastListenedAt,
+    Expression<bool>? isCompleted,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bookId != null) 'book_id': bookId,
+      if (chapterIndex != null) 'chapter_index': chapterIndex,
+      if (positionMillis != null) 'position_millis': positionMillis,
+      if (durationMillis != null) 'duration_millis': durationMillis,
+      if (lastListenedAt != null) 'last_listened_at': lastListenedAt,
+      if (isCompleted != null) 'is_completed': isCompleted,
+    });
+  }
+
+  AudiobookProgressCompanion copyWith({
+    Value<int>? id,
+    Value<String>? bookId,
+    Value<int>? chapterIndex,
+    Value<int>? positionMillis,
+    Value<int>? durationMillis,
+    Value<DateTime>? lastListenedAt,
+    Value<bool>? isCompleted,
+  }) {
+    return AudiobookProgressCompanion(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      chapterIndex: chapterIndex ?? this.chapterIndex,
+      positionMillis: positionMillis ?? this.positionMillis,
+      durationMillis: durationMillis ?? this.durationMillis,
+      lastListenedAt: lastListenedAt ?? this.lastListenedAt,
+      isCompleted: isCompleted ?? this.isCompleted,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (chapterIndex.present) {
+      map['chapter_index'] = Variable<int>(chapterIndex.value);
+    }
+    if (positionMillis.present) {
+      map['position_millis'] = Variable<int>(positionMillis.value);
+    }
+    if (durationMillis.present) {
+      map['duration_millis'] = Variable<int>(durationMillis.value);
+    }
+    if (lastListenedAt.present) {
+      map['last_listened_at'] = Variable<DateTime>(lastListenedAt.value);
+    }
+    if (isCompleted.present) {
+      map['is_completed'] = Variable<bool>(isCompleted.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AudiobookProgressCompanion(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('positionMillis: $positionMillis, ')
+          ..write('durationMillis: $durationMillis, ')
+          ..write('lastListenedAt: $lastListenedAt, ')
+          ..write('isCompleted: $isCompleted')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AudiobookMetadataCacheTable extends AudiobookMetadataCache
+    with TableInfo<$AudiobookMetadataCacheTable, DbAudiobookMetadataCache> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AudiobookMetadataCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _authorMeta = const VerificationMeta('author');
+  @override
+  late final GeneratedColumn<String> author = GeneratedColumn<String>(
+    'author',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _narratorMeta = const VerificationMeta(
+    'narrator',
+  );
+  @override
+  late final GeneratedColumn<String> narrator = GeneratedColumn<String>(
+    'narrator',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _artworkUrlMeta = const VerificationMeta(
+    'artworkUrl',
+  );
+  @override
+  late final GeneratedColumn<String> artworkUrl = GeneratedColumn<String>(
+    'artwork_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _totalChaptersMeta = const VerificationMeta(
+    'totalChapters',
+  );
+  @override
+  late final GeneratedColumn<int> totalChapters = GeneratedColumn<int>(
+    'total_chapters',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _languageMeta = const VerificationMeta(
+    'language',
+  );
+  @override
+  late final GeneratedColumn<String> language = GeneratedColumn<String>(
+    'language',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _genreMeta = const VerificationMeta('genre');
+  @override
+  late final GeneratedColumn<String> genre = GeneratedColumn<String>(
+    'genre',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastUpdatedMeta = const VerificationMeta(
+    'lastUpdated',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastUpdated = GeneratedColumn<DateTime>(
+    'last_updated',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    bookId,
+    title,
+    author,
+    narrator,
+    artworkUrl,
+    description,
+    totalChapters,
+    language,
+    genre,
+    lastUpdated,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'audiobook_metadata_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbAudiobookMetadataCache> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('author')) {
+      context.handle(
+        _authorMeta,
+        author.isAcceptableOrUnknown(data['author']!, _authorMeta),
+      );
+    }
+    if (data.containsKey('narrator')) {
+      context.handle(
+        _narratorMeta,
+        narrator.isAcceptableOrUnknown(data['narrator']!, _narratorMeta),
+      );
+    }
+    if (data.containsKey('artwork_url')) {
+      context.handle(
+        _artworkUrlMeta,
+        artworkUrl.isAcceptableOrUnknown(data['artwork_url']!, _artworkUrlMeta),
+      );
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('total_chapters')) {
+      context.handle(
+        _totalChaptersMeta,
+        totalChapters.isAcceptableOrUnknown(
+          data['total_chapters']!,
+          _totalChaptersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('language')) {
+      context.handle(
+        _languageMeta,
+        language.isAcceptableOrUnknown(data['language']!, _languageMeta),
+      );
+    }
+    if (data.containsKey('genre')) {
+      context.handle(
+        _genreMeta,
+        genre.isAcceptableOrUnknown(data['genre']!, _genreMeta),
+      );
+    }
+    if (data.containsKey('last_updated')) {
+      context.handle(
+        _lastUpdatedMeta,
+        lastUpdated.isAcceptableOrUnknown(
+          data['last_updated']!,
+          _lastUpdatedMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastUpdatedMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {bookId};
+  @override
+  DbAudiobookMetadataCache map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbAudiobookMetadataCache(
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      author: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}author'],
+      ),
+      narrator: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}narrator'],
+      ),
+      artworkUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artwork_url'],
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      totalChapters: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_chapters'],
+      )!,
+      language: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}language'],
+      ),
+      genre: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}genre'],
+      ),
+      lastUpdated: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_updated'],
+      )!,
+    );
+  }
+
+  @override
+  $AudiobookMetadataCacheTable createAlias(String alias) {
+    return $AudiobookMetadataCacheTable(attachedDatabase, alias);
+  }
+}
+
+class DbAudiobookMetadataCache extends DataClass
+    implements Insertable<DbAudiobookMetadataCache> {
+  final String bookId;
+  final String title;
+  final String? author;
+  final String? narrator;
+  final String? artworkUrl;
+  final String? description;
+  final int totalChapters;
+  final String? language;
+  final String? genre;
+  final DateTime lastUpdated;
+  const DbAudiobookMetadataCache({
+    required this.bookId,
+    required this.title,
+    this.author,
+    this.narrator,
+    this.artworkUrl,
+    this.description,
+    required this.totalChapters,
+    this.language,
+    this.genre,
+    required this.lastUpdated,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['book_id'] = Variable<String>(bookId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || author != null) {
+      map['author'] = Variable<String>(author);
+    }
+    if (!nullToAbsent || narrator != null) {
+      map['narrator'] = Variable<String>(narrator);
+    }
+    if (!nullToAbsent || artworkUrl != null) {
+      map['artwork_url'] = Variable<String>(artworkUrl);
+    }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['total_chapters'] = Variable<int>(totalChapters);
+    if (!nullToAbsent || language != null) {
+      map['language'] = Variable<String>(language);
+    }
+    if (!nullToAbsent || genre != null) {
+      map['genre'] = Variable<String>(genre);
+    }
+    map['last_updated'] = Variable<DateTime>(lastUpdated);
+    return map;
+  }
+
+  AudiobookMetadataCacheCompanion toCompanion(bool nullToAbsent) {
+    return AudiobookMetadataCacheCompanion(
+      bookId: Value(bookId),
+      title: Value(title),
+      author: author == null && nullToAbsent
+          ? const Value.absent()
+          : Value(author),
+      narrator: narrator == null && nullToAbsent
+          ? const Value.absent()
+          : Value(narrator),
+      artworkUrl: artworkUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(artworkUrl),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      totalChapters: Value(totalChapters),
+      language: language == null && nullToAbsent
+          ? const Value.absent()
+          : Value(language),
+      genre: genre == null && nullToAbsent
+          ? const Value.absent()
+          : Value(genre),
+      lastUpdated: Value(lastUpdated),
+    );
+  }
+
+  factory DbAudiobookMetadataCache.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbAudiobookMetadataCache(
+      bookId: serializer.fromJson<String>(json['bookId']),
+      title: serializer.fromJson<String>(json['title']),
+      author: serializer.fromJson<String?>(json['author']),
+      narrator: serializer.fromJson<String?>(json['narrator']),
+      artworkUrl: serializer.fromJson<String?>(json['artworkUrl']),
+      description: serializer.fromJson<String?>(json['description']),
+      totalChapters: serializer.fromJson<int>(json['totalChapters']),
+      language: serializer.fromJson<String?>(json['language']),
+      genre: serializer.fromJson<String?>(json['genre']),
+      lastUpdated: serializer.fromJson<DateTime>(json['lastUpdated']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'bookId': serializer.toJson<String>(bookId),
+      'title': serializer.toJson<String>(title),
+      'author': serializer.toJson<String?>(author),
+      'narrator': serializer.toJson<String?>(narrator),
+      'artworkUrl': serializer.toJson<String?>(artworkUrl),
+      'description': serializer.toJson<String?>(description),
+      'totalChapters': serializer.toJson<int>(totalChapters),
+      'language': serializer.toJson<String?>(language),
+      'genre': serializer.toJson<String?>(genre),
+      'lastUpdated': serializer.toJson<DateTime>(lastUpdated),
+    };
+  }
+
+  DbAudiobookMetadataCache copyWith({
+    String? bookId,
+    String? title,
+    Value<String?> author = const Value.absent(),
+    Value<String?> narrator = const Value.absent(),
+    Value<String?> artworkUrl = const Value.absent(),
+    Value<String?> description = const Value.absent(),
+    int? totalChapters,
+    Value<String?> language = const Value.absent(),
+    Value<String?> genre = const Value.absent(),
+    DateTime? lastUpdated,
+  }) => DbAudiobookMetadataCache(
+    bookId: bookId ?? this.bookId,
+    title: title ?? this.title,
+    author: author.present ? author.value : this.author,
+    narrator: narrator.present ? narrator.value : this.narrator,
+    artworkUrl: artworkUrl.present ? artworkUrl.value : this.artworkUrl,
+    description: description.present ? description.value : this.description,
+    totalChapters: totalChapters ?? this.totalChapters,
+    language: language.present ? language.value : this.language,
+    genre: genre.present ? genre.value : this.genre,
+    lastUpdated: lastUpdated ?? this.lastUpdated,
+  );
+  DbAudiobookMetadataCache copyWithCompanion(
+    AudiobookMetadataCacheCompanion data,
+  ) {
+    return DbAudiobookMetadataCache(
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      title: data.title.present ? data.title.value : this.title,
+      author: data.author.present ? data.author.value : this.author,
+      narrator: data.narrator.present ? data.narrator.value : this.narrator,
+      artworkUrl: data.artworkUrl.present
+          ? data.artworkUrl.value
+          : this.artworkUrl,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      totalChapters: data.totalChapters.present
+          ? data.totalChapters.value
+          : this.totalChapters,
+      language: data.language.present ? data.language.value : this.language,
+      genre: data.genre.present ? data.genre.value : this.genre,
+      lastUpdated: data.lastUpdated.present
+          ? data.lastUpdated.value
+          : this.lastUpdated,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbAudiobookMetadataCache(')
+          ..write('bookId: $bookId, ')
+          ..write('title: $title, ')
+          ..write('author: $author, ')
+          ..write('narrator: $narrator, ')
+          ..write('artworkUrl: $artworkUrl, ')
+          ..write('description: $description, ')
+          ..write('totalChapters: $totalChapters, ')
+          ..write('language: $language, ')
+          ..write('genre: $genre, ')
+          ..write('lastUpdated: $lastUpdated')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    bookId,
+    title,
+    author,
+    narrator,
+    artworkUrl,
+    description,
+    totalChapters,
+    language,
+    genre,
+    lastUpdated,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbAudiobookMetadataCache &&
+          other.bookId == this.bookId &&
+          other.title == this.title &&
+          other.author == this.author &&
+          other.narrator == this.narrator &&
+          other.artworkUrl == this.artworkUrl &&
+          other.description == this.description &&
+          other.totalChapters == this.totalChapters &&
+          other.language == this.language &&
+          other.genre == this.genre &&
+          other.lastUpdated == this.lastUpdated);
+}
+
+class AudiobookMetadataCacheCompanion
+    extends UpdateCompanion<DbAudiobookMetadataCache> {
+  final Value<String> bookId;
+  final Value<String> title;
+  final Value<String?> author;
+  final Value<String?> narrator;
+  final Value<String?> artworkUrl;
+  final Value<String?> description;
+  final Value<int> totalChapters;
+  final Value<String?> language;
+  final Value<String?> genre;
+  final Value<DateTime> lastUpdated;
+  final Value<int> rowid;
+  const AudiobookMetadataCacheCompanion({
+    this.bookId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.author = const Value.absent(),
+    this.narrator = const Value.absent(),
+    this.artworkUrl = const Value.absent(),
+    this.description = const Value.absent(),
+    this.totalChapters = const Value.absent(),
+    this.language = const Value.absent(),
+    this.genre = const Value.absent(),
+    this.lastUpdated = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AudiobookMetadataCacheCompanion.insert({
+    required String bookId,
+    required String title,
+    this.author = const Value.absent(),
+    this.narrator = const Value.absent(),
+    this.artworkUrl = const Value.absent(),
+    this.description = const Value.absent(),
+    this.totalChapters = const Value.absent(),
+    this.language = const Value.absent(),
+    this.genre = const Value.absent(),
+    required DateTime lastUpdated,
+    this.rowid = const Value.absent(),
+  }) : bookId = Value(bookId),
+       title = Value(title),
+       lastUpdated = Value(lastUpdated);
+  static Insertable<DbAudiobookMetadataCache> custom({
+    Expression<String>? bookId,
+    Expression<String>? title,
+    Expression<String>? author,
+    Expression<String>? narrator,
+    Expression<String>? artworkUrl,
+    Expression<String>? description,
+    Expression<int>? totalChapters,
+    Expression<String>? language,
+    Expression<String>? genre,
+    Expression<DateTime>? lastUpdated,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (bookId != null) 'book_id': bookId,
+      if (title != null) 'title': title,
+      if (author != null) 'author': author,
+      if (narrator != null) 'narrator': narrator,
+      if (artworkUrl != null) 'artwork_url': artworkUrl,
+      if (description != null) 'description': description,
+      if (totalChapters != null) 'total_chapters': totalChapters,
+      if (language != null) 'language': language,
+      if (genre != null) 'genre': genre,
+      if (lastUpdated != null) 'last_updated': lastUpdated,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AudiobookMetadataCacheCompanion copyWith({
+    Value<String>? bookId,
+    Value<String>? title,
+    Value<String?>? author,
+    Value<String?>? narrator,
+    Value<String?>? artworkUrl,
+    Value<String?>? description,
+    Value<int>? totalChapters,
+    Value<String?>? language,
+    Value<String?>? genre,
+    Value<DateTime>? lastUpdated,
+    Value<int>? rowid,
+  }) {
+    return AudiobookMetadataCacheCompanion(
+      bookId: bookId ?? this.bookId,
+      title: title ?? this.title,
+      author: author ?? this.author,
+      narrator: narrator ?? this.narrator,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
+      description: description ?? this.description,
+      totalChapters: totalChapters ?? this.totalChapters,
+      language: language ?? this.language,
+      genre: genre ?? this.genre,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (author.present) {
+      map['author'] = Variable<String>(author.value);
+    }
+    if (narrator.present) {
+      map['narrator'] = Variable<String>(narrator.value);
+    }
+    if (artworkUrl.present) {
+      map['artwork_url'] = Variable<String>(artworkUrl.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (totalChapters.present) {
+      map['total_chapters'] = Variable<int>(totalChapters.value);
+    }
+    if (language.present) {
+      map['language'] = Variable<String>(language.value);
+    }
+    if (genre.present) {
+      map['genre'] = Variable<String>(genre.value);
+    }
+    if (lastUpdated.present) {
+      map['last_updated'] = Variable<DateTime>(lastUpdated.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AudiobookMetadataCacheCompanion(')
+          ..write('bookId: $bookId, ')
+          ..write('title: $title, ')
+          ..write('author: $author, ')
+          ..write('narrator: $narrator, ')
+          ..write('artworkUrl: $artworkUrl, ')
+          ..write('description: $description, ')
+          ..write('totalChapters: $totalChapters, ')
+          ..write('language: $language, ')
+          ..write('genre: $genre, ')
+          ..write('lastUpdated: $lastUpdated, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4517,6 +5626,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FollowedArtistsTable followedArtists = $FollowedArtistsTable(
     this,
   );
+  late final $AudiobookProgressTable audiobookProgress =
+      $AudiobookProgressTable(this);
+  late final $AudiobookMetadataCacheTable audiobookMetadataCache =
+      $AudiobookMetadataCacheTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4531,6 +5644,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     playlistTracks,
     externalTrackMetadata,
     followedArtists,
+    audiobookProgress,
+    audiobookMetadataCache,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -7058,6 +8173,583 @@ typedef $$FollowedArtistsTableProcessedTableManager =
       DbFollowedArtist,
       PrefetchHooks Function()
     >;
+typedef $$AudiobookProgressTableCreateCompanionBuilder =
+    AudiobookProgressCompanion Function({
+      Value<int> id,
+      required String bookId,
+      required int chapterIndex,
+      Value<int> positionMillis,
+      Value<int> durationMillis,
+      required DateTime lastListenedAt,
+      Value<bool> isCompleted,
+    });
+typedef $$AudiobookProgressTableUpdateCompanionBuilder =
+    AudiobookProgressCompanion Function({
+      Value<int> id,
+      Value<String> bookId,
+      Value<int> chapterIndex,
+      Value<int> positionMillis,
+      Value<int> durationMillis,
+      Value<DateTime> lastListenedAt,
+      Value<bool> isCompleted,
+    });
+
+class $$AudiobookProgressTableFilterComposer
+    extends Composer<_$AppDatabase, $AudiobookProgressTable> {
+  $$AudiobookProgressTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMillis => $composableBuilder(
+    column: $table.durationMillis,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastListenedAt => $composableBuilder(
+    column: $table.lastListenedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AudiobookProgressTableOrderingComposer
+    extends Composer<_$AppDatabase, $AudiobookProgressTable> {
+  $$AudiobookProgressTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMillis => $composableBuilder(
+    column: $table.durationMillis,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastListenedAt => $composableBuilder(
+    column: $table.lastListenedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AudiobookProgressTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AudiobookProgressTable> {
+  $$AudiobookProgressTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bookId =>
+      $composableBuilder(column: $table.bookId, builder: (column) => column);
+
+  GeneratedColumn<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get durationMillis => $composableBuilder(
+    column: $table.durationMillis,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get lastListenedAt => $composableBuilder(
+    column: $table.lastListenedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isCompleted => $composableBuilder(
+    column: $table.isCompleted,
+    builder: (column) => column,
+  );
+}
+
+class $$AudiobookProgressTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AudiobookProgressTable,
+          DbAudiobookProgress,
+          $$AudiobookProgressTableFilterComposer,
+          $$AudiobookProgressTableOrderingComposer,
+          $$AudiobookProgressTableAnnotationComposer,
+          $$AudiobookProgressTableCreateCompanionBuilder,
+          $$AudiobookProgressTableUpdateCompanionBuilder,
+          (
+            DbAudiobookProgress,
+            BaseReferences<
+              _$AppDatabase,
+              $AudiobookProgressTable,
+              DbAudiobookProgress
+            >,
+          ),
+          DbAudiobookProgress,
+          PrefetchHooks Function()
+        > {
+  $$AudiobookProgressTableTableManager(
+    _$AppDatabase db,
+    $AudiobookProgressTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AudiobookProgressTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AudiobookProgressTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AudiobookProgressTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> bookId = const Value.absent(),
+                Value<int> chapterIndex = const Value.absent(),
+                Value<int> positionMillis = const Value.absent(),
+                Value<int> durationMillis = const Value.absent(),
+                Value<DateTime> lastListenedAt = const Value.absent(),
+                Value<bool> isCompleted = const Value.absent(),
+              }) => AudiobookProgressCompanion(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                positionMillis: positionMillis,
+                durationMillis: durationMillis,
+                lastListenedAt: lastListenedAt,
+                isCompleted: isCompleted,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String bookId,
+                required int chapterIndex,
+                Value<int> positionMillis = const Value.absent(),
+                Value<int> durationMillis = const Value.absent(),
+                required DateTime lastListenedAt,
+                Value<bool> isCompleted = const Value.absent(),
+              }) => AudiobookProgressCompanion.insert(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                positionMillis: positionMillis,
+                durationMillis: durationMillis,
+                lastListenedAt: lastListenedAt,
+                isCompleted: isCompleted,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AudiobookProgressTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AudiobookProgressTable,
+      DbAudiobookProgress,
+      $$AudiobookProgressTableFilterComposer,
+      $$AudiobookProgressTableOrderingComposer,
+      $$AudiobookProgressTableAnnotationComposer,
+      $$AudiobookProgressTableCreateCompanionBuilder,
+      $$AudiobookProgressTableUpdateCompanionBuilder,
+      (
+        DbAudiobookProgress,
+        BaseReferences<
+          _$AppDatabase,
+          $AudiobookProgressTable,
+          DbAudiobookProgress
+        >,
+      ),
+      DbAudiobookProgress,
+      PrefetchHooks Function()
+    >;
+typedef $$AudiobookMetadataCacheTableCreateCompanionBuilder =
+    AudiobookMetadataCacheCompanion Function({
+      required String bookId,
+      required String title,
+      Value<String?> author,
+      Value<String?> narrator,
+      Value<String?> artworkUrl,
+      Value<String?> description,
+      Value<int> totalChapters,
+      Value<String?> language,
+      Value<String?> genre,
+      required DateTime lastUpdated,
+      Value<int> rowid,
+    });
+typedef $$AudiobookMetadataCacheTableUpdateCompanionBuilder =
+    AudiobookMetadataCacheCompanion Function({
+      Value<String> bookId,
+      Value<String> title,
+      Value<String?> author,
+      Value<String?> narrator,
+      Value<String?> artworkUrl,
+      Value<String?> description,
+      Value<int> totalChapters,
+      Value<String?> language,
+      Value<String?> genre,
+      Value<DateTime> lastUpdated,
+      Value<int> rowid,
+    });
+
+class $$AudiobookMetadataCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $AudiobookMetadataCacheTable> {
+  $$AudiobookMetadataCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get author => $composableBuilder(
+    column: $table.author,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get narrator => $composableBuilder(
+    column: $table.narrator,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artworkUrl => $composableBuilder(
+    column: $table.artworkUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalChapters => $composableBuilder(
+    column: $table.totalChapters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get genre => $composableBuilder(
+    column: $table.genre,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastUpdated => $composableBuilder(
+    column: $table.lastUpdated,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AudiobookMetadataCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $AudiobookMetadataCacheTable> {
+  $$AudiobookMetadataCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get author => $composableBuilder(
+    column: $table.author,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get narrator => $composableBuilder(
+    column: $table.narrator,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artworkUrl => $composableBuilder(
+    column: $table.artworkUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalChapters => $composableBuilder(
+    column: $table.totalChapters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get genre => $composableBuilder(
+    column: $table.genre,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastUpdated => $composableBuilder(
+    column: $table.lastUpdated,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AudiobookMetadataCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AudiobookMetadataCacheTable> {
+  $$AudiobookMetadataCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get bookId =>
+      $composableBuilder(column: $table.bookId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get author =>
+      $composableBuilder(column: $table.author, builder: (column) => column);
+
+  GeneratedColumn<String> get narrator =>
+      $composableBuilder(column: $table.narrator, builder: (column) => column);
+
+  GeneratedColumn<String> get artworkUrl => $composableBuilder(
+    column: $table.artworkUrl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get totalChapters => $composableBuilder(
+    column: $table.totalChapters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get language =>
+      $composableBuilder(column: $table.language, builder: (column) => column);
+
+  GeneratedColumn<String> get genre =>
+      $composableBuilder(column: $table.genre, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastUpdated => $composableBuilder(
+    column: $table.lastUpdated,
+    builder: (column) => column,
+  );
+}
+
+class $$AudiobookMetadataCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AudiobookMetadataCacheTable,
+          DbAudiobookMetadataCache,
+          $$AudiobookMetadataCacheTableFilterComposer,
+          $$AudiobookMetadataCacheTableOrderingComposer,
+          $$AudiobookMetadataCacheTableAnnotationComposer,
+          $$AudiobookMetadataCacheTableCreateCompanionBuilder,
+          $$AudiobookMetadataCacheTableUpdateCompanionBuilder,
+          (
+            DbAudiobookMetadataCache,
+            BaseReferences<
+              _$AppDatabase,
+              $AudiobookMetadataCacheTable,
+              DbAudiobookMetadataCache
+            >,
+          ),
+          DbAudiobookMetadataCache,
+          PrefetchHooks Function()
+        > {
+  $$AudiobookMetadataCacheTableTableManager(
+    _$AppDatabase db,
+    $AudiobookMetadataCacheTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AudiobookMetadataCacheTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$AudiobookMetadataCacheTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AudiobookMetadataCacheTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> bookId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> author = const Value.absent(),
+                Value<String?> narrator = const Value.absent(),
+                Value<String?> artworkUrl = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<int> totalChapters = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String?> genre = const Value.absent(),
+                Value<DateTime> lastUpdated = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => AudiobookMetadataCacheCompanion(
+                bookId: bookId,
+                title: title,
+                author: author,
+                narrator: narrator,
+                artworkUrl: artworkUrl,
+                description: description,
+                totalChapters: totalChapters,
+                language: language,
+                genre: genre,
+                lastUpdated: lastUpdated,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String bookId,
+                required String title,
+                Value<String?> author = const Value.absent(),
+                Value<String?> narrator = const Value.absent(),
+                Value<String?> artworkUrl = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<int> totalChapters = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String?> genre = const Value.absent(),
+                required DateTime lastUpdated,
+                Value<int> rowid = const Value.absent(),
+              }) => AudiobookMetadataCacheCompanion.insert(
+                bookId: bookId,
+                title: title,
+                author: author,
+                narrator: narrator,
+                artworkUrl: artworkUrl,
+                description: description,
+                totalChapters: totalChapters,
+                language: language,
+                genre: genre,
+                lastUpdated: lastUpdated,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AudiobookMetadataCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AudiobookMetadataCacheTable,
+      DbAudiobookMetadataCache,
+      $$AudiobookMetadataCacheTableFilterComposer,
+      $$AudiobookMetadataCacheTableOrderingComposer,
+      $$AudiobookMetadataCacheTableAnnotationComposer,
+      $$AudiobookMetadataCacheTableCreateCompanionBuilder,
+      $$AudiobookMetadataCacheTableUpdateCompanionBuilder,
+      (
+        DbAudiobookMetadataCache,
+        BaseReferences<
+          _$AppDatabase,
+          $AudiobookMetadataCacheTable,
+          DbAudiobookMetadataCache
+        >,
+      ),
+      DbAudiobookMetadataCache,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7080,4 +8772,11 @@ class $AppDatabaseManager {
       $$ExternalTrackMetadataTableTableManager(_db, _db.externalTrackMetadata);
   $$FollowedArtistsTableTableManager get followedArtists =>
       $$FollowedArtistsTableTableManager(_db, _db.followedArtists);
+  $$AudiobookProgressTableTableManager get audiobookProgress =>
+      $$AudiobookProgressTableTableManager(_db, _db.audiobookProgress);
+  $$AudiobookMetadataCacheTableTableManager get audiobookMetadataCache =>
+      $$AudiobookMetadataCacheTableTableManager(
+        _db,
+        _db.audiobookMetadataCache,
+      );
 }

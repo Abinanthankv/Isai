@@ -37,8 +37,9 @@ class TorBoxFile {
   final int size;
   final int torrentId;
   final String? localPath;
+  final String mediaType; // Added for audiobook isolation
 
-  static const _audioExtensions = ['.mp3', '.flac', '.aac', '.m4a', '.ogg', '.opus', '.wav'];
+  static const _audioExtensions = ['.mp3', '.flac', '.aac', '.m4a', '.m4b', '.ogg', '.opus', '.wav'];
 
   TorBoxFile({
     required this.id,
@@ -46,6 +47,7 @@ class TorBoxFile {
     required this.size,
     required this.torrentId,
     this.localPath,
+    this.mediaType = 'music',
   });
 
   bool get isAudio {
@@ -72,6 +74,7 @@ class TorBoxFile {
       // prefer explicit field, fallback to parentTorrentId
       torrentId: (json['torrent_id'] as num?)?.toInt() ?? parentTorrentId ?? 0,
       localPath: json['local_path'] as String?,
+      mediaType: json['media_type'] as String? ?? 'music',
     );
   }
 }

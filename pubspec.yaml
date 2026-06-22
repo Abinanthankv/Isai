@@ -66,6 +66,7 @@ dependencies:
   flutter_slidable: ^4.0.3
   file_picker: ^11.0.2
   permission_handler: ^12.0.1
+  flutter_local_notifications: ^17.2.1
   audiotags: ^1.1.3
   url_launcher: ^6.3.0
   share_plus: ^10.1.2

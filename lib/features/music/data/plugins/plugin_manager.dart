@@ -21,6 +21,8 @@ class PluginManager {
 
   PluginManager(this._dio);
 
+  Dio get dio => _dio;
+
   List<JsPlugin> get plugins => List.unmodifiable(_plugins);
   
   List<JsPlugin> get activePlugins {

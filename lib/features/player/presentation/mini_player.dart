@@ -6,6 +6,8 @@ import 'package:audio_service/audio_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../music/presentation/now_playing_screen.dart';
 import '../../music/data/music_models.dart';
+import '../../audiobooks/presentation/audiobook_now_playing_screen.dart';
+import '../../audiobooks/data/audiobook_models.dart';
 import '../../../main.dart';
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/theme_extensions.dart';
@@ -114,6 +116,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
       builder: (context, snapshot) {
         final mediaItem = snapshot.data;
         if (mediaItem == null) return const SizedBox.shrink();
+        final isAudiobook = mediaItem.extras?['mediaType'] == 'audiobook';
 
         return StreamBuilder<PlaybackState>(
           stream: audioHandler.playbackState,
@@ -214,16 +217,30 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                 name: mediaItem.title,
                                 localPath: extras['localPath'] as String?,
                               );
+                              final isAudiobook = extras['mediaType'] == 'audiobook';
                               final navState = navigatorKey.currentState;
                               
                               Route createRoute() {
                                 return PageRouteBuilder(
                                   transitionDuration: const Duration(milliseconds: 500),
                                   reverseTransitionDuration: const Duration(milliseconds: 450),
-                                  pageBuilder: (context, animation, secondaryAnimation) => NowPlayingScreen(
-                                    file: file,
-                                    customQueue: file.torrentId == -1 ? [file] : null,
-                                  ),
+                                  pageBuilder: (context, animation, secondaryAnimation) {
+                                    if (isAudiobook) {
+                                      final bookId = extras['bookId'] as String? ?? mediaItem.id;
+                                      return AudiobookNowPlayingScreen(
+                                        book: AudiobookResult(
+                                          id: bookId,
+                                          title: mediaItem.album ?? mediaItem.title,
+                                          author: mediaItem.artist ?? 'Unknown Author',
+                                          artworkUrl: mediaItem.artUri?.toString(),
+                                        ),
+                                      );
+                                    }
+                                    return NowPlayingScreen(
+                                      file: file,
+                                      customQueue: file.torrentId == -1 ? [file] : null,
+                                    );
+                                  },
                                   transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                     final scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
                                       CurvedAnimation(
@@ -320,11 +337,17 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                     ),
                                     const SizedBox(width: 4),
                                     GlassIconButton(
-                                      icon: Icons.skip_next_rounded,
+                                      icon: isAudiobook 
+                                          ? Icons.stop_rounded 
+                                          : Icons.skip_next_rounded,
                                       size: 32,
                                       onPressed: () {
                                         HapticFeedback.mediumImpact();
-                                        audioHandler.skipToNext();
+                                        if (isAudiobook) {
+                                          audioHandler.stop();
+                                        } else {
+                                          audioHandler.skipToNext();
+                                        }
                                       },
                                     ),
                                   ],

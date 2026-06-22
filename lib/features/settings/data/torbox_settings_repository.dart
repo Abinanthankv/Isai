@@ -129,6 +129,9 @@ abstract class TorBoxSettingsRepository {
 
   Future<void> setMiniPlayerSwipeSensitivity(double sensitivity);
   double get miniPlayerSwipeSensitivity;
+
+  Future<void> setAudiobookFolder(String? folder);
+  String? get audiobookFolder;
 }
 
 @LazySingleton(as: TorBoxSettingsRepository)
@@ -393,4 +396,13 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setMiniPlayerSwipeSensitivity(double sensitivity) => _prefs.setDouble('mini_player_swipe_sensitivity', sensitivity);
+
+  @override
+  String? get audiobookFolder => _prefs.getString('audiobook_folder');
+
+  @override
+  Future<void> setAudiobookFolder(String? folder) {
+    if (folder == null) return _prefs.remove('audiobook_folder');
+    return _prefs.setString('audiobook_folder', folder);
+  }
 }

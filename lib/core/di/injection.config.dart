@@ -15,6 +15,10 @@ import 'package:injectable/injectable.dart' as _i526;
 import 'package:isai/core/database/database.dart' as _i448;
 import 'package:isai/core/di/storage_module.dart' as _i773;
 import 'package:isai/core/network/network_module.dart' as _i377;
+import 'package:isai/features/audiobooks/data/audiobook_addon_service.dart'
+    as _i463;
+import 'package:isai/features/audiobooks/data/audiobook_repository.dart'
+    as _i168;
 import 'package:isai/features/music/data/deezer_service.dart' as _i887;
 import 'package:isai/features/music/data/itunes_metadata_service.dart' as _i39;
 import 'package:isai/features/music/data/lastfm_service.dart' as _i1016;
@@ -82,6 +86,19 @@ extension GetItInjectableX on _i174.GetIt {
         gh<_i887.DeezerService>(),
         gh<_i1016.LastFmService>(),
         gh<_i1006.PluginManager>(),
+      ),
+    );
+    gh.lazySingleton<_i463.AudiobookAddonService>(
+      () => _i463.AudiobookAddonService(
+        gh<_i1006.PluginManager>(),
+        gh<_i183.TorBoxSettingsRepository>(),
+      ),
+    );
+    gh.lazySingleton<_i168.AudiobookRepository>(
+      () => _i168.AudiobookRepository(
+        gh<_i463.AudiobookAddonService>(),
+        gh<_i448.AppDatabase>(),
+        gh<_i81.MusicRepository>(),
       ),
     );
     return this;

@@ -21,6 +21,8 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' show GlassCard, 
 
 
 
+import 'package:permission_handler/permission_handler.dart';
+
 class MusicHubScreen extends ConsumerStatefulWidget {
   const MusicHubScreen({super.key});
 
@@ -34,9 +36,18 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(libraryProvider.notifier).loadLibrary();
       AppUpdater.checkForUpdate(context, silent: true);
+      
+      try {
+        final status = await Permission.notification.status;
+        if (status.isDenied) {
+          await Permission.notification.request();
+        }
+      } catch (e) {
+        print('[MusicHubScreen] Error requesting notification permission: $e');
+      }
     });
   }
 

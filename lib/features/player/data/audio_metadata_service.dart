@@ -26,6 +26,7 @@ class AudioMetadataService {
       if (urlOrPath.startsWith('http')) {
         final List<int> receivedBytes = [];
         final cancelToken = CancelToken();
+        String formatHint = format?.toLowerCase() ?? '';
         
         try {
           final response = await _dio.get<ResponseBody>(
@@ -38,6 +39,27 @@ class AudioMetadataService {
             ),
             cancelToken: cancelToken,
           );
+          
+          // Detect format from HTTP response content-type header
+          if (formatHint.isEmpty) {
+            final contentType = response.headers.value('content-type')?.toLowerCase() ?? '';
+            if (contentType.contains('audio/mpeg') || contentType.contains('audio/mp3')) {
+              formatHint = 'mp3';
+            } else if (contentType.contains('audio/mp4') || 
+                       contentType.contains('audio/x-m4a') || 
+                       contentType.contains('m4b') || 
+                       contentType.contains('aac')) {
+              formatHint = 'm4a';
+            } else if (contentType.contains('audio/x-flac') || contentType.contains('audio/flac')) {
+              formatHint = 'flac';
+            } else if (contentType.contains('audio/ogg') || 
+                       contentType.contains('audio/opus') || 
+                       contentType.contains('ogg')) {
+              formatHint = 'ogg';
+            } else if (contentType.contains('audio/wav') || contentType.contains('audio/x-wav')) {
+              formatHint = 'wav';
+            }
+          }
           
           await for (final chunk in response.data!.stream) {
             receivedBytes.addAll(chunk);
@@ -57,13 +79,16 @@ class AudioMetadataService {
         if (receivedBytes.isEmpty) return null;
         final bytes = Uint8List.fromList(receivedBytes);
         
-        String formatHint = format?.toLowerCase() ?? 'mp3';
-        if (formatHint == 'aac') formatHint = 'm4a';
-        
-        final lowerUrl = urlOrPath.toLowerCase();
-        if (lowerUrl.contains('.flac')) formatHint = 'flac';
-        else if (lowerUrl.contains('.mp3')) formatHint = 'mp3';
-        else if (lowerUrl.contains('.m4a') || lowerUrl.contains('.aac')) formatHint = 'm4a';
+        if (formatHint.isEmpty) {
+          formatHint = 'mp3'; // Fallback to URL detection
+          final lowerUrl = urlOrPath.toLowerCase();
+          if (lowerUrl.contains('.flac')) formatHint = 'flac';
+          else if (lowerUrl.contains('.mp3')) formatHint = 'mp3';
+          else if (lowerUrl.contains('.m4a') || lowerUrl.contains('.aac') || lowerUrl.contains('.m4b')) formatHint = 'm4a';
+          else if (lowerUrl.contains('.ogg') || lowerUrl.contains('.opus')) formatHint = 'ogg';
+        } else if (formatHint == 'aac') {
+          formatHint = 'm4a';
+        }
 
         final info = await AudioDecoder.getAudioInfoBytes(bytes, formatHint: formatHint);
         return TrackAudioMetadata(

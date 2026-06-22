@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -18,6 +19,10 @@ import 'playlist_providers.dart';
 import 'followed_artists_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import 'dart:async';
+import '../../audiobooks/presentation/audiobook_providers.dart';
+import '../../audiobooks/data/audiobook_models.dart';
+import '../../audiobooks/presentation/audiobook_detail_screen.dart';
+import 'package:isai/main.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -27,6 +32,8 @@ class LibraryScreen extends ConsumerStatefulWidget {
 }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  String _audiobookLibraryTab = 'local';
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +45,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedTab = ref.watch(discoveryTabProvider);
+    final tabs = [
+      ('music', 'Music'),
+      ('audiobooks', 'Audiobooks'),
+    ];
 
     ref.listen(libraryProvider.select((s) => s.downloadError), (previous, next) {
       if (next != null && next.isNotEmpty) {
@@ -49,11 +61,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               label: 'Settings',
               textColor: Colors.white,
               onPressed: () {
-                // Settings is the 4th tab (index 3)
-                // We need to access the MusicHubScreen's state to change the tab.
-                // However, without a global navigator or controller, we can't easily.
-                // For now, just show the message. 
-                // Alternatively, we could push SettingsScreen on top.
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
               },
             ),
@@ -66,30 +73,93 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () => ref.read(libraryProvider.notifier).loadLibrary(force: true),
+          onRefresh: () async {
+            if (selectedTab == 'music') {
+              await ref.read(libraryProvider.notifier).loadLibrary(force: true);
+            } else {
+              ref.invalidate(localAudiobooksProvider);
+              ref.invalidate(inProgressAudiobooksProvider);
+              await ref.read(localAudiobooksProvider.future);
+              await ref.read(inProgressAudiobooksProvider.future);
+            }
+          },
           color: Theme.of(context).colorScheme.primary,
           child: CustomScrollView(
             slivers: [
-              // 1. Header
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Library',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,),
+              // SliverAppBar with Library Title and synced Tab Bar
+              SliverAppBar(
+                backgroundColor: isDark
+                    ? Colors.black.withOpacity(0.85)
+                    : Colors.white.withOpacity(0.9),
+                surfaceTintColor: Colors.transparent,
+                floating: true,
+                pinned: true,
+                centerTitle: false,
+                title: AppleMusicGradientText(
+                  text: 'Library',
+                  fontSize: 26,
+                  colors: isDark
+                      ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
+                      : [const Color(0xFF667eea), const Color(0xFF764ba2)],
+                ),
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(40),
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark ? Colors.white10 : Colors.black12,
+                          width: 0.5,
+                        ),
                       ),
-                      const Spacer(),
-                      
-                    ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: tabs.map((tab) {
+                          final isSelected = selectedTab == tab.$1;
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => ref.read(discoveryTabProvider.notifier).state = tab.$1,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.only(right: 20),
+                              padding: const EdgeInsets.only(bottom: 10, top: 6),
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(
+                                    color: isSelected
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.transparent,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 200),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                                  color: isSelected
+                                      ? (isDark ? Colors.white : Colors.black87)
+                                      : (isDark ? Colors.white54 : Colors.black45),
+                                  letterSpacing: 0.1,
+                                  fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+                                ),
+                                child: Text(tab.$2),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                   ),
                 ),
               ),
 
-
-                // 3. Category Grid
+              if (selectedTab == 'music') ...[
+                // Category Grid
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -155,23 +225,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                 ),
 
-              // 4. Recently Played Label
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Recently Played',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
-                      ),
-                    ],
+                // Recently Played Label
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Recently Played',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
-              // 5. List of items or Empty State
-              _buildContentSlivers(),
+                // List of items or Empty State
+                _buildContentSlivers(),
+              ] else ..._buildAudiobookSlivers(context, isDark),
             ],
           ),
         ),
@@ -256,6 +327,487 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  List<Widget> _buildAudiobookSlivers(BuildContext context, bool isDark) {
+    final inProgressAsync = ref.watch(inProgressAudiobooksProvider);
+    final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
+
+    return [
+      // 1. Category Grid for Audiobooks
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Builder(
+            builder: (context) {
+              final inProgressCount = inProgressAsync.value?.length ?? 0;
+              final allBooks = localAudiobooksAsync.value ?? [];
+              final localCount = allBooks.where((b) => b.id.startsWith('local:')).length;
+              final torBoxCount = allBooks.where((b) => b.id.startsWith('torrent:')).length;
+              final totalCount = allBooks.length;
+
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 1.1,
+                children: [
+                  _CategoryCard(
+                    title: 'Continue Listening',
+                    count: '$inProgressCount books',
+                    icon: Icons.play_circle_outline_rounded,
+                    onTap: () {},
+                  ),
+                  _CategoryCard(
+                    title: 'Local Downloads',
+                    count: '$localCount books',
+                    icon: Icons.phone_android_rounded,
+                    onTap: () {},
+                  ),
+                  _CategoryCard(
+                    title: 'TorBox Cloud',
+                    count: '$torBoxCount books',
+                    icon: Icons.cloud_queue_rounded,
+                    onTap: () {},
+                  ),
+                  _CategoryCard(
+                    title: 'All Audiobooks',
+                    count: '$totalCount books',
+                    icon: Icons.book_rounded,
+                    onTap: () {},
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+
+      // 2. Continue Listening Section
+      inProgressAsync.when(
+        data: (progressList) {
+          if (progressList.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+          return SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Text(
+                    'Continue Listening',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: progressList.length,
+                    itemBuilder: (context, index) {
+                      final progress = progressList[index];
+                      return _buildProgressCard(context, progress);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          );
+        },
+        loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+        error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      ),
+
+      // 3. Books Header
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Books in Library',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment<String>(
+                    value: 'local',
+                    label: Text('Local'),
+                    icon: Icon(Icons.phone_android_rounded, size: 16),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'torbox',
+                    label: Text('TorBox'),
+                    icon: Icon(Icons.cloud_queue_rounded, size: 16),
+                  ),
+                ],
+                selected: {_audiobookLibraryTab},
+                onSelectionChanged: (newSelection) {
+                  setState(() {
+                    _audiobookLibraryTab = newSelection.first;
+                  });
+                },
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      // 4. Books Grid
+      localAudiobooksAsync.when(
+        data: (allBooks) {
+          final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
+          final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
+          final displayBooks = _audiobookLibraryTab == 'local' ? localBooksList : torBoxBooksList;
+
+          if (displayBooks.isEmpty) {
+            return SliverToBoxAdapter(
+              child: Container(
+                height: 150,
+                alignment: Alignment.center,
+                child: Text(
+                  _audiobookLibraryTab == 'local'
+                      ? 'No downloaded or local audiobooks.'
+                      : 'No audiobooks in TorBox cloud library.',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return SliverPadding(
+            padding: const EdgeInsets.all(20),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.7,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final book = displayBooks[index];
+                  return _buildGridCard(context, book);
+                },
+                childCount: displayBooks.length,
+              ),
+            ),
+          );
+        },
+        loading: () => const SliverToBoxAdapter(
+          child: Center(child: Padding(
+            padding: EdgeInsets.all(40),
+            child: CircularProgressIndicator(),
+          )),
+        ),
+        error: (e, _) => SliverToBoxAdapter(
+          child: Center(child: Text('Error: $e')),
+        ),
+      ),
+      const SliverToBoxAdapter(child: SizedBox(height: 120)),
+    ];
+  }
+
+  Widget _buildProgressCard(BuildContext context, AudiobookWithProgress progress) {
+    return GestureDetector(
+      onTap: () => _resumePlayback(context, ref, progress.book),
+      onLongPress: () => _showProgressOptions(context, ref, progress),
+      child: Container(
+        width: 140,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildArtworkWidget(
+                progress.book.artworkUrl,
+                width: double.infinity,
+                height: double.infinity,
+                borderRadius: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              progress.book.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(
+              value: progress.progressPercent,
+              minHeight: 4,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridCard(BuildContext context, AudiobookResult book) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book)),
+        );
+      },
+      onLongPress: () => _showLocalBookOptions(context, ref, book),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: _buildArtworkWidget(
+              book.artworkUrl,
+              width: double.infinity,
+              height: double.infinity,
+              borderRadius: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            book.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            book.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildArtworkWidget(String? url, {double? width, double? height, double borderRadius = 12}) {
+    if (url == null || url.isEmpty) {
+      return Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+        child: const Icon(
+          Icons.book,
+          size: 28,
+        ),
+      );
+    }
+
+    final isLocal = url.startsWith('/') || url.startsWith('file://');
+    final cleanPath = url.startsWith('file://') ? Uri.parse(url).toFilePath() : url;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: isLocal
+          ? Image.file(
+              File(cleanPath),
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: width,
+                height: height,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Icon(
+                  Icons.book,
+                  size: 28,
+                ),
+              ),
+            )
+          : CachedNetworkImage(
+              imageUrl: url,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                width: width,
+                height: height,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+              errorWidget: (context, url, error) => Container(
+                width: width,
+                height: height,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Icon(
+                  Icons.book,
+                  size: 28,
+                ),
+              ),
+            ),
+    );
+  }
+
+  void _showLocalBookOptions(BuildContext context, WidgetRef ref, AudiobookResult book) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('Show Details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AudiobookDetailScreen(book: book),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_sync_rounded),
+                title: const Text('Fetch Online Metadata'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showMetadataSearchSheet(context, ref, book);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showProgressOptions(BuildContext context, WidgetRef ref, AudiobookWithProgress progress) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('Show Details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AudiobookDetailScreen(book: progress.book),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                title: const Text('Remove from Continue Listening', style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final repo = ref.read(audiobookRepositoryProvider);
+                  await repo.clearBookProgress(progress.book.id);
+                  ref.invalidate(inProgressAudiobooksProvider);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Removed book progress.')),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _resumePlayback(BuildContext context, WidgetRef ref, AudiobookResult book) async {
+    final repo = ref.read(audiobookRepositoryProvider);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final progress = await repo.getLatestBookProgress(book.id);
+      final chapters = await repo.getBookChapters(book.id);
+      if (context.mounted) Navigator.pop(context);
+      if (chapters.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No chapters found to play.')),
+          );
+        }
+        return;
+      }
+      final chapterIdx = (progress != null && progress.chapterIndex < chapters.length) 
+          ? progress.chapterIndex 
+          : 0;
+      final chapter = chapters[chapterIdx];
+      final streamUrl = await repo.resolveChapterStream(chapter);
+      if (streamUrl == null || streamUrl.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to resolve stream URL.')),
+          );
+        }
+        return;
+      }
+      await repo.cacheBookMetadata(book);
+      await audioHandler.customAction('play', {
+        'url': streamUrl,
+        'title': chapter.title,
+        'artist': book.author,
+        'artworkUrl': book.artworkUrl ?? '',
+        'forceReplace': true,
+        'mediaType': 'audiobook',
+        'extras': {
+          'bookId': book.id,
+          'chapterIndex': chapterIdx,
+          'initialPositionMillis': progress?.positionMillis ?? 0,
+        },
+      });
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      print('[LibraryScreen] Resume playback error: $e');
+    }
+  }
+
+  void _showMetadataSearchSheet(BuildContext context, WidgetRef ref, AudiobookResult currentBook) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return MetadataSearchWidget(
+              currentBook: currentBook,
+              scrollController: scrollController,
+            );
+          },
+        );
+      },
     );
   }
 }

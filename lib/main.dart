@@ -52,7 +52,7 @@ void main() async {
     }
   }
 
-  if (!Platform.isLinux && !Platform.isAndroid) {
+  if (!Platform.isLinux) {
     await Permission.notification.request();
   }
   

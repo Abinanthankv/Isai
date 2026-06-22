@@ -395,6 +395,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
 
                   const SizedBox(height: 12),
 
+                  AppleMusicSectionHeader(title: 'Audiobooks Library'),
+
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        if (settings.audiobookFolder != null && settings.audiobookFolder!.isNotEmpty) ...[
+                          _SettingsFolderTile(
+                            path: settings.audiobookFolder!,
+                            isSelected: true,
+                            onSelect: () {}, // Already selected (single folder)
+                            onRemove: () {
+                              ref.read(settingsProvider.notifier).removeAudiobookFolder();
+                            },
+                          ),
+                          Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                          _SettingsTile(
+                            icon: Icons.folder_open_outlined,
+                            title: 'Change Audiobooks Folder',
+                            subtitle: 'Pick a different directory',
+                            onTap: () => _pickAudiobookFolder(),
+                          ),
+                        ] else ...[
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.library_books_outlined, color: isDark ? Colors.white24 : Colors.black26, size: 48),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No audiobook folder set',
+                                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Add a folder containing audiobook subfolders',
+                                    style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                          _SettingsTile(
+                            icon: Icons.create_new_folder_outlined,
+                            title: 'Set Audiobooks Folder',
+                            subtitle: 'Select your local audiobooks directory',
+                            onTap: () => _pickAudiobookFolder(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
                   AppleMusicSectionHeader(title: 'Tools & Advanced'),
                   
                   GlassCard(
@@ -473,6 +530,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
       String? selectedDirectory = await FilePicker.getDirectoryPath();
       if (selectedDirectory != null) {
         await ref.read(settingsProvider.notifier).addDownloadFolder(selectedDirectory);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick folder: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickAudiobookFolder() async {
+    try {
+      if (io.Platform.isAndroid) {
+        var status = await Permission.storage.request();
+        if (status.isPermanentlyDenied) {
+          openAppSettings();
+          return;
+        }
+        if (await Permission.manageExternalStorage.isDenied) {
+          await Permission.manageExternalStorage.request();
+        }
+      }
+
+      String? selectedDirectory = await FilePicker.getDirectoryPath();
+      if (selectedDirectory != null) {
+        await ref.read(settingsProvider.notifier).setAudiobookFolder(selectedDirectory);
       }
     } catch (e) {
       if (mounted) {

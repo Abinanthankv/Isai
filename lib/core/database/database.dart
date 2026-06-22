@@ -131,16 +131,50 @@ class FollowedArtists extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists])
+// ─── AUDIOBOOK TABLES (Isolated from Music) ─────────────────────────────────
+
+@DataClassName('DbAudiobookProgress')
+class AudiobookProgress extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get bookId => text()();              // Stremio addon book ID
+  IntColumn get chapterIndex => integer()();
+  IntColumn get positionMillis => integer().withDefault(const Constant(0))();
+  IntColumn get durationMillis => integer().withDefault(const Constant(0))();
+  DateTimeColumn get lastListenedAt => dateTime()();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+}
+
+@DataClassName('DbAudiobookMetadataCache')
+class AudiobookMetadataCache extends Table {
+  TextColumn get bookId => text()();             // Stremio addon book ID
+  TextColumn get title => text()();
+  TextColumn get author => text().nullable()();
+  TextColumn get narrator => text().nullable()();
+  TextColumn get artworkUrl => text().nullable()();
+  TextColumn get description => text().nullable()();
+  IntColumn get totalChapters => integer().withDefault(const Constant(0))();
+  TextColumn get language => text().nullable()();
+  TextColumn get genre => text().nullable()();
+  DateTimeColumn get lastUpdated => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {bookId};
+}
+
+@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists, AudiobookProgress, AudiobookMetadataCache])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
+          if (from < 14) {
+            await m.createTable(audiobookProgress);
+            await m.createTable(audiobookMetadataCache);
+          }
           if (from < 13) {
             await m.database.customStatement(
               'ALTER TABLE playlist_tracks ADD COLUMN torrent_id INTEGER'
@@ -469,6 +503,78 @@ class AppDatabase extends _$AppDatabase {
     if (lastSync == null) return true;
     final diff = DateTime.now().millisecondsSinceEpoch - lastSync;
     return diff > (minIntervalMinutes * 60 * 1000);
+  }
+
+  // ─── AUDIOBOOK DATA (Isolated from Music) ─────────────────────────────────
+
+  /// Save or update audiobook listening progress.
+  Future<void> saveAudiobookProgress(AudiobookProgressCompanion entry) async {
+    // Check if progress exists for this book+chapter combo
+    final existing = await (select(audiobookProgress)
+          ..where((t) => t.bookId.equals(entry.bookId.value) & t.chapterIndex.equals(entry.chapterIndex.value)))
+        .getSingleOrNull();
+    
+    if (existing != null) {
+      await (update(audiobookProgress)
+            ..where((t) => t.id.equals(existing.id)))
+          .write(entry);
+    } else {
+      await into(audiobookProgress).insert(entry);
+    }
+  }
+
+  /// Get progress for a specific chapter of a book.
+  Future<DbAudiobookProgress?> getAudiobookProgress(String bookId, int chapterIndex) {
+    return (select(audiobookProgress)
+          ..where((t) => t.bookId.equals(bookId) & t.chapterIndex.equals(chapterIndex)))
+        .getSingleOrNull();
+  }
+
+  /// Get the most recently listened chapter for a book.
+  Future<DbAudiobookProgress?> getLatestAudiobookProgress(String bookId) {
+    return (select(audiobookProgress)
+          ..where((t) => t.bookId.equals(bookId))
+          ..orderBy([(t) => OrderingTerm(expression: t.lastListenedAt, mode: OrderingMode.desc)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  /// Get all audiobook progress entries, ordered by most recent.
+  /// Used for the "Continue Listening" section.
+  Future<List<DbAudiobookProgress>> getAllAudiobookProgress() {
+    return (select(audiobookProgress)
+          ..orderBy([(t) => OrderingTerm(expression: t.lastListenedAt, mode: OrderingMode.desc)]))
+        .get();
+  }
+
+  /// Get all chapter progress entries for a specific book.
+  Future<List<DbAudiobookProgress>> getBookChapterProgress(String bookId) {
+    return (select(audiobookProgress)
+          ..where((t) => t.bookId.equals(bookId))
+          ..orderBy([(t) => OrderingTerm(expression: t.chapterIndex, mode: OrderingMode.asc)]))
+        .get();
+  }
+
+  /// Clear all progress for a specific book.
+  Future<void> clearAudiobookProgress(String bookId) {
+    return (delete(audiobookProgress)..where((t) => t.bookId.equals(bookId))).go();
+  }
+
+  /// Save audiobook metadata to local cache.
+  Future<void> saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion entry) {
+    return into(audiobookMetadataCache).insertOnConflictUpdate(entry);
+  }
+
+  /// Get cached audiobook metadata.
+  Future<DbAudiobookMetadataCache?> getAudiobookMetadata(String bookId) {
+    return (select(audiobookMetadataCache)
+          ..where((t) => t.bookId.equals(bookId)))
+        .getSingleOrNull();
+  }
+
+  /// Delete cached audiobook metadata.
+  Future<int> deleteAudiobookMetadata(String bookId) {
+    return (delete(audiobookMetadataCache)..where((t) => t.bookId.equals(bookId))).go();
   }
 }
 

@@ -19,6 +19,8 @@ import 'package:drift/drift.dart';
 import '../../music/data/lastfm_service.dart';
 import '../../settings/data/lastfm_repository.dart';
 import 'audio_metadata_service.dart';
+import '../../audiobooks/data/audiobook_repository.dart';
+import '../../audiobooks/data/audiobook_models.dart';
 
 class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
@@ -39,6 +41,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final Set<int> _metadataEnrichingIndices = {};
   bool _currentTrackRecorded = false;
   int _consecutiveFailures = 0; // Safeguard against skipping loops
+  DateTime? _lastAudiobookSaveTime;
+  String? _currentAudiobookId;
+  List<AudiobookChapter>? _currentAudiobookChapters;
   
   List<MediaItem> _originalItems = [];
   AudioServiceShuffleMode _shuffleModeState = AudioServiceShuffleMode.none;
@@ -169,11 +174,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         _currentTrackRecorded = false;
         print('[AudioHandler] New track detected: ${item.title}, resetting history recorded flag.');
         
-        // Last.fm: Update Now Playing
-        final lfmRepo = getIt<LastfmRepository>();
-        if (lfmRepo.isConnected) {
-          final lfmService = getIt<LastFmService>();
-          lfmService.updateNowPlaying(item, lfmRepo.sessionKey!);
+        // Last.fm: Update Now Playing — GUARD: audiobooks must NOT scrobble
+        final mediaType = item.extras?['mediaType'] as String? ?? 'music';
+        if (mediaType == 'music') {
+          final lfmRepo = getIt<LastfmRepository>();
+          if (lfmRepo.isConnected) {
+            final lfmService = getIt<LastFmService>();
+            lfmService.updateNowPlaying(item, lfmRepo.sessionKey!);
+          }
         }
       }
     });
@@ -183,6 +191,74 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
        final item = mediaItem.value;
        if (item != null) {
          _lastKnownPosition = position;
+         
+         // Save audiobook progress periodically
+         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
+         if (mediaType == 'audiobook') {
+           final bookId = item.extras?['bookId'] as String?;
+           final chapterIndex = item.extras?['chapterIndex'] as int?;
+           
+           int activeIndex = -1;
+           if (bookId != null) {
+             // Load/cache chapters list for real-time tracking if it changes
+             if (_currentAudiobookId != bookId || _currentAudiobookChapters == null) {
+               _currentAudiobookId = bookId;
+               _currentAudiobookChapters = null;
+               getIt<AudiobookRepository>().getBookChapters(bookId).then((chList) {
+                 if (_currentAudiobookId == bookId) {
+                   _currentAudiobookChapters = chList;
+                 }
+               });
+             }
+
+             final chapters = _currentAudiobookChapters;
+             if (chapters != null && chapters.isNotEmpty) {
+               final currentPosMs = position.inMilliseconds;
+               for (int i = 0; i < chapters.length; i++) {
+                 final start = chapters[i].startTimeMillis;
+                 final end = (i + 1 < chapters.length)
+                     ? chapters[i + 1].startTimeMillis
+                     : double.infinity;
+                 if (currentPosMs >= start && currentPosMs < end) {
+                   activeIndex = i;
+                   break;
+                 }
+               }
+
+               if (activeIndex != -1 && activeIndex != chapterIndex) {
+                 final newChapter = chapters[activeIndex];
+                 final updatedItem = item.copyWith(
+                   title: newChapter.title,
+                   extras: {
+                     ...item.extras ?? {},
+                     'chapterIndex': activeIndex,
+                   },
+                 );
+                 mediaItem.add(updatedItem);
+                 print('[AudioHandler] Chapter changed automatically to index $activeIndex: "${newChapter.title}"');
+               }
+             }
+           }
+
+           final targetChapterIndex = (activeIndex != -1) ? activeIndex : chapterIndex;
+           if (bookId != null && targetChapterIndex != null) {
+             final now = DateTime.now();
+             if (_lastAudiobookSaveTime == null || now.difference(_lastAudiobookSaveTime!) > const Duration(seconds: 5)) {
+               _lastAudiobookSaveTime = now;
+               try {
+                 final repo = getIt<AudiobookRepository>();
+                 await repo.saveProgress(
+                   bookId: bookId,
+                   chapterIndex: targetChapterIndex,
+                   positionMillis: position.inMilliseconds,
+                   durationMillis: item.duration?.inMilliseconds ?? 0,
+                 );
+               } catch (e) {
+                 print('[AudioHandler] Error saving audiobook progress: $e');
+               }
+             }
+           }
+         }
        }
        if (item == null || _currentTrackRecorded || item.duration == null || item.duration! == Duration.zero) return;
 
@@ -192,6 +268,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
          
          final torrentId = (item.extras?['torrentId'] as num?)?.toInt();
          final fileId = (item.extras?['fileId'] as num?)?.toInt();
+         
+         // GUARD: Only record playback history for music, not audiobooks
+         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
+         if (mediaType == 'audiobook') {
+           print('[AudioHandler] Audiobook chapter — skipping music history recording.');
+           // Future: save audiobook progress here via AudiobookRepository
+           return;
+         }
          
          if (torrentId != null && fileId != null) {
            print('[AudioHandler] Progress reached ${ (progress * 100).toStringAsFixed(0) }%. Recording playback for "${item.title}"');
@@ -230,7 +314,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               print('[AudioHandler] Error recording playback: $e');
             }
 
-            // Last.fm: Submit Scrobble
+            // Last.fm: Submit Scrobble — GUARD: audiobooks already returned above
             final lfmRepo = getIt<LastfmRepository>();
             if (lfmRepo.isConnected) {
               final lfmService = getIt<LastFmService>();
@@ -535,6 +619,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (_metadataEnrichingIndices.contains(index)) return;
 
     final originalItem = currentQueue[index];
+    
+    // GUARD: Skip metadata enrichment for audiobook chapters
+    final mediaType = originalItem.extras?['mediaType'] as String? ?? 'music';
+    if (mediaType == 'audiobook') return;
+    
     final originalId = originalItem.extras?['originalId'] as String? ?? originalItem.id;
     
     // Retrieve the most up-to-date version from our enriched cache if available, to avoid overwriting bitrate/sampleRate/etc.
@@ -703,6 +792,13 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
 
     final currentItem = currentQueue[currentIndex];
+    
+    // GUARD: Don't auto-extend queue with random music when playing audiobooks
+    final mediaType = currentItem.extras?['mediaType'] as String? ?? 'music';
+    if (mediaType == 'audiobook') {
+      _isExtendingQueue = false;
+      return;
+    }
     
     try {
       final db = getIt<AppDatabase>();
@@ -1116,7 +1212,36 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> stop() async {
+    // If it's an audiobook, save progress before stopping/clearing
+    final current = mediaItem.value;
+    if (current != null && current.extras?['mediaType'] == 'audiobook') {
+      try {
+        final bookId = current.extras?['bookId'] as String?;
+        final chapterIndex = current.extras?['chapterIndex'] as int?;
+        if (bookId != null && chapterIndex != null) {
+          final position = playbackState.value.position;
+          final duration = current.duration ?? Duration.zero;
+          if (position > Duration.zero) {
+            final repo = getIt<AudiobookRepository>();
+            await repo.saveProgress(
+              bookId: bookId,
+              chapterIndex: chapterIndex,
+              positionMillis: position.inMilliseconds,
+              durationMillis: duration.inMilliseconds,
+              isCompleted: duration.inMilliseconds > 0 &&
+                  position.inMilliseconds >= duration.inMilliseconds - 5000,
+            );
+            print('[AudioHandler] stop: saved audiobook progress before stopping.');
+          }
+        }
+      } catch (e) {
+        print('[AudioHandler] stop: failed to save audiobook progress: $e');
+      }
+    }
+
     await _player.stop();
+    mediaItem.add(null);
+    queue.add([]);
     playbackState.add(_transformEvent(_player.playbackEvent));
   }
 
@@ -1193,6 +1318,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await _resolveTrack(0);
     }
     try {
+      final initialPos = item.extras?['initialPositionMillis'] as int?;
+      if (initialPos != null && initialPos > 0) {
+        print('[AudioHandler] playMediaItem: Seeking to initial position ${initialPos}ms before play');
+        await _player.seek(Duration(milliseconds: initialPos));
+      }
       print('[AudioHandler] playMediaItem: Calling _player.play()');
       await _player.play();
       print('[AudioHandler] playMediaItem: _player.play() returned');
@@ -1434,7 +1564,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             artist: extras['artist'] as String? ?? 'TorBox',
             artUri: (extras['artworkUrl'] as String?)?.isNotEmpty == true 
                 ? Uri.parse(extras['artworkUrl'] as String) : null,
-            extras: requestedExtras,
+            extras: {
+              ...?requestedExtras,
+              if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
+            },
           );
           mediaItem.add(item);
           await playMediaItem(item);
@@ -1658,6 +1791,30 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         tag: newItem,
       );
     }
+
+    // 1b. Check if item.id itself is a local file path or file:// URI
+    final isLocalFile = item.id.startsWith('/') || item.id.startsWith('file://');
+    if (isLocalFile) {
+      String path = item.id;
+      try {
+        if (item.id.startsWith('file://')) {
+          path = Uri.parse(item.id).toFilePath();
+        }
+      } catch (e) {
+        // Fallback to decoding the URI manually if it fails
+        path = Uri.decodeComponent(item.id.replaceFirst('file://', ''));
+      }
+      if (io.File(path).existsSync()) {
+        final newItem = item.copyWith(
+          id: Uri.file(path).toString(),
+          extras: {...?item.extras, 'localPath': path},
+        );
+        return AudioSource.uri(
+          Uri.file(path),
+          tag: newItem,
+        );
+      }
+    }
     
     print('[AudioHandler] _createAudioSource: uri=${uri.toString().substring(0, uri.toString().length > 50 ? 50 : uri.toString().length)}...');
     
@@ -1691,7 +1848,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     };
 
     if (!io.Platform.isLinux && !isYouTube && torrentId != null && fileId != null) {
-      final cacheFile = io.File('$_cachePath/${torrentId}_$fileId.mp3');
+      String ext = '.mp3';
+      final db = getIt<AppDatabase>();
+      final allFiles = await db.getAllFiles();
+      final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+      if (dbFile != null) {
+        final dot = dbFile.name.lastIndexOf('.');
+        if (dot != -1) {
+          ext = dbFile.name.substring(dot).toLowerCase();
+        }
+      }
+
+      final cacheFile = io.File('$_cachePath/${torrentId}_$fileId$ext');
       print('[AudioHandler] Using LockCachingAudioSource for ${item.title}. Cache exists: ${cacheFile.existsSync()}');
       return LockCachingAudioSource(
         uri,
@@ -1765,7 +1933,52 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       
       if (targetUrl.contains('lazy.')) return;
       
-      final extMeta = await audioMetadataService.fetchMetadata(targetUrl, format: mergedItem.extras?['format'] as String?);
+      // Determine file source (local or cache)
+      final torrentId = (mergedItem.extras?['torrentId'] as num?)?.toInt();
+      final fileId = (mergedItem.extras?['fileId'] as num?)?.toInt();
+
+      String? localPath = mergedItem.extras?['localPath'] as String?;
+      if (localPath == null && torrentId != null && fileId != null) {
+        final db = getIt<AppDatabase>();
+        final allFiles = await db.getAllFiles();
+        final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+        if (dbFile != null) {
+          localPath = dbFile.localPath;
+        }
+      }
+
+      String? fileToExtract = localPath;
+
+      // If no permanent local path, wait for LockCachingAudioSource to write the cache file
+      if (fileToExtract == null && torrentId != null && fileId != null) {
+        String ext = '.mp3';
+        final db = getIt<AppDatabase>();
+        final allFiles = await db.getAllFiles();
+        final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+        if (dbFile != null) {
+          final dot = dbFile.name.lastIndexOf('.');
+          if (dot != -1) {
+            ext = dbFile.name.substring(dot).toLowerCase();
+          }
+        }
+
+        final cacheFile = io.File('$_cachePath/${torrentId}_$fileId$ext');
+        // Wait up to 3 seconds for the playing audio handler to start writing the cache file
+        for (int i = 0; i < 6; i++) {
+          if (cacheFile.existsSync() && cacheFile.lengthSync() > 32768) { // 32KB is enough for header metadata
+            fileToExtract = cacheFile.path;
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+
+      // If we don't have a local file path (neither downloaded nor cached), do not fetch extended metadata
+      if (fileToExtract == null) {
+        return;
+      }
+
+      final extMeta = await audioMetadataService.fetchMetadata(fileToExtract, format: mergedItem.extras?['format'] as String?);
       if (extMeta != null && (extMeta.bitRate != null || extMeta.sampleRate != null)) {
         final updatedExtras = Map<String, dynamic>.from(mergedItem.extras ?? {});
         if (extMeta.bitRate != null) updatedExtras['bitrate'] = extMeta.bitRate;

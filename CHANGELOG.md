@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.4] - June 2026
+
+> ⚠️ **Audiobooks are in Beta** — Some features may be rough around the edges. Feedback is welcome!
+
+### Added
+- **Audiobooks (Beta)**: Audiobooks are now available! Books automatically detect and display their internal chapters — each chapter listed with its title, start time, and duration.
+- **Chapter-Aware Progress**: Progress is now tracked per chapter, so you always resume exactly where you left off — even mid-chapter.
+- **Live Chapter Updates**: The mini player and system notification automatically update to show the current chapter name as you listen, in real time.
+- **MP3 Audiobook Chapters**: Added support for MP3 audiobooks that embed chapter information — chapters are now detected and listed just like M4B files.
+
+### Fixed & Improved
+- **Chapter Highlighting**: The currently playing chapter is now highlighted in both the Now Playing and book detail screens as the audio progresses.
+- **Audiobook in Mixed Folders**: Audiobooks stored alongside other files (covers, samples, etc.) now correctly show only the real audio chapters instead of listing every file.
+- **Notification & Mini Player Accuracy**: Fixed chapter title not updating in the notification bar and mini player when crossing chapter boundaries.
+
 ## [1.0.3] - June 2026
 
 ### Added

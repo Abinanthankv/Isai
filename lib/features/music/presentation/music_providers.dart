@@ -101,6 +101,7 @@ class SettingsState {
   final bool miniPlayerSwipeEnabled;
   final double miniPlayerSwipeSensitivity;
   final bool playerSpotifyCanvasEnabled;
+  final String? audiobookFolder;
 
   SettingsState({
     this.apiKey = '',
@@ -148,6 +149,7 @@ class SettingsState {
     this.miniPlayerSwipeEnabled = true,
     this.miniPlayerSwipeSensitivity = 40.0,
     this.playerSpotifyCanvasEnabled = true,
+    this.audiobookFolder,
   });
 
   SettingsState copyWith({
@@ -196,6 +198,7 @@ class SettingsState {
     bool? miniPlayerSwipeEnabled,
     double? miniPlayerSwipeSensitivity,
     bool? playerSpotifyCanvasEnabled,
+    String? audiobookFolder,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -243,6 +246,7 @@ class SettingsState {
       miniPlayerSwipeEnabled: miniPlayerSwipeEnabled ?? this.miniPlayerSwipeEnabled,
       miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
+      audiobookFolder: audiobookFolder ?? this.audiobookFolder,
     );
   }
 }
@@ -299,6 +303,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       miniPlayerSwipeEnabled: _settings.miniPlayerSwipeEnabled,
       miniPlayerSwipeSensitivity: _settings.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: _settings.playerSpotifyCanvasEnabled,
+      audiobookFolder: _settings.audiobookFolder,
     );
   }
 
@@ -551,6 +556,64 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setMiniPlayerSwipeSensitivity(double sensitivity) async {
     await _settings.setMiniPlayerSwipeSensitivity(sensitivity);
     state = state.copyWith(miniPlayerSwipeSensitivity: sensitivity);
+  }
+
+  Future<void> setAudiobookFolder(String path) async {
+    await _settings.setAudiobookFolder(path);
+    state = state.copyWith(audiobookFolder: path);
+  }
+
+  Future<void> removeAudiobookFolder() async {
+    await _settings.setAudiobookFolder(null);
+    // copyWith won't clear a nullable field to null, so rebuild manually
+    state = SettingsState(
+      apiKey: state.apiKey,
+      isValidating: state.isValidating,
+      isValid: state.isValid,
+      error: state.error,
+      enableArchiveScraper: state.enableArchiveScraper,
+      enableTidalScraper: state.enableTidalScraper,
+      enableMassTamilanScraper: state.enableMassTamilanScraper,
+      enableYouTubeScraper: state.enableYouTubeScraper,
+      enableJioSaavnScraper: state.enableJioSaavnScraper,
+      enableSoundcloudScraper: state.enableSoundcloudScraper,
+      downloadFolders: state.downloadFolders,
+      selectedDownloadFolder: state.selectedDownloadFolder,
+      playerArtworkShape: state.playerArtworkShape,
+      playerShowGlow: state.playerShowGlow,
+      playerBackgroundType: state.playerBackgroundType,
+      playerArtworkSize: state.playerArtworkSize,
+      playerSeekBarStyle: state.playerSeekBarStyle,
+      playerLikeIcon: state.playerLikeIcon,
+      playerArtworkAnimation: state.playerArtworkAnimation,
+      playerLyricsFontSize: state.playerLyricsFontSize,
+      playerLyricsAlignment: state.playerLyricsAlignment,
+      playerControlLayout: state.playerControlLayout,
+      visualizerEnabled: state.visualizerEnabled,
+      visualizerShowNowPlaying: state.visualizerShowNowPlaying,
+      visualizerShowMiniPlayer: state.visualizerShowMiniPlayer,
+      visualizerStyle: state.visualizerStyle,
+      visualizerPoints: state.visualizerPoints,
+      visualizerSensitivity: state.visualizerSensitivity,
+      visualizerColorMode: state.visualizerColorMode,
+      visualizerAlpha: state.visualizerAlpha,
+      visualizerHeightPct: state.visualizerHeightPct,
+      visualizerAmplitude: state.visualizerAmplitude,
+      visualizerBaseLift: state.visualizerBaseLift,
+      visualizerBarSpacing: state.visualizerBarSpacing,
+      visualizerCornerRadius: state.visualizerCornerRadius,
+      maxSongCacheSize: state.maxSongCacheSize,
+      maxImageCacheSize: state.maxImageCacheSize,
+      addonPriority: state.addonPriority,
+      appThemeStyle: state.appThemeStyle,
+      appFontFamily: state.appFontFamily,
+      appleUseLiquidGlass: state.appleUseLiquidGlass,
+      appleLiquidGlassOpacity: state.appleLiquidGlassOpacity,
+      miniPlayerSwipeEnabled: state.miniPlayerSwipeEnabled,
+      miniPlayerSwipeSensitivity: state.miniPlayerSwipeSensitivity,
+      playerSpotifyCanvasEnabled: state.playerSpotifyCanvasEnabled,
+      audiobookFolder: null,
+    );
   }
 }
 
@@ -1186,7 +1249,7 @@ class LibraryState {
   });
 
   List<TorBoxFile> get allAudioFiles {
-    final files = torrents.expand((t) => t.files).toList();
+    final files = torrents.expand((t) => t.files).where((f) => f.mediaType == 'music').toList();
     // Sort files by torrentId descending (most recent torrent first)
     // Use a safe compare that handles potential nulls or default to 0
     files.sort((a, b) => (b.torrentId).compareTo(a.torrentId));

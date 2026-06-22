@@ -22,6 +22,9 @@ import 'lastfm_discovery_providers.dart';
 import 'package:isai/features/music/presentation/discovery_swipe_screen.dart';
 import 'package:isai/features/music/presentation/discovery_providers.dart';
 import 'playlist_grid_screen.dart';
+import 'package:isai/features/audiobooks/presentation/audiobook_providers.dart';
+import 'package:isai/features/audiobooks/presentation/audiobooks_sub_screen.dart';
+import 'package:isai/features/audiobooks/data/audiobook_models.dart';
 
 
 class DiscoveryScreen extends ConsumerWidget {
@@ -57,47 +60,82 @@ class DiscoveryScreen extends ConsumerWidget {
     }
 
     final regionName = RegionPickerSheet.getCountryName(selectedRegion);
+    final selectedTab = ref.watch(discoveryTabProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: CustomScrollView(
-        slivers: [
-          _buildAppBar(context, ref, selectedRegion, isDark),
-          
-          SliverToBoxAdapter(
-            child: _buildTrendingSongsSection(context, ref),
-          ),
-          
-          SliverToBoxAdapter(
-            child: _buildVibeSwipeBanner(context, ref, isDark),
-          ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          if (selectedTab == 'audiobooks') {
+            ref.invalidate(audiobookCatalogProvider);
+            ref.invalidate(inProgressAudiobooksProvider);
+            ref.invalidate(localAudiobooksProvider);
+            await Future.wait([
+              ref.read(audiobookCatalogProvider.future).catchError((_) => <AudiobookResult>[]),
+              ref.read(inProgressAudiobooksProvider.future).catchError((_) => <AudiobookWithProgress>[]),
+              ref.read(localAudiobooksProvider.future).catchError((_) => <AudiobookResult>[]),
+            ]);
+          } else {
+            ref.invalidate(cachedTrendingSongsProvider);
+            ref.invalidate(newReleasesProvider(selectedRegion));
+            ref.invalidate(genresProvider);
+            ref.invalidate(regionalPlaylistsProvider(selectedRegion));
+            ref.invalidate(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage));
+            await Future.wait([
+              ref.read(newReleasesProvider(selectedRegion).future).catchError((_) => <ItunesTrack>[]),
+              ref.read(genresProvider.future).catchError((_) => <DeezerGenre>[]),
+              ref.read(regionalPlaylistsProvider(selectedRegion).future).catchError((_) => <AppleMusicPlaylist>[]),
+              ref.read(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage).future).catchError((_) => <AppleMusicPlaylist>[]),
+            ]);
+          }
+        },
+        child: CustomScrollView(
+          slivers: [
+            _buildAppBar(context, ref, selectedRegion, isDark),
+            
+            // No separate tab widget here — tabs are now inside the AppBar
 
-          SliverToBoxAdapter(
-            child: _buildNewReleasesSection(context, ref, newReleases, isDark),
-          ),
+            // Conditional content based on selected tab
+            if (selectedTab == 'audiobooks')
+              const SliverToBoxAdapter(
+                child: AudiobooksSubScreen(),
+              )
+            else ...[
+              SliverToBoxAdapter(
+                child: _buildTrendingSongsSection(context, ref),
+              ),
+              
+              SliverToBoxAdapter(
+                child: _buildVibeSwipeBanner(context, ref, isDark),
+              ),
 
-          SliverToBoxAdapter(
-            child: _buildLastfmTrendingSection(context, ref),
-          ),
+              SliverToBoxAdapter(
+                child: _buildNewReleasesSection(context, ref, newReleases, isDark),
+              ),
 
-          SliverToBoxAdapter(
-            child: _buildGenreBrowseSection(context, ref, genres, isDark),
-          ),
+              SliverToBoxAdapter(
+                child: _buildLastfmTrendingSection(context, ref),
+              ),
 
-          SliverToBoxAdapter(
-            child: _buildJioSaavnPlaylistsSection(context, ref, selectedJioLanguage, jioPlaylistsAsync, isDark),
-          ),
+              SliverToBoxAdapter(
+                child: _buildGenreBrowseSection(context, ref, genres, isDark),
+              ),
 
-          SliverToBoxAdapter(
-            child: _buildAppleMusicPlaylistsSection(context, ref, playlists, isDark),
-          ),
+              SliverToBoxAdapter(
+                child: _buildJioSaavnPlaylistsSection(context, ref, selectedJioLanguage, jioPlaylistsAsync, isDark),
+              ),
+
+              SliverToBoxAdapter(
+                child: _buildAppleMusicPlaylistsSection(context, ref, playlists, isDark),
+              ),
 
 
-          
-          const SliverToBoxAdapter(child: SizedBox(height: 50)),
-        ],
+              
+              const SliverToBoxAdapter(child: SizedBox(height: 50)),
+            ],
+          ],
+        ),
       ),
-
     );
   }
 
@@ -888,33 +926,91 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   Widget _buildAppBar(BuildContext context, WidgetRef ref, String selectedRegion, bool isDark) {
+    final selectedTab = ref.watch(discoveryTabProvider);
+    final tabs = [
+      ('music', 'Music'),
+      ('audiobooks', 'Audiobooks'),
+    ];
+
     return SliverAppBar(
-      backgroundColor: Colors.transparent,
+      backgroundColor: isDark
+          ? Colors.black.withOpacity(0.85)
+          : Colors.white.withOpacity(0.9),
+      surfaceTintColor: Colors.transparent,
       floating: true,
+      pinned: true,
       centerTitle: false,
-      expandedHeight: 110,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 16, bottom: 8, right: 16),
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            AppleMusicGradientText(
-              text: 'Discover',
-              fontSize: 28,
-              colors: isDark
-                  ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
-                  : [const Color(0xFF667eea), const Color(0xFF764ba2)],
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          AppleMusicGradientText(
+            text: 'Discover',
+            fontSize: 26,
+            colors: isDark
+                ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
+                : [const Color(0xFF667eea), const Color(0xFF764ba2)],
+          ),
+          _buildRegionPicker(context, ref, selectedRegion, isDark),
+        ],
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(40),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.white10 : Colors.black12,
+                width: 0.5,
+              ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: _buildRegionPicker(context, ref, selectedRegion, isDark),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: tabs.map((tab) {
+                final isSelected = selectedTab == tab.$1;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => ref.read(discoveryTabProvider.notifier).state = tab.$1,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(right: 20),
+                    padding: const EdgeInsets.only(bottom: 10, top: 6),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+                        color: isSelected
+                            ? (isDark ? Colors.white : Colors.black87)
+                            : (isDark ? Colors.white54 : Colors.black45),
+                        letterSpacing: 0.1,
+                        fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+                      ),
+                      child: Text(tab.$2),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+
 
   Widget _buildRegionPicker(BuildContext context, WidgetRef ref, String currentRegion, bool isDark) {
     final countryString = RegionPickerSheet.regions[currentRegion] ?? '🌎 $currentRegion';
