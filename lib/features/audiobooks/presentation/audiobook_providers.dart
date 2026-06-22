@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -86,19 +87,58 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
   final repo = ref.read(audiobookRepositoryProvider);
   final allProgress = await repo.getAllInProgressBooks();
   
-  // Group by bookId and get latest progress for each
-  final Map<String, dynamic> latestByBook = {};
+  // Group all progress entries by bookId
+  final Map<String, List<dynamic>> progressByBook = {};
   for (final progress in allProgress) {
-    if (!latestByBook.containsKey(progress.bookId)) {
-      latestByBook[progress.bookId] = progress;
+    progressByBook.putIfAbsent(progress.bookId, () => []).add(progress);
+  }
+  
+  // Get latest progress for each book (first in list since DB query orders by lastListenedAt DESC)
+  final Map<String, dynamic> latestByBook = {};
+  for (final entry in progressByBook.entries) {
+    if (entry.value.isNotEmpty) {
+      latestByBook[entry.key] = entry.value.first;
     }
   }
   
-  // Convert to AudiobookWithProgress with cached metadata
+  // Convert to AudiobookWithProgress with cached metadata and proper overall progressPercent
   final List<AudiobookWithProgress> result = [];
   for (final entry in latestByBook.entries) {
     final progress = entry.value;
     final cached = await repo.getCachedMetadata(entry.key);
+    final bookId = entry.key;
+    final bookProgressList = progressByBook[bookId] ?? [];
+    
+    final totalCh = (cached != null && cached.totalChapters > 0)
+        ? cached.totalChapters
+        : (progress.chapterIndex + 1);
+        
+    double progressPercent = 0.0;
+    if (totalCh > 0) {
+      double totalProgressValue = 0.0;
+      for (final p in bookProgressList) {
+        double chProgressRatio = 0.0;
+        if (p.isCompleted) {
+          chProgressRatio = 1.0;
+        } else if (p.durationMillis > 0) {
+          // If this is a single-file audiobook, we have chapters within a single file.
+          // Let's determine if p.durationMillis is the total book duration or chapter duration.
+          // If it is total book duration, then (p.positionMillis / p.durationMillis) is already the overall progress.
+          // We can check this by comparing p.durationMillis with a large value or if it is the only progress record.
+          if (bookProgressList.length == 1 && p.durationMillis > 3600000) {
+            // Probably single-file overall progress
+            chProgressRatio = (p.positionMillis / p.durationMillis).clamp(0.0, 1.0);
+            totalProgressValue = chProgressRatio * totalCh; // scaled up so when divided by totalCh it returns correct ratio
+            break;
+          } else {
+            chProgressRatio = (p.positionMillis / p.durationMillis).clamp(0.0, 1.0);
+          }
+        }
+        totalProgressValue += chProgressRatio;
+      }
+      progressPercent = (totalCh == 1) ? (totalProgressValue).clamp(0.0, 1.0) : (totalProgressValue / totalCh).clamp(0.0, 1.0);
+    }
+
     if (cached != null) {
       result.add(AudiobookWithProgress(
         book: repo.metadataToResult(cached),
@@ -106,6 +146,7 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
         positionMillis: progress.positionMillis,
         totalChapters: cached.totalChapters,
         lastListenedAt: progress.lastListenedAt,
+        progressPercent: progressPercent,
       ));
     } else {
       final isTorrent = progress.bookId.startsWith('torrent:');
@@ -120,6 +161,7 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
         positionMillis: progress.positionMillis,
         totalChapters: 0,
         lastListenedAt: progress.lastListenedAt,
+        progressPercent: progressPercent,
       ));
     }
   }
@@ -154,6 +196,17 @@ final torrentStatusProvider = FutureProvider.family<Map<String, dynamic>, String
 /// Get all chapter-level progress entries for a specific book on the detail screen.
 final bookChapterProgressProvider = FutureProvider.autoDispose.family<List<dynamic>, String>((ref, bookId) async {
   final repo = ref.read(audiobookRepositoryProvider);
+  
+  // Proactively restore progress from local progress.json if it exists
+  try {
+    final dirPath = await repo.getLocalBookDirectoryForBackup(bookId);
+    if (dirPath != null) {
+      await repo.restoreProgressFromLocalFolder(bookId, dirPath);
+    }
+  } catch (e) {
+    print('[bookChapterProgressProvider] Error restoring progress from local folder: $e');
+  }
+
   return repo.getBookChapterProgress(bookId);
 });
 
@@ -191,7 +244,30 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
   String title = defaultTitle;
   String author = 'Local Library';
   String? artworkPath;
+  String? description;
   int audioCount = 0;
+
+  // Check metadata.json and cover image inside the directory first
+  final metaFile = File(p.join(dir.path, 'metadata.json'));
+  if (await metaFile.exists()) {
+    try {
+      final content = await metaFile.readAsString();
+      final data = jsonDecode(content) as Map<String, dynamic>;
+      title = data['title'] as String? ?? title;
+      author = data['author'] as String? ?? author;
+      description = data['description'] as String?;
+    } catch (e) {
+      print('[localAudiobooksProvider] Error reading local metadata.json: $e');
+    }
+  }
+
+  final coverJpg = File(p.join(dir.path, 'cover.jpg'));
+  final coverPng = File(p.join(dir.path, 'cover.png'));
+  if (await coverJpg.exists()) {
+    artworkPath = coverJpg.path;
+  } else if (await coverPng.exists()) {
+    artworkPath = coverPng.path;
+  }
 
   File? firstAudioFile;
   await for (final entity in dir.list()) {
@@ -209,21 +285,23 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
       id: id,
       title: title,
       author: author,
+      artworkUrl: artworkPath,
+      description: description,
       totalChapters: 0,
     );
   }
 
-  if (firstAudioFile != null) {
+  if (firstAudioFile != null && artworkPath == null) {
     try {
       final tag = await AudioTags.read(firstAudioFile.path);
       if (tag != null) {
-        if (tag.album != null && tag.album!.trim().isNotEmpty) {
+        if (title == defaultTitle && tag.album != null && tag.album!.trim().isNotEmpty) {
           title = tag.album!.trim();
-        } else if (tag.title != null && tag.title!.trim().isNotEmpty && audioCount == 1) {
+        } else if (title == defaultTitle && tag.title != null && tag.title!.trim().isNotEmpty && audioCount == 1) {
           title = tag.title!.trim();
         }
         
-        if (tag.artist != null && tag.artist!.trim().isNotEmpty) {
+        if (author == 'Local Library' && tag.artist != null && tag.artist!.trim().isNotEmpty) {
           author = tag.artist!.trim();
         }
 
@@ -250,6 +328,7 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
     title: title,
     author: author,
     artworkUrl: artworkPath,
+    description: description,
     totalChapters: audioCount,
   );
 }
@@ -324,6 +403,9 @@ final localAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>
               final book = await _getAudiobookMetadata(entity, bookId, folderName);
               results.add(book);
             }
+            
+            // Proactively restore progress if progress.json exists
+            await repo.restoreProgressFromLocalFolder(bookId, entity.path);
           }
         } else if (entity is File) {
           final ext = _getExt(entity.path);
@@ -575,14 +657,42 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
 
     _pausedBooks.remove(book.id);
     
-    final totalChapters = chapters.length;
+    // Group chapters by unique stream URL to avoid downloading the same file multiple times
+    final Map<String, List<AudiobookChapter>> urlToChapters = {};
+    for (final ch in chapters) {
+      final url = ch.streamUrl;
+      if (url != null && url.isNotEmpty) {
+        urlToChapters.putIfAbsent(url, () => []).add(ch);
+      }
+    }
+
+    final uniqueUrls = urlToChapters.keys.toList();
+    if (uniqueUrls.isEmpty) {
+      state = {
+        ...state,
+        book.id: AudiobookDownloadState(
+          progress: -3.0,
+          currentChapterTitle: '',
+          currentChapterIndex: 0,
+          totalChapters: 0,
+          downloadedBytes: 0,
+          totalBytes: -1,
+          status: 'failed',
+        ),
+      };
+      return;
+    }
+
+    final totalTasks = uniqueUrls.length;
+    final initialChapters = urlToChapters[uniqueUrls[0]]!;
+    
     state = {
       ...state,
       book.id: AudiobookDownloadState(
         progress: 0.0,
-        currentChapterTitle: chapters.isNotEmpty ? chapters[0].title : '',
+        currentChapterTitle: initialChapters.isNotEmpty ? initialChapters[0].title : '',
         currentChapterIndex: 1,
-        totalChapters: totalChapters,
+        totalChapters: totalTasks,
         downloadedBytes: 0,
         totalBytes: -1,
         status: 'downloading',
@@ -597,35 +707,38 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         await bookDir.create(recursive: true);
       }
 
-      int completedChapters = 0;
+      final Map<String, String> urlToRelativeFilename = {};
+      int completedTasks = 0;
 
-      for (int i = 0; i < chapters.length; i++) {
+      for (int i = 0; i < uniqueUrls.length; i++) {
         if (_pausedBooks.contains(book.id)) {
           break;
         }
 
-        final chapter = chapters[i];
+        final url = uniqueUrls[i];
+        final currentChapters = urlToChapters[url]!;
+        final firstChapter = currentChapters.first;
         
-        // Update state with the current chapter we are starting to download
+        // Update state with the current task we are starting to download
         final current = state[book.id]!;
         state = {
           ...state,
           book.id: current.copyWith(
-            currentChapterTitle: chapter.title,
+            currentChapterTitle: firstChapter.title,
             currentChapterIndex: i + 1,
             downloadedBytes: 0,
             totalBytes: -1,
           ),
         };
 
-        final streamUrl = await _repo.resolveChapterStream(chapter);
+        final streamUrl = await _repo.resolveChapterStream(firstChapter);
         if (streamUrl == null || streamUrl.isEmpty) {
           continue;
         }
 
         // Determine file extension
         String ext = '.mp3';
-        final uri = Uri.parse(chapter.streamUrl ?? '');
+        final uri = Uri.parse(url);
         final segments = uri.pathSegments;
         
         int? torrentId;
@@ -646,13 +759,31 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
             }
           }
         } else {
-          final dot = chapter.title.lastIndexOf('.');
-          if (dot != -1) {
-            ext = chapter.title.substring(dot).toLowerCase();
+          final lowerUrl = url.toLowerCase();
+          if (lowerUrl.contains('.m4b')) {
+            ext = '.m4b';
+          } else if (lowerUrl.contains('.m4a')) {
+            ext = '.m4a';
+          } else {
+            final dot = firstChapter.title.lastIndexOf('.');
+            if (dot != -1) {
+              ext = firstChapter.title.substring(dot).toLowerCase();
+            } else {
+              final urlPath = uri.path.toLowerCase();
+              final urlDot = urlPath.lastIndexOf('.');
+              if (urlDot != -1) {
+                ext = urlPath.substring(urlDot);
+                if (ext.length > 5) ext = '.mp3';
+              }
+            }
           }
         }
 
-        final fileName = '${(i + 1).toString().padLeft(3, '0')} - ${chapter.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim()}$ext';
+        final displayName = uniqueUrls.length == 1 
+            ? book.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim()
+            : '${(i + 1).toString().padLeft(3, '0')} - ${firstChapter.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim()}';
+        final fileName = '$displayName$ext';
+        urlToRelativeFilename[url] = fileName;
         final savePath = p.join(bookDir.path, fileName);
 
         final fileToSave = File(savePath);
@@ -714,8 +845,8 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
               sink.add(data);
               downloadedBytes += data.length;
               
-              final double chapterProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0.0;
-              final overallProgress = (completedChapters + chapterProgress) / totalChapters;
+              final double taskProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0.0;
+              final overallProgress = (completedTasks + taskProgress) / totalTasks;
               
               final currentLiveState = state[book.id]!;
               final currentProgress = currentLiveState.progress;
@@ -782,12 +913,12 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
           await db.updateFileLocalPath(torrentId, fileId, savePath);
         }
 
-        completedChapters++;
+        completedTasks++;
         final currentLive = state[book.id]!;
         state = {
           ...state,
           book.id: currentLive.copyWith(
-            progress: completedChapters / totalChapters,
+            progress: completedTasks / totalTasks,
             downloadedBytes: 0,
             totalBytes: -1,
           ),
@@ -801,8 +932,57 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
 
       // Mark the book meta totalChapters correctly in DB cache
       await _repo.cacheBookMetadata(book.copyWith(
-        totalChapters: totalChapters,
+        totalChapters: totalTasks,
       ));
+
+      // Save metadata.json and cover image to the downloaded subfolder
+      try {
+        final metaFile = File(p.join(bookDir.path, 'metadata.json'));
+        final Map<String, dynamic> metaMap = {
+          'title': book.title,
+          'author': book.author,
+          'description': book.description,
+          'chapters': chapters.map((ch) {
+            final fileName = urlToRelativeFilename[ch.streamUrl ?? ''];
+            return {
+              'id': ch.id,
+              'title': ch.title,
+              'chapterNumber': ch.chapterNumber,
+              'startTimeMillis': ch.startTimeMillis,
+              'durationMillis': ch.durationMillis,
+              'streamUrl': fileName ?? ch.streamUrl,
+            };
+          }).toList(),
+        };
+        await metaFile.writeAsString(jsonEncode(metaMap));
+
+        if (book.artworkUrl != null && book.artworkUrl!.isNotEmpty) {
+          final coverFile = File(p.join(bookDir.path, 'cover.jpg'));
+          if (book.artworkUrl!.startsWith('/') || book.artworkUrl!.startsWith('file://')) {
+            final srcPath = book.artworkUrl!.startsWith('file://') 
+                ? Uri.parse(book.artworkUrl!).toFilePath() 
+                : book.artworkUrl!;
+            final srcFile = File(srcPath);
+            if (await srcFile.exists()) {
+              await srcFile.copy(coverFile.path);
+            }
+          } else {
+            try {
+              final client = HttpClient();
+              final request = await client.getUrl(Uri.parse(book.artworkUrl!));
+              final response = await request.close();
+              if (response.statusCode == 200) {
+                final bytes = await response.expand((b) => b).toList();
+                await coverFile.writeAsBytes(bytes);
+              }
+            } catch (e) {
+              print('[AudiobookDownloadNotifier] Error downloading cover image: $e');
+            }
+          }
+        }
+      } catch (e) {
+        print('[AudiobookDownloadNotifier] Error writing local files: $e');
+      }
 
       final finalCurrent = state[book.id]!;
       state = {
@@ -830,7 +1010,6 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
       _showProgressNotification(book.id, book.title, -3.0);
     }
   }
-
   void pauseBook(String bookId) {
     _pausedBooks.add(bookId);
     if (state.containsKey(bookId)) {

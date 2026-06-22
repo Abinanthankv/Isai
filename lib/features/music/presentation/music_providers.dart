@@ -1403,16 +1403,31 @@ class LibraryNotifier extends Notifier<LibraryState> {
     final dbFiles = await _db.getAllFiles();
     final dbMeta = await _db.getAllMetadata();
 
+    bool isAudiobookTorrentName(String name) {
+      final nameLower = name.toLowerCase();
+      const keywords = [
+        'audiobook', 'audio book', 'audio-book', 'unabridged', 'narrated by',
+        'read by', ' mp3 book', 'librivox',
+      ];
+      return keywords.any((kw) => nameLower.contains(kw));
+    }
+
     final List<TorBoxTorrent> torrents = dbTorrents.map((dt) {
+      final isAudiobook = isAudiobookTorrentName(dt.name);
+      
       final List<TorBoxFile> files = dbFiles
           .where((df) => df.torrentId == dt.id)
-          .map((df) => TorBoxFile(
-                id: df.id,
-                name: df.name,
-                size: df.size,
-                torrentId: df.torrentId,
-                localPath: df.localPath,
-              ))
+          .map((df) {
+            final isM4b = df.name.toLowerCase().endsWith('.m4b');
+            return TorBoxFile(
+              id: df.id,
+              name: df.name,
+              size: df.size,
+              torrentId: df.torrentId,
+              localPath: df.localPath,
+              mediaType: (isAudiobook || isM4b) ? 'audiobook' : 'music',
+            );
+          })
           .toList();
       return TorBoxTorrent(
         id: dt.id,
@@ -1437,6 +1452,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           size: df.size,
           torrentId: df.torrentId,
           localPath: df.localPath,
+          mediaType: df.name.toLowerCase().endsWith('.m4b') ? 'audiobook' : 'music',
         )).toList(),
       ));
     }

@@ -516,6 +516,27 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     );
   }
 
+  String _detectFormat(AudiobookResult book) {
+    final title = book.title.toLowerCase();
+    final desc = (book.description ?? '').toLowerCase();
+    
+    if (title.contains('.epub') || title.contains(' epub ') || title.contains('(epub)') || title.contains('[epub]')) {
+      return 'EPUB';
+    }
+    if (title.contains('.pdf') || title.contains(' pdf ') || title.contains('(pdf)') || title.contains('[pdf]')) {
+      return 'PDF';
+    }
+    if (title.contains('.mobi') || title.contains(' mobi ') || title.contains('(mobi)') || title.contains('[mobi]')) {
+      return 'MOBI';
+    }
+    
+    if (desc.contains('epub')) return 'EPUB';
+    if (desc.contains('pdf')) return 'PDF';
+    if (desc.contains('mobi')) return 'MOBI';
+    
+    return 'AUDIOBOOK';
+  }
+
   Widget _buildListTile(BuildContext context, AudiobookResult book) {
     final isTorrent = book.id.startsWith('torrent:');
     return ListTile(
@@ -527,29 +548,88 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
         borderRadius: 8,
         isTorrent: isTorrent,
       ),
-      title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Row(
+      title: Text(
+        book.title,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isTorrent) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.tertiaryContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                'TORRENT',
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              if (isTorrent) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'TORRENT',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onTertiaryContainer,
+                    ),
+                  ),
                 ),
-              ),
+              ],
+              Builder(builder: (context) {
+                final format = _detectFormat(book);
+                final Color bgColor;
+                final Color fgColor;
+                
+                switch (format) {
+                  case 'EPUB':
+                    bgColor = Colors.orange.withOpacity(0.15);
+                    fgColor = Colors.orange.shade800;
+                    break;
+                  case 'PDF':
+                    bgColor = Colors.red.withOpacity(0.15);
+                    fgColor = Colors.red.shade800;
+                    break;
+                  case 'MOBI':
+                    bgColor = Colors.blue.withOpacity(0.15);
+                    fgColor = Colors.blue.shade800;
+                    break;
+                  default:
+                    bgColor = Colors.green.withOpacity(0.15);
+                    fgColor = Colors.green.shade800;
+                }
+                
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    format,
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      color: fgColor,
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            book.author == 'Torrent Result' && book.description != null
+                ? book.description!
+                : book.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
             ),
-          ],
-          Expanded(
-            child: Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),

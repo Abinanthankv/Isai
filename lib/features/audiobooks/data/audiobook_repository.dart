@@ -11,6 +11,9 @@ import 'audiobook_models.dart';
 import 'm4b_parser.dart';
 import 'mp3_parser.dart';
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
+import '../../settings/data/torbox_settings_repository.dart';
+import '../../../core/di/injection.dart';
 
 /// Repository for audiobook data operations.
 @lazySingleton
@@ -81,6 +84,41 @@ class AudiobookRepository {
     return false;
   }
 
+  /// Clean/sanitize a torrent filename/name by removing dot, underscores,
+  /// hyphens, bracket content, years, quotes, and common release/format keywords.
+  static String cleanTorrentName(String name) {
+    var clean = name;
+    
+    // 1. Remove common file extensions at the end
+    clean = clean.replaceAll(RegExp(r'\.(mp3|m4b|m4a|epub|pdf|mobi|zip|rar|tar|gz|txt)$', caseSensitive: false), '');
+    
+    // 2. Replace dots, underscores, and hyphens with spaces
+    clean = clean.replaceAll(RegExp(r'[._\-]'), ' ');
+    
+    // 3. Remove brackets content e.g. [Unabridged], (Abridged), [1998]
+    clean = clean.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    clean = clean.replaceAll(RegExp(r'\([^)]*\)'), '');
+    
+    // 4. Remove common torrent/release tags
+    final releaseTags = RegExp(
+      r'\b(unabridged|abridged|audiobook|audio book|mp3|m4b|m4a|epub|pdf|mobi|h264|x264|x265|bluray|rip|webrip|web|1080p|720p|480p|aac|ac3|flac|cue|log|lossless|cd|dvd|multi|eng|fr|ger|es|it)\b', 
+      caseSensitive: false
+    );
+    clean = clean.replaceAll(releaseTags, '');
+    
+    // 5. Remove years (e.g. 1998, 2023)
+    clean = clean.replaceAll(RegExp(r'\b(19|20)\d{2}\b'), '');
+    
+    // 6. Remove quotes
+    clean = clean.replaceAll(RegExp(r'["`“”‘’]'), '');
+    clean = clean.replaceAll("'", "");
+    
+    // 7. Collapse multiple spaces and trim
+    clean = clean.replaceAll(RegExp(r'\s+'), ' ').trim();
+    
+    return clean;
+  }
+
   /// Fetch all torrent audiobooks that are present in the user's TorBox library.
   /// Only includes torrents that look like audiobooks (cached metadata, m4b files,
   /// audiobook keywords in name, or many audio chapter files).
@@ -111,7 +149,7 @@ class AudiobookRepository {
           // No cached metadata yet, but torrent passes audiobook heuristics
           results.add(AudiobookResult(
             id: 'torrent:$hash:',
-            title: torrent.name,
+            title: cleanTorrentName(torrent.name),
             author: 'TorBox Library',
             description: 'From TorBox library',
           ));
@@ -140,11 +178,15 @@ class AudiobookRepository {
       final allResults = await Future.wait(tasks);
       final List<AudiobookResult> merged = [];
 
-      // 1. Add Addon Results
+      // 1. Add AudiobookBay Results
+      final abbResults = allResults[2] as List<AudiobookResult>;
+      merged.addAll(abbResults);
+
+      // 2. Add Addon Results
       final addonResults = allResults[0] as List<AudiobookResult>;
       merged.addAll(addonResults);
 
-      // 2. Add Torrent Results
+      // 3. Add Torrent Results
       final torrentResults = allResults[1] as List<dynamic>;
       for (final t in torrentResults) {
         final name = t.name as String? ?? '';
@@ -165,10 +207,6 @@ class AudiobookRepository {
           description: 'Source: ${t.source} | Seeders: ${t.seeders} | Size: ${t.formattedSize}',
         ));
       }
-
-      // 3. Add AudiobookBay Results
-      final abbResults = allResults[2] as List<AudiobookResult>;
-      merged.addAll(abbResults);
 
       return merged;
     } catch (e) {
@@ -413,11 +451,51 @@ class AudiobookRepository {
       if (cached != null) {
         return metadataToResult(cached);
       }
-      return AudiobookResult(
+      
+      // Cache is empty, let's look up the torrent in TorBox library to get its original name
+      String? torrentName;
+      try {
+        final parts = bookId.split(':');
+        if (parts.length > 1) {
+          final hash = parts[1].toLowerCase();
+          final library = await _musicRepo.getLibrary();
+          final torrent = library.where((t) => t.hash.toLowerCase() == hash).firstOrNull;
+          if (torrent != null) {
+            torrentName = torrent.name;
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Error getting torrent name from library: $e');
+      }
+      
+      final title = cleanTorrentName(torrentName ?? 'Torrent Audiobook');
+      
+      // Let's try online metadata lookup using the clean title!
+      String? description;
+      String? onlineAuthor;
+      String? onlineArtwork;
+      
+      try {
+        final onlineData = await _fetchOnlineMetadata(title);
+        if (onlineData != null) {
+          description = onlineData['description'];
+          onlineAuthor = onlineData['author'];
+          onlineArtwork = onlineData['artworkUrl'];
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Online metadata lookup failed for $title: $e');
+      }
+      
+      final mergedBook = AudiobookResult(
         id: bookId,
-        title: 'Torrent Audiobook',
-        author: 'Torrent Result',
+        title: title,
+        author: (onlineAuthor != null && onlineAuthor.isNotEmpty) ? onlineAuthor : 'Torrent Result',
+        artworkUrl: onlineArtwork,
+        description: description ?? 'From TorBox library',
       );
+      
+      await cacheBookMetadata(mergedBook);
+      return mergedBook;
     }
 
     if (bookId.startsWith('local:')) {
@@ -561,7 +639,47 @@ class AudiobookRepository {
       return _getLocalChapters(bookId);
     }
     
-    final chapters = await _addonService.getBookChapters(bookId);
+    List<AudiobookChapter> chapters = [];
+    
+    // Check if we have torrent files in our local DB first to avoid network requests
+    if (bookId.startsWith('torrent:')) {
+      try {
+        final parts = bookId.split(':');
+        if (parts.length > 1) {
+          final hash = parts[1].toLowerCase();
+          final dbTorrents = await _db.getAllTorrents();
+          final torrent = dbTorrents.where((t) => t.hash.toLowerCase() == hash).firstOrNull;
+          if (torrent != null) {
+            final dbFiles = await _db.getAllFiles();
+            final torrentFiles = dbFiles.where((f) => f.torrentId == torrent.id).toList();
+            
+            final validExtensions = ['.mp3', '.flac', '.aac', '.m4a', '.m4b', '.ogg', '.opus', '.wav'];
+            int idx = 0;
+            
+            for (final f in torrentFiles) {
+              final isAudio = validExtensions.any((ext) => f.name.toLowerCase().endsWith(ext));
+              if (isAudio) {
+                final streamUrl = 'https://lazy.torbox.internal/${torrent.id}/${f.id}';
+                chapters.add(AudiobookChapter(
+                  id: '${bookId}_ch_$idx',
+                  title: f.name,
+                  chapterNumber: idx + 1,
+                  streamUrl: streamUrl,
+                  source: 'TorBox Torrent (Local DB)',
+                ));
+                idx++;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Error reading chapters from local DB: $e');
+      }
+    }
+    
+    if (chapters.isEmpty) {
+      chapters = await _addonService.getBookChapters(bookId);
+    }
     
     List<AudiobookChapter> workingChapters = chapters;
     
@@ -779,6 +897,36 @@ class AudiobookRepository {
     final dir = io.Directory(path);
     if (!await dir.exists()) return [];
 
+    // Check if metadata.json exists inside the directory to load fast
+    final metaFile = io.File(p.join(path, 'metadata.json'));
+    if (await metaFile.exists()) {
+      try {
+        final content = await metaFile.readAsString();
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        final jsonChapters = data['chapters'] as List<dynamic>?;
+        if (jsonChapters != null && jsonChapters.isNotEmpty) {
+          return jsonChapters.map((chMap) {
+            final map = chMap as Map<String, dynamic>;
+            final relativePath = map['streamUrl'] as String? ?? '';
+            final absolutePath = relativePath.startsWith('/') || relativePath.startsWith('file://')
+                ? relativePath
+                : p.join(path, relativePath);
+            return AudiobookChapter(
+              id: map['id'] as String? ?? 'local_ch_${map['chapterNumber']}',
+              title: map['title'] as String? ?? 'Chapter',
+              chapterNumber: map['chapterNumber'] as int? ?? 1,
+              startTimeMillis: map['startTimeMillis'] as int? ?? 0,
+              durationMillis: map['durationMillis'] as int? ?? 0,
+              streamUrl: absolutePath,
+              source: 'Local metadata.json',
+            );
+          }).toList();
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Error reading local metadata.json: $e');
+      }
+    }
+
     final List<io.File> audioFiles = [];
     await for (final entity in dir.list()) {
       if (entity is io.File) {
@@ -933,6 +1081,85 @@ class AudiobookRepository {
 
   // ─── Progress Tracking ─────────────────────────────────────────
 
+  Future<String?> getLocalBookDirectoryForBackup(String bookId) async {
+    if (bookId.startsWith('local:')) {
+      final path = bookId.substring(6);
+      if (await io.Directory(path).exists()) {
+        return path;
+      }
+      return null;
+    }
+    
+    if (bookId.startsWith('torrent:')) {
+      final parts = bookId.split(':');
+      if (parts.length > 1) {
+        final hash = parts[1].toLowerCase();
+        final torrents = await _db.getAllTorrents();
+        final torrent = torrents.where((t) => t.hash.toLowerCase() == hash).firstOrNull;
+        if (torrent != null) {
+          final files = await _db.getAllFiles();
+          final bookFiles = files.where((f) => f.torrentId == torrent.id && f.localPath != null && f.localPath!.isNotEmpty).toList();
+          for (final f in bookFiles) {
+            final file = io.File(f.localPath!);
+            if (await file.exists()) {
+              return file.parent.path;
+            }
+          }
+        }
+      }
+    }
+    
+    try {
+      final settings = getIt<TorBoxSettingsRepository>();
+      final downloadDirPath = settings.audiobookFolder;
+      final cached = await getCachedMetadata(normalizeBookId(bookId));
+      if (downloadDirPath != null && downloadDirPath.isNotEmpty && cached != null) {
+        final sanitizedTitle = cached.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+        final bookDir = io.Directory(p.join(downloadDirPath, sanitizedTitle));
+        if (await bookDir.exists()) {
+          return bookDir.path;
+        }
+      }
+    } catch (_) {}
+    
+    return null;
+  }
+
+  /// Restore listening progress from a local folder's progress.json if it exists.
+  Future<void> restoreProgressFromLocalFolder(String bookId, String folderPath) async {
+    try {
+      final progressFile = io.File(p.join(folderPath, 'progress.json'));
+      if (await progressFile.exists()) {
+        final content = await progressFile.readAsString();
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        final jsonProgress = data['progress'] as List<dynamic>?;
+        if (jsonProgress != null) {
+          for (final entry in jsonProgress) {
+            final map = entry as Map<String, dynamic>;
+            final chIdx = map['chapterIndex'] as int;
+            
+            final existing = await _db.getAudiobookProgress(bookId, chIdx);
+            final localLastListened = DateTime.parse(map['lastListenedAt'] as String);
+            
+            if (existing == null || existing.lastListenedAt.isBefore(localLastListened)) {
+              await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
+                bookId: bookId,
+                chapterIndex: chIdx,
+                positionMillis: Value(map['positionMillis'] as int? ?? 0),
+                durationMillis: Value(map['durationMillis'] as int? ?? 0),
+                lastListenedAt: localLastListened,
+                isCompleted: Value(map['isCompleted'] as bool? ?? false),
+              ));
+            }
+          }
+          print('[AudiobookRepository] Restored progress from ${progressFile.path}');
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error restoring progress from local folder: $e');
+    }
+  }
+
   /// Save listening progress for a specific chapter.
   Future<void> saveProgress({
     required String bookId,
@@ -949,6 +1176,50 @@ class AudiobookRepository {
       lastListenedAt: DateTime.now(),
       isCompleted: Value(isCompleted),
     ));
+
+    // Back up progress to the local download folder if it exists
+    try {
+      final dirPath = await getLocalBookDirectoryForBackup(bookId);
+      if (dirPath != null) {
+        final progressList = await getBookChapterProgress(bookId);
+        final List<Map<String, dynamic>> jsonList = [];
+        final Set<int> processedIndices = {};
+        
+        jsonList.add({
+          'chapterIndex': chapterIndex,
+          'positionMillis': positionMillis,
+          'durationMillis': durationMillis,
+          'isCompleted': isCompleted,
+          'lastListenedAt': DateTime.now().toIso8601String(),
+        });
+        processedIndices.add(chapterIndex);
+        
+        for (final p in progressList) {
+          if (!processedIndices.contains(p.chapterIndex)) {
+            jsonList.add({
+              'chapterIndex': p.chapterIndex,
+              'positionMillis': p.positionMillis,
+              'durationMillis': p.durationMillis,
+              'isCompleted': p.isCompleted,
+              'lastListenedAt': p.lastListenedAt.toIso8601String(),
+            });
+            processedIndices.add(p.chapterIndex);
+          }
+        }
+        
+        final data = {
+          'bookId': bookId,
+          'lastListenedAt': DateTime.now().toIso8601String(),
+          'progress': jsonList,
+        };
+        
+        final progressFile = io.File(p.join(dirPath, 'progress.json'));
+        await progressFile.writeAsString(jsonEncode(data));
+        print('[AudiobookRepository] Progress backed up to ${progressFile.path}');
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error backing up progress to local folder: $e');
+    }
   }
 
   /// Get progress for a specific book's chapter.
@@ -989,14 +1260,15 @@ class AudiobookRepository {
 
   /// Clear metadata cache for a book.
   Future<void> clearBookMetadataCache(String bookId) {
-    return _db.deleteAudiobookMetadata(bookId);
+    return _db.deleteAudiobookMetadata(normalizeBookId(bookId));
   }
 
   // ─── Metadata Cache ────────────────────────────────────────────
 
   /// Save audiobook metadata to local cache.
   Future<void> cacheBookMetadata(AudiobookResult book) async {
-    final existing = await getCachedMetadata(book.id);
+    final normalizedId = normalizeBookId(book.id);
+    final existing = await getCachedMetadata(normalizedId);
 
     String title = book.title;
     String author = book.author;
@@ -1082,7 +1354,7 @@ class AudiobookRepository {
     }
 
     await _db.saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion.insert(
-      bookId: book.id,
+      bookId: normalizedId,
       title: title,
       author: Value(author),
       narrator: Value(narrator),
@@ -1097,7 +1369,7 @@ class AudiobookRepository {
 
   /// Get cached metadata for a book.
   Future<DbAudiobookMetadataCache?> getCachedMetadata(String bookId) {
-    return _db.getAudiobookMetadata(bookId);
+    return _db.getAudiobookMetadata(normalizeBookId(bookId));
   }
 
   /// Convert cached DB metadata back to an AudiobookResult.
@@ -1290,6 +1562,31 @@ class AudiobookRepository {
 
     print('[AudiobookRepository] Search completed. Returning total of ${results.length} metadata results.');
     return results;
+  }
+
+  /// Search online APIs (iTunes, Open Library) yielding results incrementally as they complete.
+  Stream<List<AudiobookResult>> searchOnlineMetadataStream(String query) async* {
+    final List<AudiobookResult> results = [];
+    final Set<String> seenTitles = {};
+    print('[AudiobookRepository] Starting online metadata search stream for: "$query"');
+
+    final itunesFuture = _searchItunes(query);
+    final olFuture = _searchOpenLibrary(query);
+
+    void addList(List<AudiobookResult> list) {
+      for (final book in list) {
+        final key = '${book.title}|${book.author}'.toLowerCase();
+        if (!seenTitles.contains(key)) {
+          seenTitles.add(key);
+          results.add(book);
+        }
+      }
+    }
+
+    await for (final list in Stream.fromFutures([itunesFuture, olFuture])) {
+      addList(list);
+      yield List.from(results);
+    }
   }
 
   /// Resolve full details (like description) for an Open Library book search result.

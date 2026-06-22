@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -266,7 +267,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                   // Show progress summary card if user has listening progress
                   if (hasProgress) ...[
                     const SizedBox(height: 16),
-                    _buildOverallProgressCard(context, chapterProgressMap, chaptersAsync.value?.length ?? 0),
+                    _buildOverallProgressCard(context, chapterProgressMap, chaptersAsync.value?.length ?? 0, chaptersAsync.value ?? []),
                   ]
                   // Show download button ONLY if it's a torrent that is NOT yet in library
                   else if (displayBook.id.startsWith('torrent:')) ...[  
@@ -285,8 +286,9 @@ class AudiobookDetailScreen extends ConsumerWidget {
                           FilledButton.icon(
                             icon: const Icon(Icons.cloud_download_rounded),
                             label: const Text('Download Torrent to TorBox'),
+
                             onPressed: () async {
-                              final parts = displayBook.id.split(':');
+                              final parts = book.id.split(':');
                               final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
                               if (magnet.isNotEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -386,7 +388,9 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                             ),
                                             const SizedBox(width: 8),
                                             Text(
-                                              'Downloading: Chapter ${downloadState.currentChapterIndex}/${downloadState.totalChapters}',
+                                              downloadState.totalChapters > 1
+                                                  ? 'Downloading: File ${downloadState.currentChapterIndex}/${downloadState.totalChapters}'
+                                                  : 'Downloading audiobook...',
                                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                                             ),
                                           ],
@@ -749,18 +753,28 @@ class AudiobookDetailScreen extends ConsumerWidget {
                         final isCurrentBook = currentMedia?.extras?['bookId'] == normalBook.id;
                         final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
 
-                        if (isCurrentBook && hasOffsets) {
+                        bool isCurrent = false;
+                        if (isCurrentBook) {
+                          if (hasOffsets) {
+                            final currentPosMs = audioHandler.playbackState.value.position.inMilliseconds;
+                            final start = chapter.startTimeMillis;
+                            final end = (index + 1 < chapters.length)
+                                ? chapters[index + 1].startTimeMillis
+                                : double.infinity;
+                            isCurrent = currentPosMs >= start && currentPosMs < end;
+                          } else {
+                            isCurrent = (currentMedia?.extras?['chapterIndex'] == index) || (currentMedia?.title == chapter.title);
+                          }
+                        }
+
+                        if (isCurrent) {
                           return StreamBuilder<Duration>(
                             stream: AudioService.position,
                             initialData: Duration.zero,
                             builder: (context, posSnapshot) {
                               final currentPos = posSnapshot.data ?? Duration.zero;
                               final currentPosMs = currentPos.inMilliseconds;
-                              final start = chapter.startTimeMillis;
-                              final end = (index + 1 < chapters.length)
-                                  ? chapters[index + 1].startTimeMillis
-                                  : double.infinity;
-                              final isCurrent = currentPosMs >= start && currentPosMs < end;
+                              
                               return _buildChapterTile(
                                 context: context,
                                 index: index,
@@ -769,15 +783,15 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                 isCompleted: isCompleted,
                                 chapterPercent: chapterPercent,
                                 downloadState: downloadState,
-                                isCurrent: isCurrent,
+                                isCurrent: true,
                                 displayBook: displayBook,
                                 normalizedId: normalBook.id,
+                                currentPosMs: currentPosMs,
+                                chapters: chapters,
                               );
                             },
                           );
                         } else {
-                          final isCurrent = isCurrentBook &&
-                              ((currentMedia?.extras?['chapterIndex'] == index) || (currentMedia?.title == chapter.title));
                           return _buildChapterTile(
                             context: context,
                             index: index,
@@ -786,9 +800,10 @@ class AudiobookDetailScreen extends ConsumerWidget {
                             isCompleted: isCompleted,
                             chapterPercent: chapterPercent,
                             downloadState: downloadState,
-                            isCurrent: isCurrent,
+                            isCurrent: false,
                             displayBook: displayBook,
                             normalizedId: normalBook.id,
+                            chapters: chapters,
                           );
                         }
                       },
@@ -836,7 +851,55 @@ class AudiobookDetailScreen extends ConsumerWidget {
     required bool isCurrent,
     required AudiobookResult displayBook,
     required String normalizedId,
+    int? currentPosMs,
+    required List<AudiobookChapter> chapters,
   }) {
+    final start = chapter.startTimeMillis;
+    final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
+    
+    int chDuration = chapter.durationMillis;
+    if (hasOffsets) {
+      final end = (index + 1 < chapters.length)
+          ? chapters[index + 1].startTimeMillis
+          : 0;
+      if (end > start) {
+        chDuration = (end - start).toInt();
+      } else if (chProgress != null && chProgress.durationMillis > 0) {
+        chDuration = chProgress.durationMillis;
+      } else {
+        final totalDurationMs = audioHandler.mediaItem.value?.duration?.inMilliseconds;
+        if (totalDurationMs != null && totalDurationMs > start) {
+          chDuration = (totalDurationMs - start).toInt();
+        }
+      }
+    }
+    if (chDuration <= 0) {
+      chDuration = chapter.durationMillis > 0 ? chapter.durationMillis : 1;
+    }
+
+    int displayPos = 0;
+    double percent = 0.0;
+    if (isCurrent) {
+      final activePos = currentPosMs ?? audioHandler.playbackState.value.position.inMilliseconds;
+      if (hasOffsets) {
+        displayPos = (activePos - start).clamp(0, chDuration);
+      } else {
+        displayPos = activePos.clamp(0, chDuration);
+      }
+      percent = (chDuration > 0) ? (displayPos / chDuration).clamp(0.0, 1.0) : 0.0;
+    } else if (isCompleted) {
+      displayPos = chDuration;
+      percent = 1.0;
+    } else if (chProgress != null) {
+      if (hasOffsets) {
+        // chProgress.positionMillis is absolute in DB
+        displayPos = (chProgress.positionMillis - start).clamp(0, chDuration);
+      } else {
+        displayPos = chProgress.positionMillis.clamp(0, chDuration);
+      }
+      percent = (chDuration > 0) ? (displayPos / chDuration).clamp(0.0, 1.0) : 0.0;
+    }
+
     return Consumer(
       builder: (context, ref, child) {
         return Column(
@@ -881,12 +944,12 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                     )),
                     ),
                   ),
-                  if (chProgress != null && !isCompleted && !isCurrent)
+                  if (!isCompleted && percent > 0.0)
                     SizedBox(
                       width: 40,
                       height: 40,
                       child: CircularProgressIndicator(
-                        value: chapterPercent,
+                        value: percent,
                         strokeWidth: 2.5,
                         backgroundColor: Colors.transparent,
                         color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
@@ -919,18 +982,18 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     )
                   : (isCurrent
                       ? Text(
-                          'Playing',
+                          'Playing • ${_formatDuration(displayPos)} / ${_formatDuration(chDuration)}',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: Theme.of(context).colorScheme.primary,
                           ),
                         )
-                      : (chProgress != null
+                      : (percent > 0.0
                           ? Text(
                               isCompleted
                                   ? 'Completed'
-                                  : '${_formatDuration(chProgress.positionMillis)} / ${_formatDuration(chProgress.durationMillis)}',
+                                  : '${_formatDuration(displayPos)} / ${_formatDuration(chDuration)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isCompleted
@@ -938,9 +1001,9 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                     : Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
                             )
-                          : (chapter.durationMillis > 0
+                          : (chDuration > 0 && chDuration != 1
                               ? Text(
-                                  _formatDuration(chapter.durationMillis),
+                                  _formatDuration(chDuration),
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1023,12 +1086,63 @@ class AudiobookDetailScreen extends ConsumerWidget {
   }
 
   /// Build an overall progress summary card.
-  Widget _buildOverallProgressCard(BuildContext context, Map<int, DbAudiobookProgress> progressMap, int totalChapters) {
+  Widget _buildOverallProgressCard(
+    BuildContext context,
+    Map<int, DbAudiobookProgress> progressMap,
+    int totalChapters,
+    List<AudiobookChapter> chapters,
+  ) {
     final completedChapters = progressMap.values.where((p) => p.isCompleted).length;
     final listenedChapters = progressMap.length;
-    final totalListenedMillis = progressMap.values.fold<int>(0, (sum, p) => sum + p.positionMillis);
-    final totalDurationMillis = progressMap.values.fold<int>(0, (sum, p) => sum + p.durationMillis);
-    
+    final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
+
+    int totalListenedMillis = 0;
+    int totalDurationMillis = 0;
+
+    if (hasOffsets && chapters.isNotEmpty) {
+      for (int i = 0; i < chapters.length; i++) {
+        final chapter = chapters[i];
+        final start = chapter.startTimeMillis;
+        final end = (i + 1 < chapters.length)
+            ? chapters[i + 1].startTimeMillis
+            : 0;
+        
+        int chDuration = chapter.durationMillis;
+        if (end > start) {
+          chDuration = (end - start).toInt();
+        } else if (progressMap.isNotEmpty) {
+          final overallProgressEntry = progressMap.values.firstWhere((p) => p.durationMillis > 3600000, orElse: () => progressMap.values.first);
+          if (overallProgressEntry.durationMillis > start) {
+            chDuration = (overallProgressEntry.durationMillis - start).toInt();
+          }
+        }
+        if (chDuration <= 0) {
+          chDuration = chapter.durationMillis > 0 ? chapter.durationMillis : 1;
+        }
+
+        totalDurationMillis += chDuration;
+
+        final chProgress = progressMap[i];
+        if (chProgress != null) {
+          if (chProgress.isCompleted) {
+            totalListenedMillis += chDuration;
+          } else {
+            final relativePos = (chProgress.positionMillis - start).clamp(0, chDuration);
+            totalListenedMillis += relativePos;
+          }
+        }
+      }
+    } else {
+      for (final p in progressMap.values) {
+        totalDurationMillis += p.durationMillis;
+        if (p.isCompleted) {
+          totalListenedMillis += p.durationMillis;
+        } else {
+          totalListenedMillis += p.positionMillis;
+        }
+      }
+    }
+
     final double overallPercent;
     if (totalDurationMillis > 0) {
       overallPercent = (totalListenedMillis / totalDurationMillis).clamp(0.0, 1.0);
@@ -1243,6 +1357,8 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
   List<AudiobookResult> _results = [];
   String _error = '';
 
+  StreamSubscription<List<AudiobookResult>>? _searchSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -1252,6 +1368,7 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
 
   @override
   void dispose() {
+    _searchSubscription?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -1260,24 +1377,39 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
     final query = _controller.text.trim();
     if (query.isEmpty) return;
 
+    await _searchSubscription?.cancel();
+
     setState(() {
       _isLoading = true;
       _error = '';
+      _results = [];
     });
 
-    try {
-      final repo = ref.read(audiobookRepositoryProvider);
-      final results = await repo.searchOnlineMetadata(query);
-      setState(() {
-        _results = results;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
+    final repo = ref.read(audiobookRepositoryProvider);
+    _searchSubscription = repo.searchOnlineMetadataStream(query).listen(
+      (results) {
+        if (mounted) {
+          setState(() {
+            _results = results;
+          });
+        }
+      },
+      onError: (e) {
+        if (mounted) {
+          setState(() {
+            _error = e.toString();
+            _isLoading = false;
+          });
+        }
+      },
+      onDone: () {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+    );
   }
 
   Future<void> _selectBook(AudiobookResult selectedBook) async {

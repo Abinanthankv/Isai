@@ -10,6 +10,8 @@ import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
 import 'package:isai/main.dart'; // For audioHandler
 import 'package:isai/core/di/injection.dart';
+import 'epub_reader_screen.dart';
+import '../../music/presentation/music_providers.dart'; // for settingsProvider
 
 class AudiobookNowPlayingScreen extends ConsumerStatefulWidget {
   final AudiobookResult book;
@@ -24,6 +26,9 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   Timer? _progressSaveTimer;
   StreamSubscription<PlaybackState>? _playbackStateSub;
   bool _wasPlaying = false;
+  bool _showingEpub = false;
+  String? _epubFilePath;
+  bool _epubSearchDone = false;
 
   @override
   void initState() {
@@ -41,6 +46,49 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
       }
       _wasPlaying = isPlaying;
     });
+    // Find epub file in background
+    _findEpubFile();
+  }
+
+  /// Determines the local folder for this book and searches for an .epub file.
+  Future<void> _findEpubFile() async {
+    if (_epubSearchDone) return;
+    _epubSearchDone = true;
+
+    try {
+      String? folderPath;
+      final bookId = widget.book.id;
+
+      if (bookId.startsWith('local:')) {
+        // local: ID encodes the absolute path of the folder or file
+        final rawPath = bookId.substring('local:'.length);
+        final entity = FileSystemEntity.typeSync(rawPath);
+        if (entity == FileSystemEntityType.directory) {
+          folderPath = rawPath;
+        } else {
+          // It's a single file — use its parent folder
+          folderPath = File(rawPath).parent.path;
+        }
+      } else if (bookId.startsWith('torrent:')) {
+        // For torrent books, check if there's a downloaded subfolder in audiobookFolder
+        final settingsVal = ref.read(settingsProvider);
+        final audiobookFolder = settingsVal.audiobookFolder;
+        if (audiobookFolder != null && audiobookFolder.isNotEmpty) {
+          // Subfolders are named after the book title (sanitized)
+          final sanitized = widget.book.title
+              .replaceAll(RegExp(r'[^\w\s-]'), '')
+              .replaceAll(RegExp(r'\s+'), '_');
+          folderPath = '$audiobookFolder/$sanitized';
+        }
+      }
+
+      if (folderPath != null) {
+        final epub = await findEpubInFolder(folderPath);
+        if (mounted && epub != null) {
+          setState(() => _epubFilePath = epub);
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -96,6 +144,17 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
             : displayBook.author;
         final artworkUrl = displayBook.artworkUrl ?? mediaItem?.artUri?.toString();
 
+          // If epub reader is active, show it instead
+          if (_showingEpub && _epubFilePath != null) {
+            return Scaffold(
+              body: EpubReaderScreen(
+                epubFilePath: _epubFilePath!,
+                bookId: widget.book.id,
+                onClose: () => setState(() => _showingEpub = false),
+              ),
+            );
+          }
+
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
@@ -108,6 +167,13 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
             title: const Text('Now Playing', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             centerTitle: true,
             actions: [
+              // Epub reader toggle — only show if epub file was found
+              if (_epubFilePath != null)
+                IconButton(
+                  icon: const Icon(Icons.menu_book_rounded),
+                  tooltip: 'Read book',
+                  onPressed: () => setState(() => _showingEpub = true),
+                ),
               Consumer(builder: (context, ref, child) {
                 final isLibrary = displayBook.id.startsWith('torrent:');
                 if (!isLibrary) return const SizedBox.shrink();
@@ -290,7 +356,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                         ),
                         
                         const SizedBox(height: 24),
-                        // Progress Bar
+                        // Progress
                         StreamBuilder<Duration>(
                           stream: AudioService.position,
                           builder: (context, posSnapshot) {
@@ -300,7 +366,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                             if (duration.inMilliseconds > 0) {
                               progress = (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
                             }
-
                             return Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [

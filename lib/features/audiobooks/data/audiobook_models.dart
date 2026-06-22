@@ -169,6 +169,7 @@ class AudiobookWithProgress {
   final int positionMillis;
   final int totalChapters;
   final DateTime lastListenedAt;
+  final double progressPercent;
 
   const AudiobookWithProgress({
     required this.book,
@@ -176,12 +177,8 @@ class AudiobookWithProgress {
     this.positionMillis = 0,
     this.totalChapters = 0,
     required this.lastListenedAt,
+    this.progressPercent = 0.0,
   });
-
-  double get progressPercent {
-    if (totalChapters <= 0) return 0.0;
-    return (currentChapter / totalChapters).clamp(0.0, 1.0);
-  }
 }
 
 /// State class for audiobook search.

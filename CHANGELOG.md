@@ -9,11 +9,17 @@
 - **Chapter-Aware Progress**: Progress is now tracked per chapter, so you always resume exactly where you left off — even mid-chapter.
 - **Live Chapter Updates**: The mini player and system notification automatically update to show the current chapter name as you listen, in real time.
 - **MP3 Audiobook Chapters**: Added support for MP3 audiobooks that embed chapter information — chapters are now detected and listed just like M4B files.
+- **Read While You Listen**: A new 📖 book icon appears in the Now Playing screen whenever an EPUB file is found alongside your audiobook. Tap it to open the full book text and read while the audio plays in the background.
+- **Built-in Book Reader**: The reader supports chapter navigation, adjustable font size (larger or smaller), and a table of contents. Tap anywhere on the page to hide the controls for a distraction-free reading experience.
+- **Reading Position Saved**: The book reader remembers exactly where you were — which chapter and how far down the page — and returns you there every time you reopen the book. Your font size preference is also saved per book.
+- **Progress Saved to Backup Folder**: Audiobook listening progress is now saved as a file inside the book's own folder, so it's included in your backups automatically.
+- **Completed Chapter Tracking**: Chapters you've finished are now correctly marked as completed. When the audio naturally moves to the next chapter, the previous one is saved as done — so your progress overview always reflects reality.
 
 ### Fixed & Improved
 - **Chapter Highlighting**: The currently playing chapter is now highlighted in both the Now Playing and book detail screens as the audio progresses.
 - **Audiobook in Mixed Folders**: Audiobooks stored alongside other files (covers, samples, etc.) now correctly show only the real audio chapters instead of listing every file.
 - **Notification & Mini Player Accuracy**: Fixed chapter title not updating in the notification bar and mini player when crossing chapter boundaries.
+- **Smarter Chapter Completion**: Fixed a bug where chapters near the end of a book were never marked as finished. A chapter is now correctly marked complete when you finish it or skip forward to the next one.
 
 ## [1.0.3] - June 2026
 
