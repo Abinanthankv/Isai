@@ -16,6 +16,12 @@ class AudiobookResult {
   final String? language;
   final String? genre;
   final String? releaseYear;
+  final String? releaseDate;
+  final String? publisher;
+  final String? previewUrl;
+  final int? durationMillis;
+  final double? rating;
+  final int? ratingCount;
 
   const AudiobookResult({
     required this.id,
@@ -28,6 +34,12 @@ class AudiobookResult {
     this.language,
     this.genre,
     this.releaseYear,
+    this.releaseDate,
+    this.publisher,
+    this.previewUrl,
+    this.durationMillis,
+    this.rating,
+    this.ratingCount,
   });
 
   factory AudiobookResult.fromStremioMeta(Map<String, dynamic> json) {
@@ -96,6 +108,12 @@ class AudiobookResult {
     String? language,
     String? genre,
     String? releaseYear,
+    String? releaseDate,
+    String? publisher,
+    String? previewUrl,
+    int? durationMillis,
+    double? rating,
+    int? ratingCount,
   }) {
     return AudiobookResult(
       id: id ?? this.id,
@@ -108,6 +126,12 @@ class AudiobookResult {
       language: language ?? this.language,
       genre: genre ?? this.genre,
       releaseYear: releaseYear ?? this.releaseYear,
+      releaseDate: releaseDate ?? this.releaseDate,
+      publisher: publisher ?? this.publisher,
+      previewUrl: previewUrl ?? this.previewUrl,
+      durationMillis: durationMillis ?? this.durationMillis,
+      rating: rating ?? this.rating,
+      ratingCount: ratingCount ?? this.ratingCount,
     );
   }
 

@@ -39,9 +39,14 @@ class Mp3Parser {
       if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
         reader = HttpRandomDataReader(pathOrUrl);
       } else {
-        final cleanPath = pathOrUrl.startsWith('file://')
+        String cleanPath = pathOrUrl.startsWith('file://')
             ? Uri.parse(pathOrUrl).toFilePath()
             : pathOrUrl;
+        if (cleanPath.contains('%')) {
+          try {
+            cleanPath = Uri.decodeComponent(cleanPath);
+          } catch (_) {}
+        }
         final file = File(cleanPath);
         if (!await file.exists()) return [];
         final raf = await file.open(mode: FileMode.read);
@@ -62,20 +67,30 @@ class Mp3Parser {
 
   static Future<List<Mp3Chapter>> _parse(RandomDataReader reader) async {
     final length = await reader.length();
-    if (length < 10) return [];
+    print('[Mp3Parser] Starting ID3 parse on data reader of length $length bytes');
+    if (length < 10) {
+      print('[Mp3Parser] File too short for ID3');
+      return [];
+    }
 
     await reader.setPosition(0);
     final headerBytes = await reader.read(10);
-    if (headerBytes.length < 10) return [];
+    if (headerBytes.length < 10) {
+      print('[Mp3Parser] Failed to read 10 bytes ID3 header');
+      return [];
+    }
 
     // Check for "ID3"
     if (headerBytes[0] != 0x49 || headerBytes[1] != 0x44 || headerBytes[2] != 0x33) {
+      print('[Mp3Parser] No ID3 header found at offset 0 (bytes: ${headerBytes.sublist(0, 3)})');
       return [];
     }
 
     final majorVersion = headerBytes[3];
+    print('[Mp3Parser] Found ID3v2.$majorVersion tag');
     // We support ID3v2.3 and ID3v2.4
     if (majorVersion != 3 && majorVersion != 4) {
+      print('[Mp3Parser] Unsupported ID3 major version: $majorVersion');
       return [];
     }
 
@@ -85,10 +100,15 @@ class Mp3Parser {
                     ((headerBytes[8] & 0x7F) << 7) |
                     (headerBytes[9] & 0x7F);
 
-    if (tagSize <= 0 || tagSize > length) return [];
+    print('[Mp3Parser] ID3 tag size: $tagSize bytes');
+    if (tagSize <= 0 || tagSize > length) {
+      print('[Mp3Parser] Invalid ID3 tag size');
+      return [];
+    }
 
     // Read the entire ID3 tag data (excluding the 10-byte header)
     final tagData = await reader.read(tagSize);
+    print('[Mp3Parser] Read ${tagData.length} bytes of tag data');
     if (tagData.length < tagSize) return [];
 
     final List<Mp3Chapter> chapters = [];

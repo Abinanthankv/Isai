@@ -21,6 +21,7 @@ import '../../settings/presentation/settings_screen.dart';
 import 'dart:async';
 import '../../audiobooks/presentation/audiobook_providers.dart';
 import '../../audiobooks/data/audiobook_models.dart';
+import '../../audiobooks/presentation/audiobook_stats_screen.dart';
 import '../../audiobooks/presentation/audiobook_detail_screen.dart';
 import 'package:isai/main.dart';
 
@@ -102,6 +103,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       ? [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple]
                       : [const Color(0xFF667eea), const Color(0xFF764ba2)],
                 ),
+                actions: [
+                  if (selectedTab == 'audiobooks')
+                    IconButton(
+                      icon: const Icon(Icons.bar_chart_rounded),
+                      tooltip: 'Audiobook Insights',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AudiobookStatsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                ],
                 bottom: PreferredSize(
                   preferredSize: const Size.fromHeight(40),
                   child: Container(
@@ -722,11 +738,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 onTap: () async {
                   Navigator.pop(context);
                   final repo = ref.read(audiobookRepositoryProvider);
-                  await repo.clearBookProgress(progress.book.id);
+                  await repo.dismissBookFromContinueListening(progress.book.id);
                   ref.invalidate(inProgressAudiobooksProvider);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Removed book progress.')),
+                      const SnackBar(content: Text('Removed from Continue Listening.')),
                     );
                   }
                 },

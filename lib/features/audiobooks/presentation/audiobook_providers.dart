@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:dio/dio.dart';
 import 'package:audiotags/audiotags.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
@@ -85,6 +86,38 @@ final audiobookCatalogProvider = FutureProvider<List<AudiobookResult>>((ref) asy
 /// Get all in-progress audiobooks for "Continue Listening" section.
 final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWithProgress>>((ref) async {
   final repo = ref.read(audiobookRepositoryProvider);
+
+  // Proactively scan local audiobook directory to restore progress/metadata for cloud/torbox books
+  final settings = ref.watch(settingsProvider);
+  final downloadDirPath = settings.audiobookFolder;
+  if (downloadDirPath != null && downloadDirPath.isNotEmpty) {
+    try {
+      final dir = Directory(downloadDirPath);
+      if (await dir.exists()) {
+        await for (final entity in dir.list()) {
+          if (entity is Directory) {
+            final metaFile = File(p.join(entity.path, 'metadata.json'));
+            final progressFile = File(p.join(entity.path, 'progress.json'));
+            if (await metaFile.exists() && await progressFile.exists()) {
+              try {
+                final content = await metaFile.readAsString();
+                final data = jsonDecode(content) as Map<String, dynamic>;
+                final bookId = data['bookId'] as String?;
+                if (bookId != null) {
+                  // Restore progress and cache metadata
+                  await repo.restoreProgressFromLocalFolder(bookId, entity.path);
+                  await repo.getCachedMetadata(bookId);
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('[inProgressAudiobooksProvider] Error scanning for cloud book restore: $e');
+    }
+  }
+
   final allProgress = await repo.getAllInProgressBooks();
   
   // Group all progress entries by bookId
@@ -101,9 +134,12 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
     }
   }
   
+  final dismissedBooks = await repo.getDismissedBooksFromContinueListening();
+
   // Convert to AudiobookWithProgress with cached metadata and proper overall progressPercent
   final List<AudiobookWithProgress> result = [];
   for (final entry in latestByBook.entries) {
+    if (dismissedBooks.contains(entry.key)) continue;
     final progress = entry.value;
     final cached = await repo.getCachedMetadata(entry.key);
     final bookId = entry.key;
@@ -169,22 +205,49 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
   return result;
 });
 
-/// Get book details (fetches from addon and caches).
+/// Get book details (fetches from addon and caches, enriched with ratings).
 final bookDetailsProvider = FutureProvider.family<AudiobookResult?, String>((ref, bookId) async {
   final repo = ref.read(audiobookRepositoryProvider);
   
-  // Check cache first
+  AudiobookResult? bookResult;
   final cached = await repo.getCachedMetadata(bookId);
   if (cached != null) {
-    return repo.metadataToResult(cached);
+    bookResult = repo.metadataToResult(cached);
+  } else {
+    final details = await repo.getBookDetails(bookId);
+    if (details != null) {
+      await repo.cacheBookMetadata(details);
+      bookResult = details;
+    }
   }
-  
-  // Fetch from addon
-  final details = await repo.getBookDetails(bookId);
-  if (details != null) {
-    await repo.cacheBookMetadata(details);
+
+  // Fetch rating from Open Library dynamically
+  if (bookResult != null && bookResult.rating == null) {
+    try {
+      final dio = Dio();
+      final query = Uri.encodeComponent(bookResult.title);
+      final url = 'https://openlibrary.org/search.json?q=$query&fields=title,ratings_average,ratings_count&limit=3';
+      final response = await dio.get(url);
+      if (response.statusCode == 200) {
+        final docs = response.data['docs'] as List<dynamic>?;
+        if (docs != null && docs.isNotEmpty) {
+          final doc = docs.first;
+          final avg = doc['ratings_average'] as num?;
+          final count = doc['ratings_count'] as int?;
+          if (avg != null && count != null) {
+            bookResult = bookResult.copyWith(
+              rating: avg.toDouble(),
+              ratingCount: count,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('[bookDetailsProvider] Error fetching ratings from Open Library: $e');
+    }
   }
-  return details;
+
+  return bookResult;
 });
 
 /// Future provider for tracking the cache/library status of a torrent book.

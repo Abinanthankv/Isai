@@ -140,35 +140,56 @@ class M4bParser {
   static Future<List<M4bChapter>> parseChapters(String filePathOrUrl) async {
     RandomDataReader? reader;
     try {
+      print('[M4bParser] Starting parseChapters for: $filePathOrUrl');
       if (filePathOrUrl.startsWith('http://') || filePathOrUrl.startsWith('https://')) {
         reader = HttpRandomDataReader(filePathOrUrl);
       } else {
-        final file = File(filePathOrUrl);
-        if (!await file.exists()) return [];
+        String cleanPath = filePathOrUrl.startsWith('file://')
+            ? Uri.parse(filePathOrUrl).toFilePath()
+            : filePathOrUrl;
+        if (cleanPath.contains('%')) {
+          try {
+            cleanPath = Uri.decodeComponent(cleanPath);
+          } catch (_) {}
+        }
+        final file = File(cleanPath);
+        if (!await file.exists()) {
+          print('[M4bParser] File does not exist at: $cleanPath');
+          return [];
+        }
         final raf = await file.open(mode: FileMode.read);
         final size = await file.length();
         reader = FileRandomDataReader(raf, size);
       }
 
       final fileSize = await reader.length();
+      print('[M4bParser] File size resolved: $fileSize bytes');
       if (fileSize <= 0) return [];
       
       final List<M4bChapter> chapters = [];
 
       // 1. Try parsing Apple 'chpl' box (fast scan)
+      print('[M4bParser] Scanning for chpl box...');
       await _parseChplBoxRecursive(reader, 0, fileSize, chapters);
+      print('[M4bParser] chpl scan returned ${chapters.length} chapters');
 
       // 2. If no chapters found via 'chpl', parse text chapter tracks
       if (chapters.isEmpty) {
+        print('[M4bParser] chpl was empty, parsing text tracks...');
         final List<TrackInfo> tracks = [];
         await _parseTracks(reader, 0, fileSize, tracks);
+        print('[M4bParser] Found ${tracks.length} tracks total');
         
-        for (final track in tracks) {
+        for (int i = 0; i < tracks.length; i++) {
+          final track = tracks[i];
+          print('[M4bParser] Track $i: handlerType=${track.handlerType}, handlerSubtype=${track.handlerSubtype}');
           if (track.handlerType == 'text' || 
               track.handlerSubtype == 'text' || 
               track.handlerType == 'sbtl' || 
               track.handlerSubtype == 'sbtl') {
+            print('[M4bParser] Decoding text track sample data...');
             final textChapters = await _decodeTextTrack(reader, track);
+            print('[M4bParser] Decoded ${textChapters.length} chapters from text track');
             if (textChapters.isNotEmpty) {
               chapters.addAll(textChapters);
               break; // Found the chapter track
@@ -209,8 +230,14 @@ class M4bParser {
     List<M4bChapter> chapters,
   ) async {
     int currentOffset = offset;
+    int localIterations = 0;
 
     while (currentOffset < endOffset) {
+      localIterations++;
+      if (localIterations > 500) {
+        print('[M4bParser] Aborting _parseChplBoxRecursive: too many iterations ($localIterations) at offset $currentOffset');
+        break;
+      }
       if (currentOffset + 8 > endOffset) break;
       await reader.setPosition(currentOffset);
 
@@ -334,8 +361,14 @@ class M4bParser {
     List<TrackInfo> tracks,
   ) async {
     int currentOffset = offset;
+    int localIterations = 0;
 
     while (currentOffset < endOffset) {
+      localIterations++;
+      if (localIterations > 500) {
+        print('[M4bParser] Aborting _parseTracks: too many iterations ($localIterations) at offset $currentOffset');
+        break;
+      }
       if (currentOffset + 8 > endOffset) break;
       await reader.setPosition(currentOffset);
 
@@ -400,15 +433,24 @@ class M4bParser {
         final countBytes = await reader.read(4);
         if (countBytes.length == 4 && tracks.isNotEmpty) {
           final cbd = ByteData.sublistView(Uint8List.fromList(countBytes));
-          final entryCount = cbd.getUint32(0);
-          final List<int> offsets = [];
-          for (int i = 0; i < entryCount; i++) {
-            final offBytes = await reader.read(4);
-            if (offBytes.length < 4) break;
-            final obd = ByteData.sublistView(Uint8List.fromList(offBytes));
-            offsets.add(obd.getUint32(0));
+          int entryCount = cbd.getUint32(0);
+          final maxEntries = (contentSize - 8) ~/ 4;
+          if (entryCount > maxEntries) {
+            entryCount = maxEntries;
           }
-          tracks.last.stcoOffsets = offsets;
+          if (entryCount > 5000) {
+            entryCount = 5000;
+          }
+          if (entryCount > 0) {
+            final List<int> offsets = [];
+            for (int i = 0; i < entryCount; i++) {
+              final offBytes = await reader.read(4);
+              if (offBytes.length < 4) break;
+              final obd = ByteData.sublistView(Uint8List.fromList(offBytes));
+              offsets.add(obd.getUint32(0));
+            }
+            tracks.last.stcoOffsets = offsets;
+          }
         }
       } else if (boxType == 'stsz') {
         await reader.setPosition(contentOffset + 4); // skip version & flags
@@ -418,11 +460,17 @@ class M4bParser {
           final sbd = ByteData.sublistView(Uint8List.fromList(sizeBytes));
           final defaultSize = sbd.getUint32(0);
           final cbd = ByteData.sublistView(Uint8List.fromList(countBytes));
-          final sampleCount = cbd.getUint32(0);
-          
+          int sampleCount = cbd.getUint32(0);
+          final maxSamples = (contentSize - 12) ~/ 4;
+          if (sampleCount > maxSamples) {
+            sampleCount = maxSamples;
+          }
+          if (sampleCount > 5000) {
+            sampleCount = 5000;
+          }
           if (defaultSize > 0) {
             tracks.last.sampleSizes = List.filled(sampleCount, defaultSize);
-          } else {
+          } else if (sampleCount > 0) {
             final List<int> sizes = [];
             for (int i = 0; i < sampleCount; i++) {
               final szBytes = await reader.read(4);
@@ -438,17 +486,26 @@ class M4bParser {
         final countBytes = await reader.read(4);
         if (countBytes.length == 4 && tracks.isNotEmpty) {
           final cbd = ByteData.sublistView(Uint8List.fromList(countBytes));
-          final entryCount = cbd.getUint32(0);
-          final List<SttsEntry> entries = [];
-          for (int i = 0; i < entryCount; i++) {
-            final countValBytes = await reader.read(4);
-            final deltaValBytes = await reader.read(4);
-            if (countValBytes.length < 4 || deltaValBytes.length < 4) break;
-            final cbd = ByteData.sublistView(Uint8List.fromList(countValBytes));
-            final dbd = ByteData.sublistView(Uint8List.fromList(deltaValBytes));
-            entries.add(SttsEntry(cbd.getUint32(0), dbd.getUint32(0)));
+          int entryCount = cbd.getUint32(0);
+          final maxEntries = (contentSize - 8) ~/ 8;
+          if (entryCount > maxEntries) {
+            entryCount = maxEntries;
           }
-          tracks.last.sttsEntries = entries;
+          if (entryCount > 5000) {
+            entryCount = 5000;
+          }
+          if (entryCount > 0) {
+            final List<SttsEntry> entries = [];
+            for (int i = 0; i < entryCount; i++) {
+              final countValBytes = await reader.read(4);
+              final deltaValBytes = await reader.read(4);
+              if (countValBytes.length < 4 || deltaValBytes.length < 4) break;
+              final cbd = ByteData.sublistView(Uint8List.fromList(countValBytes));
+              final dbd = ByteData.sublistView(Uint8List.fromList(deltaValBytes));
+              entries.add(SttsEntry(cbd.getUint32(0), dbd.getUint32(0)));
+            }
+            tracks.last.sttsEntries = entries;
+          }
         }
       } else if (boxType == 'moov' || 
                  boxType == 'udta' || 

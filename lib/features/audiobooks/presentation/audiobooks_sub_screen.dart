@@ -140,11 +140,11 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 onTap: () async {
                   Navigator.pop(context);
                   final repo = ref.read(audiobookRepositoryProvider);
-                  await repo.clearBookProgress(progress.book.id);
+                  await repo.dismissBookFromContinueListening(progress.book.id);
                   ref.invalidate(inProgressAudiobooksProvider);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Removed book progress.')),
+                      const SnackBar(content: Text('Removed from Continue Listening.')),
                     );
                   }
                 },

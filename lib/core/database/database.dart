@@ -544,7 +544,13 @@ class AppDatabase extends _$AppDatabase {
   Future<List<DbAudiobookProgress>> getAllAudiobookProgress() {
     return (select(audiobookProgress)
           ..orderBy([(t) => OrderingTerm(expression: t.lastListenedAt, mode: OrderingMode.desc)]))
-        .get();
+         .get();
+  }
+
+  Stream<List<DbAudiobookProgress>> watchAllAudiobookProgress() {
+    return (select(audiobookProgress)
+          ..orderBy([(t) => OrderingTerm(expression: t.lastListenedAt, mode: OrderingMode.desc)]))
+        .watch();
   }
 
   /// Get all chapter progress entries for a specific book.

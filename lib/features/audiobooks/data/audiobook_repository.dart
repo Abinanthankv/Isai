@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:audiotags/audiotags.dart';
 import 'package:injectable/injectable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/database/database.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
@@ -368,6 +369,25 @@ class AudiobookRepository {
     if (bookId.startsWith('itunes_trending:') || bookId.startsWith('itunes_meta:')) {
       final cached = await getCachedMetadata(bookId);
       if (cached != null) {
+        final hasExtendedMeta = _parseExtendedField(cached.description, 'releaseDate') != null ||
+                               _parseExtendedField(cached.description, 'previewUrl') != null;
+        if (hasExtendedMeta) {
+          return metadataToResult(cached);
+        }
+      }
+      
+      final parts = bookId.split(':');
+      if (parts.length > 1) {
+        final itemId = parts[1];
+        final enriched = await _lookupItunes(itemId);
+        if (enriched != null) {
+          final resolvedBook = enriched.copyWith(id: bookId);
+          await cacheBookMetadata(resolvedBook);
+          return resolvedBook;
+        }
+      }
+      
+      if (cached != null) {
         return metadataToResult(cached);
       }
       return null; // Fallback to passed book in detail screen
@@ -449,7 +469,11 @@ class AudiobookRepository {
     if (bookId.startsWith('torrent:')) {
       final cached = await getCachedMetadata(bookId);
       if (cached != null) {
-        return metadataToResult(cached);
+        final hasExtendedMeta = _parseExtendedField(cached.description, 'releaseDate') != null ||
+                               _parseExtendedField(cached.description, 'previewUrl') != null;
+        if (hasExtendedMeta) {
+          return metadataToResult(cached);
+        }
       }
       
       // Cache is empty, let's look up the torrent in TorBox library to get its original name
@@ -470,28 +494,11 @@ class AudiobookRepository {
       
       final title = cleanTorrentName(torrentName ?? 'Torrent Audiobook');
       
-      // Let's try online metadata lookup using the clean title!
-      String? description;
-      String? onlineAuthor;
-      String? onlineArtwork;
-      
-      try {
-        final onlineData = await _fetchOnlineMetadata(title);
-        if (onlineData != null) {
-          description = onlineData['description'];
-          onlineAuthor = onlineData['author'];
-          onlineArtwork = onlineData['artworkUrl'];
-        }
-      } catch (e) {
-        print('[AudiobookRepository] Online metadata lookup failed for $title: $e');
-      }
-      
       final mergedBook = AudiobookResult(
         id: bookId,
         title: title,
-        author: (onlineAuthor != null && onlineAuthor.isNotEmpty) ? onlineAuthor : 'Torrent Result',
-        artworkUrl: onlineArtwork,
-        description: description ?? 'From TorBox library',
+        author: 'Torrent Result',
+        description: 'From TorBox library',
       );
       
       await cacheBookMetadata(mergedBook);
@@ -637,6 +644,41 @@ class AudiobookRepository {
   Future<List<AudiobookChapter>> getBookChapters(String bookId) async {
     if (bookId.startsWith('local:')) {
       return _getLocalChapters(bookId);
+    }
+
+    // Check if we have a local backup folder containing metadata.json for this book
+    try {
+      final localDir = await getLocalBookDirectoryForBackup(bookId);
+      if (localDir != null) {
+        final metaFile = io.File(p.join(localDir, 'metadata.json'));
+        if (await metaFile.exists()) {
+          final content = await metaFile.readAsString();
+          final data = jsonDecode(content) as Map<String, dynamic>;
+          final jsonChapters = data['chapters'] as List<dynamic>?;
+          if (jsonChapters != null && jsonChapters.isNotEmpty) {
+            return jsonChapters.map((chMap) {
+              final map = chMap as Map<String, dynamic>;
+              return AudiobookChapter(
+                id: map['id'] as String? ?? 'local_ch_${map['chapterNumber']}',
+                title: map['title'] as String? ?? 'Chapter',
+                chapterNumber: map['chapterNumber'] as int? ?? 1,
+                startTimeMillis: map['startTimeMillis'] as int? ?? 0,
+                durationMillis: map['durationMillis'] as int? ?? 0,
+                streamUrl: map['streamUrl'] as String?,
+                source: 'Local metadata.json (Backup)',
+              );
+            }).toList();
+          }
+        } else {
+          final localChapters = await _getLocalChapters('local:$localDir');
+          if (localChapters.isNotEmpty) {
+            print('[AudiobookRepository] localDir found without metadata.json, scanned local files directly.');
+            return localChapters;
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error reading chapters from backup metadata.json in getBookChapters: $e');
     }
     
     List<AudiobookChapter> chapters = [];
@@ -837,17 +879,51 @@ class AudiobookRepository {
 
   /// Scan a local folder or file for audio streams.
   Future<List<AudiobookChapter>> _getLocalChapters(String bookId) async {
-    final path = bookId.substring('local:'.length);
+    String path = bookId.substring('local:'.length);
+    if (path.startsWith('file://')) {
+      try {
+        path = Uri.parse(path).toFilePath();
+      } catch (_) {}
+    }
+    if (path.contains('%')) {
+      try {
+        path = Uri.decodeComponent(path);
+      } catch (_) {}
+    }
     final isFile = io.FileSystemEntity.isFileSync(path);
     
     if (isFile) {
       final file = io.File(path);
       final ext = file.path.split('.').last.toLowerCase();
-      if (ext == 'm4b' || ext == 'm4a') {
+      List<AudiobookChapter> parsed = [];
+      
+      bool looksLikeM4b = false;
+      bool looksLikeMp3 = false;
+      try {
+        final raf = await file.open(mode: io.FileMode.read);
+        final header = await raf.read(8);
+        await raf.close();
+        if (header.length >= 8) {
+          if (header[0] == 0x49 && header[1] == 0x44 && header[2] == 0x33) {
+            looksLikeMp3 = true;
+          }
+          final typeStr = String.fromCharCodes(header.sublist(4, 8));
+          if (typeStr == 'ftyp' || (header[0] == 0 && header[1] == 0 && header[2] == 0)) {
+            looksLikeM4b = true;
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Error detecting file format magic bytes: $e');
+      }
+
+      print('[AudiobookRepository] Single file auto-detect: looksLikeM4b=$looksLikeM4b, looksLikeMp3=$looksLikeMp3 (extension=$ext)');
+
+      // If it looks like M4B or we default to it, try M4B first, fallback to MP3
+      if (looksLikeM4b || (!looksLikeMp3 && (ext == 'm4b' || ext == 'm4a'))) {
         try {
           final parsedChapters = await M4bParser.parseChapters(file.path);
           if (parsedChapters.isNotEmpty) {
-            return List.generate(parsedChapters.length, (i) {
+            parsed = List.generate(parsedChapters.length, (i) {
               final ch = parsedChapters[i];
               return AudiobookChapter(
                 id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
@@ -860,13 +936,35 @@ class AudiobookRepository {
             });
           }
         } catch (e) {
-          print('[AudiobookRepository] Failed to parse M4B chapters: $e');
+          print('[AudiobookRepository] Failed to parse as M4B: $e');
         }
-      } else if (ext == 'mp3') {
+
+        if (parsed.isEmpty) {
+          try {
+            final parsedChapters = await Mp3Parser.parseChapters(file.path);
+            if (parsedChapters.isNotEmpty) {
+              parsed = List.generate(parsedChapters.length, (i) {
+                final ch = parsedChapters[i];
+                return AudiobookChapter(
+                  id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
+                  title: ch.title,
+                  chapterNumber: i + 1,
+                  startTimeMillis: ch.startTimeMillis,
+                  durationMillis: ch.durationMillis,
+                  streamUrl: file.path,
+                );
+              });
+            }
+          } catch (e) {
+            print('[AudiobookRepository] Fallback parse as MP3 failed: $e');
+          }
+        }
+      } else {
+        // Try MP3 first, fallback to M4B
         try {
           final parsedChapters = await Mp3Parser.parseChapters(file.path);
           if (parsedChapters.isNotEmpty) {
-            return List.generate(parsedChapters.length, (i) {
+            parsed = List.generate(parsedChapters.length, (i) {
               final ch = parsedChapters[i];
               return AudiobookChapter(
                 id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
@@ -879,9 +977,35 @@ class AudiobookRepository {
             });
           }
         } catch (e) {
-          print('[AudiobookRepository] Failed to parse MP3 chapters: $e');
+          print('[AudiobookRepository] Failed to parse as MP3: $e');
+        }
+
+        if (parsed.isEmpty) {
+          try {
+            final parsedChapters = await M4bParser.parseChapters(file.path);
+            if (parsedChapters.isNotEmpty) {
+              parsed = List.generate(parsedChapters.length, (i) {
+                final ch = parsedChapters[i];
+                return AudiobookChapter(
+                  id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
+                  title: ch.title,
+                  chapterNumber: i + 1,
+                  startTimeMillis: ch.startTimeMillis,
+                  durationMillis: ch.durationMillis,
+                  streamUrl: file.path,
+                );
+              });
+            }
+          } catch (e) {
+            print('[AudiobookRepository] Fallback parse as M4B failed: $e');
+          }
         }
       }
+
+      if (parsed.isNotEmpty) {
+        return parsed;
+      }
+
       final fileName = file.path.split('/').last;
       final title = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
       return [
@@ -940,7 +1064,7 @@ class AudiobookRepository {
 
     audioFiles.sort((a, b) => a.path.split('/').last.toLowerCase().compareTo(b.path.split('/').last.toLowerCase()));
 
-    // Find candidates: M4B/M4A files, or a single MP3 file in the directory
+    // Find candidates: M4B/M4A files, or MP3 files in the directory
     final localM4bCandidates = audioFiles.where((f) {
       final ext = f.path.split('.').last.toLowerCase();
       return ext == 'm4b' || ext == 'm4a';
@@ -951,65 +1075,78 @@ class AudiobookRepository {
       return ext == 'mp3';
     }).toList();
 
-    final List<io.File> candidates;
-    if (localM4bCandidates.isNotEmpty) {
-      candidates = localM4bCandidates;
-    } else if (localMp3Candidates.length == 1) {
-      candidates = localMp3Candidates;
-    } else {
-      candidates = [];
-    }
+    final List<AudiobookChapter> expandedChapters = [];
+    int globalChapterIndex = 0;
 
-    for (final file in candidates) {
+    for (final file in audioFiles) {
       final ext = file.path.split('.').last.toLowerCase();
+      List<dynamic> parsedChapters = [];
+      
+      bool looksLikeM4b = false;
+      bool looksLikeMp3 = false;
       try {
-        if (ext == 'm4b' || ext == 'm4a') {
-          final parsedChapters = await M4bParser.parseChapters(file.path);
-          if (parsedChapters.isNotEmpty) {
-            return List.generate(parsedChapters.length, (i) {
-              final ch = parsedChapters[i];
-              return AudiobookChapter(
-                id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
-                title: ch.title,
-                chapterNumber: i + 1,
-                startTimeMillis: ch.startTimeMillis,
-                durationMillis: ch.durationMillis,
-                streamUrl: file.path,
-              );
-            });
+        final raf = await file.open(mode: io.FileMode.read);
+        final header = await raf.read(8);
+        await raf.close();
+        if (header.length >= 8) {
+          if (header[0] == 0x49 && header[1] == 0x44 && header[2] == 0x33) {
+            looksLikeMp3 = true;
           }
-        } else if (ext == 'mp3') {
-          final parsedChapters = await Mp3Parser.parseChapters(file.path);
-          if (parsedChapters.isNotEmpty) {
-            return List.generate(parsedChapters.length, (i) {
-              final ch = parsedChapters[i];
-              return AudiobookChapter(
-                id: 'local_ch_${i}_offset_${ch.startTimeMillis}',
-                title: ch.title,
-                chapterNumber: i + 1,
-                startTimeMillis: ch.startTimeMillis,
-                durationMillis: ch.durationMillis,
-                streamUrl: file.path,
-              );
-            });
+          final typeStr = String.fromCharCodes(header.sublist(4, 8));
+          if (typeStr == 'ftyp' || (header[0] == 0 && header[1] == 0 && header[2] == 0)) {
+            looksLikeM4b = true;
           }
         }
-      } catch (e) {
-        print('[AudiobookRepository] Failed to parse local candidate $ext chapters: $e');
+      } catch (_) {}
+
+      // Try M4B first, fallback to MP3
+      if (looksLikeM4b || (!looksLikeMp3 && (ext == 'm4b' || ext == 'm4a'))) {
+        try {
+          parsedChapters = await M4bParser.parseChapters(file.path);
+        } catch (_) {}
+        if (parsedChapters.isEmpty) {
+          try {
+            parsedChapters = await Mp3Parser.parseChapters(file.path);
+          } catch (_) {}
+        }
+      } else {
+        // Try MP3 first, fallback to M4B
+        try {
+          parsedChapters = await Mp3Parser.parseChapters(file.path);
+        } catch (_) {}
+        if (parsedChapters.isEmpty) {
+          try {
+            parsedChapters = await M4bParser.parseChapters(file.path);
+          } catch (_) {}
+        }
+      }
+
+      if (parsedChapters.isNotEmpty) {
+        for (final ch in parsedChapters) {
+          expandedChapters.add(AudiobookChapter(
+            id: 'local_ch_${globalChapterIndex}_offset_${ch.startTimeMillis}',
+            title: ch.title,
+            chapterNumber: globalChapterIndex + 1,
+            startTimeMillis: ch.startTimeMillis,
+            durationMillis: ch.durationMillis,
+            streamUrl: file.path,
+          ));
+          globalChapterIndex++;
+        }
+      } else {
+        final fileName = file.path.split('/').last;
+        final title = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+        expandedChapters.add(AudiobookChapter(
+          id: 'local_ch_$globalChapterIndex',
+          title: title,
+          chapterNumber: globalChapterIndex + 1,
+          streamUrl: file.path,
+        ));
+        globalChapterIndex++;
       }
     }
 
-    return List.generate(audioFiles.length, (i) {
-      final file = audioFiles[i];
-      final fileName = file.path.split('/').last;
-      final title = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-      return AudiobookChapter(
-        id: 'local_ch_$i',
-        title: title,
-        chapterNumber: i + 1,
-        streamUrl: file.path,
-      );
-    });
+    return expandedChapters;
   }
 
   /// Resolve a chapter's direct stream URL.
@@ -1081,6 +1218,112 @@ class AudiobookRepository {
 
   // ─── Progress Tracking ─────────────────────────────────────────
 
+  Future<String?> _findLocalFolderForBookId(String bookId) async {
+    try {
+      final settings = getIt<TorBoxSettingsRepository>();
+      final downloadDirPath = settings.audiobookFolder;
+      if (downloadDirPath == null || downloadDirPath.isEmpty) return null;
+      
+      final dir = io.Directory(downloadDirPath);
+      if (!await dir.exists()) return null;
+      
+      final normalizedId = normalizeBookId(bookId);
+      
+      await for (final entity in dir.list()) {
+        if (entity is io.Directory) {
+          final metaFile = io.File(p.join(entity.path, 'metadata.json'));
+          if (await metaFile.exists()) {
+            try {
+              final content = await metaFile.readAsString();
+              final data = jsonDecode(content) as Map<String, dynamic>;
+              final fileBookId = data['bookId'] as String?;
+              if (fileBookId != null && normalizeBookId(fileBookId) == normalizedId) {
+                return entity.path;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> getOrCreateLocalBookDirectoryForBackup(String bookId) async {
+    final existing = await getLocalBookDirectoryForBackup(bookId);
+    if (existing != null) return existing;
+
+    if (bookId.startsWith('local:')) return null;
+
+    try {
+      final settings = getIt<TorBoxSettingsRepository>();
+      final downloadDirPath = settings.audiobookFolder;
+      final cached = await _db.getAudiobookMetadata(normalizeBookId(bookId));
+      if (downloadDirPath != null && downloadDirPath.isNotEmpty && cached != null) {
+        final sanitizedTitle = cached.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+        final bookDir = io.Directory(p.join(downloadDirPath, sanitizedTitle));
+        if (!await bookDir.exists()) {
+          await bookDir.create(recursive: true);
+        }
+        
+        final metaFile = io.File(p.join(bookDir.path, 'metadata.json'));
+        if (!await metaFile.exists()) {
+          final chapters = await getBookChapters(bookId);
+          final Map<String, dynamic> metaMap = {
+            'bookId': bookId,
+            'title': cached.title,
+            'author': cached.author,
+            'description': cached.description,
+            'narrator': cached.narrator,
+            'artworkUrl': cached.artworkUrl,
+            'totalChapters': cached.totalChapters,
+            'language': cached.language,
+            'genre': cached.genre,
+            'chapters': chapters.map((ch) => {
+              'id': ch.id,
+              'title': ch.title,
+              'chapterNumber': ch.chapterNumber,
+              'startTimeMillis': ch.startTimeMillis,
+              'durationMillis': ch.durationMillis,
+              'streamUrl': ch.streamUrl,
+            }).toList(),
+          };
+          await metaFile.writeAsString(jsonEncode(metaMap));
+        }
+
+        if (cached.artworkUrl != null && cached.artworkUrl!.isNotEmpty) {
+          final coverFile = io.File(p.join(bookDir.path, 'cover.jpg'));
+          if (!await coverFile.exists()) {
+            if (cached.artworkUrl!.startsWith('/') || cached.artworkUrl!.startsWith('file://')) {
+              final srcPath = cached.artworkUrl!.startsWith('file://') 
+                  ? Uri.parse(cached.artworkUrl!).toFilePath() 
+                  : cached.artworkUrl!;
+              final srcFile = io.File(srcPath);
+              if (await srcFile.exists()) {
+                await srcFile.copy(coverFile.path);
+              }
+            } else {
+              try {
+                final client = io.HttpClient();
+                final request = await client.getUrl(Uri.parse(cached.artworkUrl!));
+                final response = await request.close();
+                if (response.statusCode == 200) {
+                  final bytes = await response.expand((b) => b).toList();
+                  await coverFile.writeAsBytes(bytes);
+                }
+              } catch (e) {
+                print('[AudiobookRepository] Error downloading cover image for backup: $e');
+              }
+            }
+          }
+        }
+        return bookDir.path;
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error in getOrCreateLocalBookDirectoryForBackup: $e');
+    }
+    return null;
+  }
+
   Future<String?> getLocalBookDirectoryForBackup(String bookId) async {
     if (bookId.startsWith('local:')) {
       final path = bookId.substring(6);
@@ -1109,10 +1352,15 @@ class AudiobookRepository {
       }
     }
     
+    final matchedPath = await _findLocalFolderForBookId(bookId);
+    if (matchedPath != null) {
+      return matchedPath;
+    }
+    
     try {
       final settings = getIt<TorBoxSettingsRepository>();
       final downloadDirPath = settings.audiobookFolder;
-      final cached = await getCachedMetadata(normalizeBookId(bookId));
+      final cached = await _db.getAudiobookMetadata(normalizeBookId(bookId));
       if (downloadDirPath != null && downloadDirPath.isNotEmpty && cached != null) {
         final sanitizedTitle = cached.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
         final bookDir = io.Directory(p.join(downloadDirPath, sanitizedTitle));
@@ -1168,6 +1416,8 @@ class AudiobookRepository {
     required int durationMillis,
     bool isCompleted = false,
   }) async {
+    await undisimissBookFromContinueListening(bookId);
+
     await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
       bookId: bookId,
       chapterIndex: chapterIndex,
@@ -1179,7 +1429,7 @@ class AudiobookRepository {
 
     // Back up progress to the local download folder if it exists
     try {
-      final dirPath = await getLocalBookDirectoryForBackup(bookId);
+      final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
       if (dirPath != null) {
         final progressList = await getBookChapterProgress(bookId);
         final List<Map<String, dynamic>> jsonList = [];
@@ -1237,6 +1487,11 @@ class AudiobookRepository {
     return _db.getAllAudiobookProgress();
   }
 
+  /// Watch all books with progress.
+  Stream<List<DbAudiobookProgress>> watchAllInProgressBooks() {
+    return _db.watchAllAudiobookProgress();
+  }
+
   /// Mark a chapter as completed.
   Future<void> markChapterCompleted(String bookId, int chapterIndex) {
     return saveProgress(
@@ -1254,8 +1509,54 @@ class AudiobookRepository {
   }
 
   /// Clear all progress for a book.
-  Future<void> clearBookProgress(String bookId) {
-    return _db.clearAudiobookProgress(bookId);
+  Future<void> clearBookProgress(String bookId) async {
+    await _db.clearAudiobookProgress(bookId);
+    await undisimissBookFromContinueListening(bookId);
+    try {
+      final localDir = await getLocalBookDirectoryForBackup(bookId);
+      if (localDir != null) {
+        final progressFile = io.File(p.join(localDir, 'progress.json'));
+        if (await progressFile.exists()) {
+          await progressFile.delete();
+          print('[AudiobookRepository] Deleted local progress file: ${progressFile.path}');
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error deleting local progress file: $e');
+    }
+  }
+
+  /// Dismiss a book from Continue Listening shelf.
+  Future<void> dismissBookFromContinueListening(String bookId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
+    if (!list.contains(bookId)) {
+      list.add(bookId);
+      await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
+    }
+  }
+
+  /// Check if a book is dismissed from Continue Listening shelf.
+  Future<bool> isBookDismissedFromContinueListening(String bookId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
+    return list.contains(bookId);
+  }
+
+  /// Remove a book from dismissed list so it can reappear on Continue Listening shelf.
+  Future<void> undisimissBookFromContinueListening(String bookId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
+    if (list.contains(bookId)) {
+      list.remove(bookId);
+      await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
+    }
+  }
+
+  /// Get all dismissed book IDs.
+  Future<List<String>> getDismissedBooksFromContinueListening() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
   }
 
   /// Clear metadata cache for a book.
@@ -1353,42 +1654,255 @@ class AudiobookRepository {
       }
     }
 
+    final Map<String, dynamic> extendedDesc = {
+      'description': description,
+      'releaseDate': book.releaseDate ?? (existing != null ? _parseExtendedField(existing.description, 'releaseDate') : null),
+      'publisher': book.publisher ?? (existing != null ? _parseExtendedField(existing.description, 'publisher') : null),
+      'previewUrl': book.previewUrl ?? (existing != null ? _parseExtendedField(existing.description, 'previewUrl') : null),
+      'durationMillis': book.durationMillis ?? (existing != null ? _parseExtendedField(existing.description, 'durationMillis') : null),
+      'rating': book.rating ?? (existing != null ? _parseExtendedField(existing.description, 'rating') : null),
+      'ratingCount': book.ratingCount ?? (existing != null ? _parseExtendedField(existing.description, 'ratingCount') : null),
+    };
+    final dbDescription = 'JSON_EXT:' + jsonEncode(extendedDesc);
+
     await _db.saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion.insert(
       bookId: normalizedId,
       title: title,
       author: Value(author),
       narrator: Value(narrator),
       artworkUrl: Value(artworkUrl),
-      description: Value(description),
+      description: Value(dbDescription),
       totalChapters: Value(totalChapters),
       language: Value(language),
       genre: Value(genre),
       lastUpdated: DateTime.now(),
     ));
+
+    // Try to update local metadata.json if the backup directory exists
+    try {
+      final localDir = await getLocalBookDirectoryForBackup(book.id);
+      if (localDir != null) {
+        final metaFile = io.File(p.join(localDir, 'metadata.json'));
+        
+        Map<String, dynamic> metaMap = {};
+        if (await metaFile.exists()) {
+          try {
+            final content = await metaFile.readAsString();
+            metaMap = jsonDecode(content) as Map<String, dynamic>;
+          } catch (_) {}
+        }
+
+        final chapters = await getBookChapters(book.id);
+
+        final List<dynamic>? existingChapters = metaMap['chapters'] as List<dynamic>?;
+        List<Map<String, dynamic>> finalChaptersList = [];
+        
+        if (existingChapters != null && existingChapters.isNotEmpty && (chapters.length <= 2 && existingChapters.length > 2)) {
+          finalChaptersList = existingChapters.map((ch) => Map<String, dynamic>.from(ch as Map)).toList();
+        } else {
+          finalChaptersList = chapters.map((ch) => {
+            'id': ch.id,
+            'title': ch.title,
+            'chapterNumber': ch.chapterNumber,
+            'startTimeMillis': ch.startTimeMillis,
+            'durationMillis': ch.durationMillis,
+            'streamUrl': ch.streamUrl,
+          }).toList();
+        }
+
+        metaMap['bookId'] = book.id;
+        metaMap['title'] = title;
+        metaMap['author'] = author;
+        metaMap['description'] = dbDescription;
+        if (narrator != null) metaMap['narrator'] = narrator;
+        if (artworkUrl != null) metaMap['artworkUrl'] = artworkUrl;
+        if (totalChapters != null && totalChapters > 0) metaMap['totalChapters'] = totalChapters;
+        if (language != null) metaMap['language'] = language;
+        if (genre != null) metaMap['genre'] = genre;
+        metaMap['chapters'] = finalChaptersList;
+
+        await metaFile.writeAsString(jsonEncode(metaMap));
+
+        // Copy or download cover art to cover.jpg inside local folder
+        if (artworkUrl != null && artworkUrl.isNotEmpty) {
+          final coverFile = io.File(p.join(localDir, 'cover.jpg'));
+          if (artworkUrl.startsWith('/') || artworkUrl.startsWith('file://')) {
+            final srcPath = artworkUrl.startsWith('file://') 
+                ? Uri.parse(artworkUrl).toFilePath() 
+                : artworkUrl;
+            final srcFile = io.File(srcPath);
+            if (await srcFile.exists()) {
+              await srcFile.copy(coverFile.path);
+            }
+          } else {
+            try {
+              final client = io.HttpClient();
+              final request = await client.getUrl(Uri.parse(artworkUrl));
+              final response = await request.close();
+              if (response.statusCode == 200) {
+                final bytes = await response.expand((b) => b).toList();
+                await coverFile.writeAsBytes(bytes);
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error updating local metadata file in cacheBookMetadata: $e');
+    }
   }
 
   /// Get cached metadata for a book.
-  Future<DbAudiobookMetadataCache?> getCachedMetadata(String bookId) {
-    return _db.getAudiobookMetadata(normalizeBookId(bookId));
+  Future<DbAudiobookMetadataCache?> getCachedMetadata(String bookId) async {
+    final dbResult = await _db.getAudiobookMetadata(normalizeBookId(bookId));
+    if (dbResult != null) return dbResult;
+
+    try {
+      final folderPath = await _findLocalFolderForBookId(bookId);
+      if (folderPath != null) {
+        final metaFile = io.File(p.join(folderPath, 'metadata.json'));
+        if (await metaFile.exists()) {
+          final content = await metaFile.readAsString();
+          final data = jsonDecode(content) as Map<String, dynamic>;
+          
+          final coverFile = io.File(p.join(folderPath, 'cover.jpg'));
+          String? artworkUrl = data['artworkUrl'] as String?;
+          if (await coverFile.exists()) {
+            artworkUrl = 'file://${coverFile.path}';
+          }
+          
+          final bookResult = AudiobookResult(
+            id: bookId,
+            title: data['title'] as String? ?? 'Audiobook',
+            author: data['author'] as String? ?? 'Unknown Author',
+            narrator: data['narrator'] as String?,
+            artworkUrl: artworkUrl,
+            description: data['description'] as String?,
+            totalChapters: data['totalChapters'] as int?,
+            language: data['language'] as String?,
+            genre: data['genre'] as String?,
+          );
+          
+          await cacheBookMetadata(bookResult);
+          return await _db.getAudiobookMetadata(normalizeBookId(bookId));
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error restoring cached metadata from local folder: $e');
+    }
+
+    return null;
+  }
+
+  dynamic _parseExtendedField(String? dbDesc, String key) {
+    if (dbDesc == null || !dbDesc.startsWith('JSON_EXT:')) return null;
+    try {
+      final rawJson = dbDesc.substring('JSON_EXT:'.length);
+      final data = jsonDecode(rawJson) as Map<String, dynamic>;
+      return data[key];
+    } catch (_) {}
+    return null;
   }
 
   /// Convert cached DB metadata back to an AudiobookResult.
   AudiobookResult metadataToResult(DbAudiobookMetadataCache meta) {
+    String? description = meta.description;
+    String? releaseDate;
+    String? publisher;
+    String? previewUrl;
+    int? durationMillis;
+    double? rating;
+    int? ratingCount;
+
+    if (meta.description != null && meta.description!.startsWith('JSON_EXT:')) {
+      try {
+        final rawJson = meta.description!.substring('JSON_EXT:'.length);
+        final data = jsonDecode(rawJson) as Map<String, dynamic>;
+        description = data['description'] as String?;
+        releaseDate = data['releaseDate'] as String?;
+        publisher = data['publisher'] as String?;
+        previewUrl = data['previewUrl'] as String?;
+        durationMillis = data['durationMillis'] as int?;
+        rating = (data['rating'] as num?)?.toDouble();
+        ratingCount = data['ratingCount'] as int?;
+      } catch (_) {}
+    }
+
     return AudiobookResult(
       id: meta.bookId,
       title: meta.title,
       author: meta.author ?? 'Unknown Author',
       narrator: meta.narrator,
       artworkUrl: meta.artworkUrl,
-      description: meta.description,
+      description: description,
       totalChapters: meta.totalChapters,
       language: meta.language,
       genre: meta.genre,
+      releaseDate: releaseDate,
+      publisher: publisher,
+      previewUrl: previewUrl,
+      durationMillis: durationMillis,
+      rating: rating,
+      ratingCount: ratingCount,
     );
   }
 
-  /// Query online APIs (Open Library) for book details.
-  Future<Map<String, String>?> _fetchOnlineMetadata(String title) async {
+  /// Query online APIs (iTunes first, Open Library fallback) for book details.
+  Future<Map<String, dynamic>?> _fetchOnlineMetadata(String title) async {
+    try {
+      final dio = Dio();
+      final res = await dio.get(
+        'https://itunes.apple.com/search',
+        queryParameters: {
+          'term': title,
+          'entity': 'audiobook',
+          'limit': 1,
+        },
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final Map<String, dynamic> data;
+        if (res.data is String) {
+          data = jsonDecode(res.data as String) as Map<String, dynamic>;
+        } else {
+          data = res.data as Map<String, dynamic>;
+        }
+        final items = data['results'] as List<dynamic>?;
+        if (items != null && items.isNotEmpty) {
+          final item = items.first as Map<String, dynamic>;
+          final author = item['artistName'] as String? ?? '';
+          final description = item['description'] as String? ?? '';
+          final artworkUrl100 = item['artworkUrl100'] as String?;
+          final artworkUrl = artworkUrl100 != null 
+              ? artworkUrl100.replaceAll('100x100bb', '600x600bb') 
+              : null;
+          
+          String? narrator;
+          if (author.toLowerCase().contains('narrated by')) {
+            final parts = author.split(RegExp(r',?\s*narrated by\s*', caseSensitive: false));
+            if (parts.length > 1) {
+              narrator = parts[1].trim();
+            }
+          }
+
+          return {
+            'author': author,
+            'narrator': narrator,
+            'description': description,
+            if (artworkUrl != null) 'artworkUrl': artworkUrl,
+            'genre': item['primaryGenreName'] as String?,
+            'releaseDate': item['releaseDate'] as String?,
+            'publisher': item['copyright'] as String?,
+            'previewUrl': item['previewUrl'] as String?,
+            'durationMillis': item['trackTimeMillis'] as int?,
+            'rating': (item['averageUserRating'] as num?)?.toDouble(),
+            'ratingCount': item['userRatingCount'] as int?,
+          };
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] iTunes online lookup failed: $e');
+    }
+
     try {
       final dio = Dio();
       final res = await dio.get(
@@ -1433,6 +1947,64 @@ class AudiobookRepository {
     return null;
   }
 
+  /// Helper to lookup a specific item on iTunes.
+  Future<AudiobookResult?> _lookupItunes(String itemId) async {
+    try {
+      final dio = Dio();
+      final res = await dio.get(
+        'https://itunes.apple.com/lookup',
+        queryParameters: {'id': itemId},
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final Map<String, dynamic> data;
+        if (res.data is String) {
+          data = jsonDecode(res.data as String) as Map<String, dynamic>;
+        } else {
+          data = res.data as Map<String, dynamic>;
+        }
+        final items = data['results'] as List<dynamic>?;
+        if (items != null && items.isNotEmpty) {
+          final item = items.first as Map<String, dynamic>;
+          final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? 'Unknown Title';
+          final author = item['artistName'] as String? ?? 'Unknown Author';
+          final description = item['description'] as String? ?? '';
+          final artworkUrl100 = item['artworkUrl100'] as String?;
+          final artworkUrl = artworkUrl100 != null 
+              ? artworkUrl100.replaceAll('100x100bb', '600x600bb') 
+              : null;
+          
+          String? narrator;
+          if (author.toLowerCase().contains('narrated by')) {
+            final parts = author.split(RegExp(r',?\s*narrated by\s*', caseSensitive: false));
+            if (parts.length > 1) {
+              narrator = parts[1].trim();
+            }
+          }
+
+          return AudiobookResult(
+            id: 'itunes_meta:$itemId',
+            title: title,
+            author: author,
+            narrator: narrator,
+            description: description,
+            artworkUrl: artworkUrl,
+            language: 'EN',
+            genre: item['primaryGenreName'] as String?,
+            releaseDate: item['releaseDate'] as String?,
+            publisher: item['copyright'] as String?,
+            previewUrl: item['previewUrl'] as String?,
+            durationMillis: item['trackTimeMillis'] as int?,
+            rating: (item['averageUserRating'] as num?)?.toDouble(),
+            ratingCount: item['userRatingCount'] as int?,
+          );
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] iTunes lookup failed for id $itemId: $e');
+    }
+    return null;
+  }
+
   /// Helper to search iTunes.
   Future<List<AudiobookResult>> _searchItunes(String query) async {
     final List<AudiobookResult> results = [];
@@ -1468,13 +2040,29 @@ class AudiobookRepository {
                 ? artworkUrl100.replaceAll('100x100bb', '600x600bb') 
                 : null;
             
+            String? narrator;
+            if (author.toLowerCase().contains('narrated by')) {
+              final parts = author.split(RegExp(r',?\s*narrated by\s*', caseSensitive: false));
+              if (parts.length > 1) {
+                narrator = parts[1].trim();
+              }
+            }
+
             results.add(AudiobookResult(
               id: 'itunes_meta:${item['collectionId'] ?? item['trackId'] ?? title.hashCode}',
               title: title,
               author: author,
+              narrator: narrator,
               description: description,
               artworkUrl: artworkUrl,
               language: 'EN',
+              genre: item['primaryGenreName'] as String?,
+              releaseDate: item['releaseDate'] as String?,
+              publisher: item['copyright'] as String?,
+              previewUrl: item['previewUrl'] as String?,
+              durationMillis: item['trackTimeMillis'] as int?,
+              rating: (item['averageUserRating'] as num?)?.toDouble(),
+              ratingCount: item['userRatingCount'] as int?,
             ));
           }
           print('[AudiobookRepository] Parsed ${results.length} results from iTunes');
