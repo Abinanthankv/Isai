@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -280,14 +281,22 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: mediaItem.artUri != null
-                                        ? CachedNetworkImage(
-                                            imageUrl: mediaItem.artUri.toString(),
-                                            width: 44,
-                                            height: 44,
-                                            fit: BoxFit.cover,
-                                            placeholder: (context, url) => _artworkPlaceholder(context),
-                                            errorWidget: (context, url, error) => _artworkPlaceholder(context),
-                                          )
+                                        ? ((mediaItem.artUri!.scheme == 'file' || mediaItem.artUri!.path.startsWith('/'))
+                                            ? Image.file(
+                                                File(mediaItem.artUri!.scheme == 'file' ? mediaItem.artUri!.toFilePath() : mediaItem.artUri!.path),
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => _artworkPlaceholder(context),
+                                              )
+                                            : CachedNetworkImage(
+                                                imageUrl: mediaItem.artUri.toString(),
+                                                width: 44,
+                                                height: 44,
+                                                fit: BoxFit.cover,
+                                                placeholder: (context, url) => _artworkPlaceholder(context),
+                                                errorWidget: (context, url, error) => _artworkPlaceholder(context),
+                                              ))
                                         : _artworkPlaceholder(context),
                                   ),
                                 ),

@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:archive/archive_io.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xml/xml.dart' as xml;
+import 'package:path/path.dart' as p;
 
 /// A full-screen EPUB reader widget that uses the `archive` package to
 /// parse EPUB files and displays chapter content with chapter navigation.
@@ -31,8 +33,51 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   final ScrollController _scrollController = ScrollController();
   double _fontSize = 16.0;
   bool _showControls = true;
+  double _currentScrollOffset = 0.0; // tracks scroll position synchronously
+  double _maxScrollExtent = 0.0; // tracks max scroll extent of current chapter
   double _pendingScrollRestore = 0.0; // deferred scroll offset to restore
   DateTime _lastScrollSave = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _isAutoScrolling = false;
+  double _autoScrollSpeed = 25.0; // pixels per second
+  Timer? _autoScrollTimer;
+
+  void _toggleAutoScroll() {
+    setState(() {
+      _isAutoScrolling = !_isAutoScrolling;
+    });
+    if (_isAutoScrolling) {
+      _startAutoScroll();
+    } else {
+      _stopAutoScroll();
+    }
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer?.cancel();
+    _autoScrollTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+      if (!_scrollController.hasClients) return;
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      final currentOffset = _scrollController.offset;
+      if (currentOffset >= maxExtent) {
+        _stopAutoScroll();
+        return;
+      }
+      
+      // Speed represents pixels per second.
+      // 50ms is 1/20 of a second, so we scroll (speed / 20) pixels.
+      final nextOffset = currentOffset + (_autoScrollSpeed / 20.0);
+      _scrollController.jumpTo(nextOffset.clamp(0.0, maxExtent));
+      _currentScrollOffset = _scrollController.offset;
+      _maxScrollExtent = maxExtent;
+    });
+  }
+
+  void _stopAutoScroll() {
+    _autoScrollTimer?.cancel();
+    setState(() {
+      _isAutoScrolling = false;
+    });
+  }
 
   static const String _prefKeyChapter = 'epub_chapter_';
   static const String _prefKeyScroll = 'epub_scroll_';
@@ -47,6 +92,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   }
 
   void _onScroll() {
+    if (_scrollController.hasClients) {
+      _currentScrollOffset = _scrollController.offset;
+      _maxScrollExtent = _scrollController.position.maxScrollExtent;
+    }
     final now = DateTime.now();
     if (now.difference(_lastScrollSave).inSeconds >= 3) {
       _lastScrollSave = now;
@@ -56,6 +105,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
   @override
   void dispose() {
+    _autoScrollTimer?.cancel();
     _saveProgress();
     _scrollController.dispose();
     super.dispose();
@@ -65,8 +115,72 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('${_prefKeyChapter}${widget.bookId}', _currentChapterIndex);
-      await prefs.setDouble('${_prefKeyScroll}${widget.bookId}', _scrollController.hasClients ? _scrollController.offset : 0.0);
+      await prefs.setDouble('${_prefKeyScroll}${widget.bookId}', _currentScrollOffset);
       await prefs.setDouble('${_prefKeyFontSize}${widget.bookId}', _fontSize);
+      
+      if (_chapters.isNotEmpty) {
+        await prefs.setInt('epub_total_chapters_${widget.bookId}', _chapters.length);
+        
+        // Calculate estimated pages
+        int totalPages = 0;
+        final chapterPages = <int>[];
+        for (final ch in _chapters) {
+          final pages = (ch.content.length / 1000.0).ceil().clamp(1, 999999);
+          chapterPages.add(pages);
+          totalPages += pages;
+        }
+
+        double scrollRatio = 0.0;
+        if (_scrollController.hasClients && _scrollController.position.maxScrollExtent > 0) {
+          scrollRatio = (_scrollController.offset / _scrollController.position.maxScrollExtent).clamp(0.0, 1.0);
+        } else if (_maxScrollExtent > 0) {
+          scrollRatio = (_currentScrollOffset / _maxScrollExtent).clamp(0.0, 1.0);
+        }
+
+        int pagesRead = 0;
+        for (int i = 0; i < _currentChapterIndex; i++) {
+          pagesRead += chapterPages[i];
+        }
+        if (_currentChapterIndex < chapterPages.length) {
+          pagesRead += (scrollRatio * chapterPages[_currentChapterIndex]).round();
+        }
+        pagesRead = pagesRead.clamp(0, totalPages);
+        final progressPercent = totalPages > 0 ? pagesRead / totalPages : 0.0;
+
+        await prefs.setInt('epub_pages_read_${widget.bookId}', pagesRead);
+        await prefs.setInt('epub_total_pages_${widget.bookId}', totalPages);
+        await prefs.setDouble('epub_progress_${widget.bookId}', progressPercent);
+
+        // Update/create progress.json in the epub's parent folder
+        try {
+          final parentDir = File(widget.epubFilePath).parent;
+          if (await parentDir.exists()) {
+            final progressFile = File(p.join(parentDir.path, 'progress.json'));
+            Map<String, dynamic> progressJson = {};
+            if (await progressFile.exists()) {
+              try {
+                final content = await progressFile.readAsString();
+                progressJson = jsonDecode(content) as Map<String, dynamic>;
+              } catch (_) {}
+            }
+            
+            progressJson['bookId'] = widget.bookId;
+            progressJson['epubProgress'] = {
+              'currentChapter': _currentChapterIndex,
+              'totalChapters': _chapters.length,
+              'scrollOffset': _currentScrollOffset,
+              'pagesRead': pagesRead,
+              'totalPages': totalPages,
+              'progress': progressPercent,
+              'fontSize': _fontSize,
+              'lastReadAt': DateTime.now().toIso8601String(),
+            };
+            
+            await progressFile.writeAsString(jsonEncode(progressJson));
+            print('[EpubReaderScreen] Saved epub progress to progress.json');
+          }
+        } catch (_) {}
+      }
     } catch (_) {}
   }
 
@@ -321,6 +435,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     _saveProgress();
     setState(() {
       _currentChapterIndex = index;
+      _currentScrollOffset = 0.0;
     });
     _scrollController.jumpTo(0);
   }
@@ -468,47 +583,97 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
               ),
               child: SafeArea(
                 bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: widget.onClose,
-                        tooltip: 'Back to player',
-                      ),
-                      Expanded(
-                        child: Text(
-                          chapter.title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: textColor,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: widget.onClose,
+                            tooltip: 'Back to player',
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                        ),
+                          Expanded(
+                            child: Text(
+                              chapter.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: textColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          // Auto scroll toggle
+                          IconButton(
+                            icon: Icon(_isAutoScrolling ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded),
+                            color: _isAutoScrolling ? accent : textColor.withOpacity(0.7),
+                            onPressed: _toggleAutoScroll,
+                            tooltip: _isAutoScrolling ? 'Pause Auto-Scroll' : 'Start Auto-Scroll',
+                          ),
+                          // Font size controls
+                          IconButton(
+                            icon: const Icon(Icons.text_decrease_rounded, size: 20),
+                            onPressed: () => setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0)),
+                            tooltip: 'Decrease font size',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.text_increase_rounded, size: 20),
+                            onPressed: () => setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0)),
+                            tooltip: 'Increase font size',
+                          ),
+                          // TOC button
+                          IconButton(
+                            icon: const Icon(Icons.format_list_bulleted_rounded, size: 20),
+                            onPressed: () => _showToc(context, textColor, bg, accent),
+                            tooltip: 'Table of contents',
+                          ),
+                        ],
                       ),
-                      // Font size controls
-                      IconButton(
-                        icon: const Icon(Icons.text_decrease_rounded, size: 20),
-                        onPressed: () => setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0)),
-                        tooltip: 'Decrease font size',
+                    ),
+                    // Auto Scroll Speed controller (Only shown when auto scrolling is active or controls are shown)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      decoration: BoxDecoration(
+                        border: Border(top: BorderSide(color: textColor.withOpacity(0.05))),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.text_increase_rounded, size: 20),
-                        onPressed: () => setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0)),
-                        tooltip: 'Increase font size',
+                      child: Row(
+                        children: [
+                          Icon(Icons.speed_rounded, size: 16, color: textColor.withOpacity(0.6)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Scroll Speed:',
+                            style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.7)),
+                          ),
+                          Expanded(
+                            child: Slider(
+                              value: _autoScrollSpeed,
+                              min: 5.0,
+                              max: 100.0,
+                              activeColor: accent,
+                              inactiveColor: accent.withOpacity(0.2),
+                              onChanged: (val) {
+                                setState(() {
+                                  _autoScrollSpeed = val;
+                                });
+                                if (_isAutoScrolling) {
+                                  _startAutoScroll();
+                                }
+                              },
+                            ),
+                          ),
+                          Text(
+                            '${_autoScrollSpeed.round()} px/s',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
+                          ),
+                        ],
                       ),
-                      // TOC button
-                      IconButton(
-                        icon: const Icon(Icons.format_list_bulleted_rounded, size: 20),
-                        onPressed: () => _showToc(context, textColor, bg, accent),
-                        tooltip: 'Table of contents',
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -648,22 +813,20 @@ Future<String?> findEpubInFolder(String folderPath) async {
     final dir = Directory(folderPath);
     if (!await dir.exists()) return null;
     
-    await for (final entity in dir.list(recursive: false)) {
+    await for (final entity in dir.list()) {
       if (entity is File) {
         final lower = entity.path.toLowerCase();
         if (lower.endsWith('.epub')) {
           return entity.path;
         }
-      }
-    }
-    
-    // Also search one level deep
-    await for (final entity in dir.list(recursive: true)) {
-      if (entity is File) {
-        final lower = entity.path.toLowerCase();
-        if (lower.endsWith('.epub')) {
-          return entity.path;
-        }
+      } else if (entity is Directory) {
+        try {
+          await for (final subEntity in entity.list()) {
+            if (subEntity is File && subEntity.path.toLowerCase().endsWith('.epub')) {
+              return subEntity.path;
+            }
+          }
+        } catch (_) {}
       }
     }
   } catch (_) {}

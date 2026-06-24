@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:dio/dio.dart';
 import 'package:audiotags/audiotags.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
 import '../data/audiobook_addon_service.dart';
@@ -16,6 +17,10 @@ import '../../../core/database/database.dart';
 
 /// Tab toggle for Discovery screen (shared between music and audiobooks).
 final discoveryTabProvider = StateProvider<String>((ref) => 'music');
+
+/// Tracks when the last directory restore scan completed to avoid redundant
+/// filesystem I/O on every provider load. Scans are skipped if < 30s old.
+final lastDirectoryRestoreScanProvider = StateProvider<DateTime?>((ref) => null);
 
 /// Provider for the AudiobookRepository singleton.
 final audiobookRepositoryProvider = Provider<AudiobookRepository>((ref) {
@@ -73,7 +78,7 @@ final bookChaptersProvider = FutureProvider.family<List<AudiobookChapter>, Strin
 final selectedGenreProvider = StateProvider<String>((ref) => 'All');
 
 /// Browse the audiobook catalog (trending by default, or filtered by genre).
-final audiobookCatalogProvider = FutureProvider<List<AudiobookResult>>((ref) async {
+final audiobookCatalogProvider = FutureProvider.autoDispose<List<AudiobookResult>>((ref) async {
   final repo = ref.read(audiobookRepositoryProvider);
   final genre = ref.watch(selectedGenreProvider);
   if (genre == 'All') {
@@ -88,30 +93,74 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
   final repo = ref.read(audiobookRepositoryProvider);
 
   // Proactively scan local audiobook directory to restore progress/metadata for cloud/torbox books
-  final settings = ref.watch(settingsProvider);
+  final settings = ref.read(settingsProvider);
   final downloadDirPath = settings.audiobookFolder;
-  if (downloadDirPath != null && downloadDirPath.isNotEmpty) {
+  final lastScan = ref.read(lastDirectoryRestoreScanProvider);
+  final shouldScan = lastScan == null ||
+      DateTime.now().difference(lastScan) > const Duration(seconds: 30);
+  if (downloadDirPath != null && downloadDirPath.isNotEmpty && shouldScan) {
     try {
       final dir = Directory(downloadDirPath);
       if (await dir.exists()) {
-        await for (final entity in dir.list()) {
+        await for (final entity in dir.list().timeout(const Duration(seconds: 15))) {
           if (entity is Directory) {
             final metaFile = File(p.join(entity.path, 'metadata.json'));
             final progressFile = File(p.join(entity.path, 'progress.json'));
-            if (await metaFile.exists() && await progressFile.exists()) {
+
+            // Determine bookId from metadata.json (preferred) or progress.json (fallback)
+            String? bookId;
+            Map<String, dynamic>? metaData;
+            bool hasMetaFile = false;
+
+            if (await metaFile.exists()) {
               try {
                 final content = await metaFile.readAsString();
-                final data = jsonDecode(content) as Map<String, dynamic>;
-                final bookId = data['bookId'] as String?;
-                if (bookId != null) {
-                  // Restore progress and cache metadata
-                  await repo.restoreProgressFromLocalFolder(bookId, entity.path);
-                  await repo.getCachedMetadata(bookId);
-                }
+                metaData = jsonDecode(content) as Map<String, dynamic>;
+                bookId = metaData['bookId'] as String?;
+                hasMetaFile = true;
               } catch (_) {}
+            }
+
+            if (bookId == null && await progressFile.exists()) {
+              try {
+                final content = await progressFile.readAsString();
+                final progData = jsonDecode(content) as Map<String, dynamic>;
+                bookId = progData['bookId'] as String?;
+              } catch (_) {}
+            }
+
+            if (bookId != null) {
+              // Restore progress only if DB has no entries
+              final existing = await repo.getBookChapterProgress(bookId);
+              if (existing.isEmpty) {
+                await repo.restoreProgressFromLocalFolder(bookId, entity.path);
+              }
+
+              if (hasMetaFile && metaData != null) {
+                // Directly cache the metadata in the DB from the already parsed JSON content
+                final coverFile = File(p.join(entity.path, 'cover.jpg'));
+                String? artworkUrl = metaData['artworkUrl'] as String?;
+                if (await coverFile.exists()) {
+                  artworkUrl = 'file://${coverFile.path}';
+                }
+
+                final bookResult = AudiobookResult(
+                  id: bookId,
+                  title: metaData['title'] as String? ?? 'Audiobook',
+                  author: metaData['author'] as String? ?? 'Unknown Author',
+                  narrator: metaData['narrator'] as String?,
+                  artworkUrl: artworkUrl,
+                  description: metaData['description'] as String?,
+                  totalChapters: metaData['totalChapters'] as int?,
+                  language: metaData['language'] as String?,
+                  genre: metaData['genre'] as String?,
+                );
+                await repo.cacheBookMetadata(bookResult, writeLocalBackup: false);
+              }
             }
           }
         }
+        ref.read(lastDirectoryRestoreScanProvider.notifier).state = DateTime.now();
       }
     } catch (e) {
       print('[inProgressAudiobooksProvider] Error scanning for cloud book restore: $e');
@@ -142,11 +191,48 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
     if (dismissedBooks.contains(entry.key)) continue;
     final progress = entry.value;
     final cached = await repo.getCachedMetadata(entry.key);
+    AudiobookResult? bookResult;
+    int totalChaptersCached = 0;
+    
+    if (cached != null) {
+      bookResult = repo.metadataToResult(cached);
+      totalChaptersCached = cached.totalChapters;
+    } else {
+      // Direct load if it's a local book or has a local folder backup
+      final localDir = await repo.getLocalBookDirectoryForBackup(entry.key);
+      if (localDir != null) {
+        final metaFile = File(p.join(localDir, 'metadata.json'));
+        if (await metaFile.exists()) {
+          try {
+            final content = await metaFile.readAsString();
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            final coverFile = File(p.join(localDir, 'cover.jpg'));
+            String? artworkUrl = data['artworkUrl'] as String?;
+            if (await coverFile.exists()) {
+              artworkUrl = 'file://${coverFile.path}';
+            }
+            bookResult = AudiobookResult(
+              id: entry.key,
+              title: data['title'] as String? ?? 'Audiobook',
+              author: data['author'] as String? ?? 'Unknown Author',
+              narrator: data['narrator'] as String?,
+              artworkUrl: artworkUrl,
+              description: data['description'] as String?,
+              totalChapters: data['totalChapters'] as int?,
+              language: data['language'] as String?,
+              genre: data['genre'] as String?,
+            );
+            totalChaptersCached = data['totalChapters'] as int? ?? 0;
+          } catch (_) {}
+        }
+      }
+    }
+    
     final bookId = entry.key;
     final bookProgressList = progressByBook[bookId] ?? [];
     
-    final totalCh = (cached != null && cached.totalChapters > 0)
-        ? cached.totalChapters
+    final totalCh = (totalChaptersCached > 0)
+        ? totalChaptersCached
         : (progress.chapterIndex + 1);
         
     double progressPercent = 0.0;
@@ -175,12 +261,12 @@ final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWi
       progressPercent = (totalCh == 1) ? (totalProgressValue).clamp(0.0, 1.0) : (totalProgressValue / totalCh).clamp(0.0, 1.0);
     }
 
-    if (cached != null) {
+    if (bookResult != null) {
       result.add(AudiobookWithProgress(
-        book: repo.metadataToResult(cached),
+        book: bookResult,
         currentChapter: progress.chapterIndex,
         positionMillis: progress.positionMillis,
-        totalChapters: cached.totalChapters,
+        totalChapters: totalChaptersCached,
         lastListenedAt: progress.lastListenedAt,
         progressPercent: progressPercent,
       ));
@@ -225,6 +311,8 @@ final bookDetailsProvider = FutureProvider.family<AudiobookResult?, String>((ref
   if (bookResult != null && bookResult.rating == null) {
     try {
       final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 2);
+      dio.options.receiveTimeout = const Duration(seconds: 2);
       final query = Uri.encodeComponent(bookResult.title);
       final url = 'https://openlibrary.org/search.json?q=$query&fields=title,ratings_average,ratings_count&limit=3';
       final response = await dio.get(url);
@@ -260,17 +348,21 @@ final torrentStatusProvider = FutureProvider.family<Map<String, dynamic>, String
 final bookChapterProgressProvider = FutureProvider.autoDispose.family<List<dynamic>, String>((ref, bookId) async {
   final repo = ref.read(audiobookRepositoryProvider);
   
-  // Proactively restore progress from local progress.json if it exists
-  try {
-    final dirPath = await repo.getLocalBookDirectoryForBackup(bookId);
-    if (dirPath != null) {
-      await repo.restoreProgressFromLocalFolder(bookId, dirPath);
+  final existingProgress = await repo.getBookChapterProgress(bookId);
+  if (existingProgress.isEmpty) {
+    // Proactively restore progress from local progress.json if it exists
+    try {
+      final dirPath = await repo.getLocalBookDirectoryForBackup(bookId);
+      if (dirPath != null) {
+        await repo.restoreProgressFromLocalFolder(bookId, dirPath);
+      }
+    } catch (e) {
+      print('[bookChapterProgressProvider] Error restoring progress from local folder: $e');
     }
-  } catch (e) {
-    print('[bookChapterProgressProvider] Error restoring progress from local folder: $e');
+    return repo.getBookChapterProgress(bookId);
   }
 
-  return repo.getBookChapterProgress(bookId);
+  return existingProgress;
 });
 
 /// Audio file extensions recognized as audiobook chapters.
@@ -312,15 +404,33 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
 
   // Check metadata.json and cover image inside the directory first
   final metaFile = File(p.join(dir.path, 'metadata.json'));
+  String? narrator;
+  String? language;
+  String? genre;
+  int? tc;
+
   if (await metaFile.exists()) {
     try {
       final content = await metaFile.readAsString();
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      title = data['title'] as String? ?? title;
-      author = data['author'] as String? ?? author;
-      description = data['description'] as String?;
+      if (content.trim().isEmpty) {
+        print('[localAudiobooksProvider] metadata.json is empty. Deleting.');
+        await metaFile.delete();
+      } else {
+        final data = jsonDecode(content) as Map<String, dynamic>;
+        title = data['title'] as String? ?? title;
+        author = data['author'] as String? ?? author;
+        description = data['description'] as String?;
+        narrator = data['narrator'] as String?;
+        language = data['language'] as String?;
+        genre = data['genre'] as String?;
+        tc = data['totalChapters'] as int?;
+      }
     } catch (e) {
       print('[localAudiobooksProvider] Error reading local metadata.json: $e');
+      try {
+        await metaFile.delete();
+        print('[localAudiobooksProvider] Deleted corrupted metadata.json file');
+      } catch (_) {}
     }
   }
 
@@ -330,6 +440,21 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
     artworkPath = coverJpg.path;
   } else if (await coverPng.exists()) {
     artworkPath = coverPng.path;
+  }
+
+  // If metadata has totalChapters, return fast without listing all files
+  if (tc != null && tc > 0) {
+    return AudiobookResult(
+      id: id,
+      title: title,
+      author: author,
+      artworkUrl: artworkPath,
+      description: description,
+      narrator: narrator,
+      language: language,
+      genre: genre,
+      totalChapters: tc,
+    );
   }
 
   File? firstAudioFile;
@@ -392,6 +517,9 @@ Future<AudiobookResult> _getAudiobookMetadata(Directory dir, String id, String d
     author: author,
     artworkUrl: artworkPath,
     description: description,
+    narrator: narrator,
+    language: language,
+    genre: genre,
     totalChapters: audioCount,
   );
 }
@@ -423,10 +551,10 @@ Future<AudiobookResult> _getBookMetadataFromAudioFile(File file, String id, Stri
           final artFile = File('${tempDir.path}/local_book_art_$pathHash.$ext');
           await artFile.writeAsBytes(bytes);
           artworkPath = artFile.path;
+          }
         }
       }
-    }
-  } catch (e) {
+    } catch (e) {
     print('[localAudiobooksProvider] Error reading tags from file: $e');
   }
 
@@ -447,28 +575,36 @@ final localAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>
   final List<AudiobookResult> results = [];
 
   // 1. Fetch Local Audiobooks if folder path is configured
-  final settings = ref.watch(settingsProvider);
+  final settings = ref.read(settingsProvider);
   final folderPath = settings.audiobookFolder;
   if (folderPath != null && folderPath.isNotEmpty) {
     final dir = Directory(folderPath);
     if (await dir.exists()) {
-      await for (final entity in dir.list()) {
+      await for (final entity in dir.list().timeout(const Duration(seconds: 15))) {
         if (entity is Directory) {
-          final audioCount = await _countAudioFiles(entity);
-          if (audioCount > 0) {
+          final bookId = 'local:${entity.path}';
+          final metaFile = File(p.join(entity.path, 'metadata.json'));
+          
+          bool isBook = false;
+          if (await metaFile.exists()) {
+            isBook = true;
+          } else {
+            final audioCount = await _countAudioFiles(entity);
+            isBook = audioCount > 0;
+          }
+          
+          if (isBook) {
             final folderName = entity.path.split('/').last;
-            final bookId = 'local:${entity.path}';
-            
-            final cached = await repo.getCachedMetadata(bookId);
-            if (cached != null) {
-              results.add(repo.metadataToResult(cached));
-            } else {
-              final book = await _getAudiobookMetadata(entity, bookId, folderName);
-              results.add(book);
+            final book = await _getAudiobookMetadata(entity, bookId, folderName);
+            results.add(book);
+            repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
+
+            // Proactively restore progress if progress.json exists (skip if recently scanned)
+            final lastScan = ref.read(lastDirectoryRestoreScanProvider);
+            if (lastScan == null ||
+                DateTime.now().difference(lastScan) > const Duration(seconds: 30)) {
+              await repo.restoreProgressFromLocalFolder(bookId, entity.path);
             }
-            
-            // Proactively restore progress if progress.json exists
-            await repo.restoreProgressFromLocalFolder(bookId, entity.path);
           }
         } else if (entity is File) {
           final ext = _getExt(entity.path);
@@ -477,13 +613,9 @@ final localAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>
             final defaultTitle = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
             final bookId = 'local:${entity.path}';
 
-            final cached = await repo.getCachedMetadata(bookId);
-            if (cached != null) {
-              results.add(repo.metadataToResult(cached));
-            } else {
-              final book = await _getBookMetadataFromAudioFile(entity, bookId, defaultTitle);
-              results.add(book);
-            }
+            final book = await _getBookMetadataFromAudioFile(entity, bookId, defaultTitle);
+            results.add(book);
+            repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
           }
         }
       }
@@ -491,8 +623,10 @@ final localAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>
   }
 
   // 2. Fetch TorBox Torrent Audiobooks
-  final torBoxBooks = await repo.getTorBoxLibraryAudiobooks();
-  results.addAll(torBoxBooks);
+  if (settings.isValid) {
+    final torBoxBooks = await repo.getTorBoxLibraryAudiobooks();
+    results.addAll(torBoxBooks);
+  }
 
   // 3. De-duplicate based on book ID
   final Map<String, AudiobookResult> uniqueBooks = {};
@@ -1146,3 +1280,69 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
     state = Map.from(state)..remove(bookId);
   }
 }
+
+/// Provider to check if a book has a local EPUB file and return its path.
+final bookEpubPathProvider = FutureProvider.family<String?, String>((ref, bookId) async {
+  try {
+    String? folderPath;
+    if (bookId.startsWith('local:')) {
+      final rawPath = bookId.substring('local:'.length);
+      final entityType = FileSystemEntity.typeSync(rawPath);
+      if (entityType == FileSystemEntityType.directory) {
+        folderPath = rawPath;
+      } else {
+        folderPath = File(rawPath).parent.path;
+      }
+    } else if (bookId.startsWith('torrent:')) {
+      final settings = ref.read(settingsProvider);
+      final audiobookFolder = settings.audiobookFolder;
+      if (audiobookFolder != null && audiobookFolder.isNotEmpty) {
+        final repo = ref.read(audiobookRepositoryProvider);
+        final matched = await repo.getLocalBookDirectoryForBackup(bookId);
+        if (matched != null) {
+          folderPath = matched;
+        }
+      }
+    }
+    
+    if (folderPath != null) {
+      final dir = Directory(folderPath);
+      if (await dir.exists()) {
+        await for (final entity in dir.list()) {
+          if (entity is File && entity.path.toLowerCase().endsWith('.epub')) {
+            return entity.path;
+          } else if (entity is Directory) {
+            try {
+              await for (final subEntity in entity.list()) {
+                if (subEntity is File && subEntity.path.toLowerCase().endsWith('.epub')) {
+                  return subEntity.path;
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+});
+
+/// Provider to retrieve EPUB reading progress from SharedPreferences.
+final epubProgressProvider = FutureProvider.family<Map<String, dynamic>, String>((ref, bookId) async {
+  final prefs = await SharedPreferences.getInstance();
+  final currentChapter = prefs.getInt('epub_chapter_$bookId') ?? 0;
+  final totalChapters = prefs.getInt('epub_total_chapters_$bookId') ?? 0;
+  final scrollOffset = prefs.getDouble('epub_scroll_$bookId') ?? 0.0;
+  final pagesRead = prefs.getInt('epub_pages_read_$bookId') ?? 0;
+  final totalPages = prefs.getInt('epub_total_pages_$bookId') ?? 0;
+  final progress = prefs.getDouble('epub_progress_$bookId') ?? 0.0;
+  
+  return {
+    'currentChapter': currentChapter,
+    'totalChapters': totalChapters,
+    'scrollOffset': scrollOffset,
+    'pagesRead': pagesRead,
+    'totalPages': totalPages,
+    'progress': progress,
+  };
+});

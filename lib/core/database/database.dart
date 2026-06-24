@@ -510,9 +510,10 @@ class AppDatabase extends _$AppDatabase {
   /// Save or update audiobook listening progress.
   Future<void> saveAudiobookProgress(AudiobookProgressCompanion entry) async {
     // Check if progress exists for this book+chapter combo
-    final existing = await (select(audiobookProgress)
+    final list = await (select(audiobookProgress)
           ..where((t) => t.bookId.equals(entry.bookId.value) & t.chapterIndex.equals(entry.chapterIndex.value)))
-        .getSingleOrNull();
+        .get();
+    final existing = list.isNotEmpty ? list.first : null;
     
     if (existing != null) {
       await (update(audiobookProgress)
@@ -524,10 +525,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Get progress for a specific chapter of a book.
-  Future<DbAudiobookProgress?> getAudiobookProgress(String bookId, int chapterIndex) {
-    return (select(audiobookProgress)
+  Future<DbAudiobookProgress?> getAudiobookProgress(String bookId, int chapterIndex) async {
+    final list = await (select(audiobookProgress)
           ..where((t) => t.bookId.equals(bookId) & t.chapterIndex.equals(chapterIndex)))
-        .getSingleOrNull();
+        .get();
+    return list.isNotEmpty ? list.first : null;
   }
 
   /// Get the most recently listened chapter for a book.

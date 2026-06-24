@@ -53,7 +53,7 @@ void main() async {
   }
 
   if (!Platform.isLinux) {
-    await Permission.notification.request();
+    Permission.notification.request();
   }
   
   if (Platform.isLinux) {

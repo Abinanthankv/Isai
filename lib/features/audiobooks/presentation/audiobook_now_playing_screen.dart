@@ -23,20 +23,80 @@ class AudiobookNowPlayingScreen extends ConsumerStatefulWidget {
 }
 
 class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingScreen> {
-  Timer? _progressSaveTimer;
   StreamSubscription<PlaybackState>? _playbackStateSub;
   bool _wasPlaying = false;
   bool _showingEpub = false;
   String? _epubFilePath;
   bool _epubSearchDone = false;
+  Timer? _seekDebounceTimer;
+  int _accumulatedSeekSeconds = 0;
+  Duration? _initialSeekPosition;
+
+  void _accumulateSeek(int seconds, Duration currentPosition) {
+    if (_initialSeekPosition == null) {
+      _initialSeekPosition = currentPosition;
+      _accumulatedSeekSeconds = 0;
+    }
+    
+    _accumulatedSeekSeconds += seconds;
+    _seekDebounceTimer?.cancel();
+    
+    // Provide a brief screen feedback overlay/snackbar if needed, or simple status message
+    final totalJump = _accumulatedSeekSeconds;
+    final direction = totalJump > 0 ? 'Forward' : 'Rewind';
+    final absSeconds = totalJump.abs();
+    
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: primaryColor,
+        behavior: SnackBarBehavior.floating,
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        margin: const EdgeInsets.only(bottom: 32, left: 80, right: 80),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        duration: const Duration(milliseconds: 600),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              totalJump > 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+              color: onPrimaryColor,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$direction ${absSeconds}s',
+              style: TextStyle(
+                color: onPrimaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 12.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    _seekDebounceTimer = Timer(const Duration(milliseconds: 450), () {
+      if (_initialSeekPosition != null) {
+        final targetPos = _initialSeekPosition! + Duration(seconds: _accumulatedSeekSeconds);
+        audioHandler.seek(targetPos < Duration.zero ? Duration.zero : targetPos);
+        _initialSeekPosition = null;
+        _accumulatedSeekSeconds = 0;
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    // Periodic save every 15 seconds while playing
-    _progressSaveTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      _saveCurrentProgress();
-    });
     // Save on pause
     _playbackStateSub = audioHandler.playbackState.listen((state) {
       final isPlaying = state.playing;
@@ -93,8 +153,8 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
 
   @override
   void dispose() {
-    _progressSaveTimer?.cancel();
     _playbackStateSub?.cancel();
+    _seekDebounceTimer?.cancel();
     // Final save on screen close
     _saveCurrentProgress();
     super.dispose();
@@ -414,8 +474,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                 IconButton(
                                   icon: const Icon(Icons.replay_10_rounded, size: 36),
                                   onPressed: () {
-                                    final newPos = (playbackState?.position ?? Duration.zero) - const Duration(seconds: 10);
-                                    audioHandler.seek(newPos < Duration.zero ? Duration.zero : newPos);
+                                    _accumulateSeek(-10, playbackState?.position ?? Duration.zero);
                                   },
                                 ),
                                 const SizedBox(width: 24),
@@ -443,8 +502,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                 IconButton(
                                   icon: const Icon(Icons.forward_10_rounded, size: 36),
                                   onPressed: () {
-                                    final newPos = (playbackState?.position ?? Duration.zero) + const Duration(seconds: 10);
-                                    audioHandler.seek(newPos);
+                                    _accumulateSeek(10, playbackState?.position ?? Duration.zero);
                                   },
                                 ),
                               ],

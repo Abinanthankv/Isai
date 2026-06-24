@@ -434,8 +434,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
           );
         },
-        loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-        error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+        loading: () => const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Row(
+              children: [
+                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 12),
+                Text('Loading continue listening...', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+        error: (e, _) {
+          print('[LibraryScreen] Continue Listening error: $e');
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        },
       ),
 
       // 3. Books Header
@@ -792,6 +806,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         'title': chapter.title,
         'artist': book.author,
         'artworkUrl': book.artworkUrl ?? '',
+        'duration': '${chapter.durationMillis}',
         'forceReplace': true,
         'mediaType': 'audiobook',
         'extras': {

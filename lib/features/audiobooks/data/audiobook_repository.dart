@@ -170,9 +170,18 @@ class AudiobookRepository {
     if (query.trim().isEmpty) return [];
 
     final tasks = <Future<List<dynamic>>>[
-      _addonService.searchBooks(query),
-      _musicRepo.searchAllTorrents(query),
-      _searchAudiobookBay(query),
+      _addonService.searchBooks(query).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => [],
+      ),
+      _musicRepo.searchAllTorrents(query).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => [],
+      ),
+      _searchAudiobookBay(query).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => [],
+      ),
     ];
 
     try {
@@ -288,7 +297,10 @@ class AudiobookRepository {
   /// Browse the audiobook catalog (fetches top trending from iTunes RSS).
   Future<List<AudiobookResult>> browseCatalog({int skip = 0}) async {
     try {
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       final res = await dio.get('https://rss.marketingtools.apple.com/api/v2/us/audio-books/top/50/audio-books.json');
       if (res.statusCode == 200 && res.data != null) {
         final Map<String, dynamic> data = res.data is String ? jsonDecode(res.data) : res.data;
@@ -325,7 +337,10 @@ class AudiobookRepository {
     print('[AudiobookRepository] fetchCatalogByGenre called for genre: $genre');
     final List<AudiobookResult> results = [];
     try {
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       final res = await dio.get(
         'https://itunes.apple.com/search',
         queryParameters: {
@@ -571,7 +586,7 @@ class AudiobookRepository {
             final ext = firstAudioFile.path.split('.').last.toLowerCase();
             if (ext == 'm4b' || ext == 'm4a') {
               try {
-                final parsed = await M4bParser.parseChapters(firstAudioFile.path);
+                final parsed = await M4bParser.parseChapters(firstAudioFile.path).timeout(const Duration(seconds: 15));
                 if (parsed.isNotEmpty) {
                   audioCount = parsed.length;
                 }
@@ -767,7 +782,7 @@ class AudiobookRepository {
                         candidate.title.toLowerCase().endsWith('.mp3');
                         
           if (isM4b) {
-            final parsedChapters = await M4bParser.parseChapters(resolvedUrl);
+            final parsedChapters = await M4bParser.parseChapters(resolvedUrl).timeout(const Duration(seconds: 15));
             if (parsedChapters.isNotEmpty) {
               workingChapters = List.generate(parsedChapters.length, (i) {
                 final ch = parsedChapters[i];
@@ -784,7 +799,7 @@ class AudiobookRepository {
               parsedSuccessfully = true;
             }
           } else if (isMp3) {
-            final parsedChapters = await Mp3Parser.parseChapters(resolvedUrl);
+            final parsedChapters = await Mp3Parser.parseChapters(resolvedUrl).timeout(const Duration(seconds: 15));
             if (parsedChapters.isNotEmpty) {
               workingChapters = List.generate(parsedChapters.length, (i) {
                 final ch = parsedChapters[i];
@@ -921,7 +936,7 @@ class AudiobookRepository {
       // If it looks like M4B or we default to it, try M4B first, fallback to MP3
       if (looksLikeM4b || (!looksLikeMp3 && (ext == 'm4b' || ext == 'm4a'))) {
         try {
-          final parsedChapters = await M4bParser.parseChapters(file.path);
+          final parsedChapters = await M4bParser.parseChapters(file.path).timeout(const Duration(seconds: 15));
           if (parsedChapters.isNotEmpty) {
             parsed = List.generate(parsedChapters.length, (i) {
               final ch = parsedChapters[i];
@@ -941,7 +956,7 @@ class AudiobookRepository {
 
         if (parsed.isEmpty) {
           try {
-            final parsedChapters = await Mp3Parser.parseChapters(file.path);
+            final parsedChapters = await Mp3Parser.parseChapters(file.path).timeout(const Duration(seconds: 15));
             if (parsedChapters.isNotEmpty) {
               parsed = List.generate(parsedChapters.length, (i) {
                 final ch = parsedChapters[i];
@@ -962,7 +977,7 @@ class AudiobookRepository {
       } else {
         // Try MP3 first, fallback to M4B
         try {
-          final parsedChapters = await Mp3Parser.parseChapters(file.path);
+          final parsedChapters = await Mp3Parser.parseChapters(file.path).timeout(const Duration(seconds: 15));
           if (parsedChapters.isNotEmpty) {
             parsed = List.generate(parsedChapters.length, (i) {
               final ch = parsedChapters[i];
@@ -982,7 +997,7 @@ class AudiobookRepository {
 
         if (parsed.isEmpty) {
           try {
-            final parsedChapters = await M4bParser.parseChapters(file.path);
+            final parsedChapters = await M4bParser.parseChapters(file.path).timeout(const Duration(seconds: 15));
             if (parsedChapters.isNotEmpty) {
               parsed = List.generate(parsedChapters.length, (i) {
                 final ch = parsedChapters[i];
@@ -1102,21 +1117,21 @@ class AudiobookRepository {
       // Try M4B first, fallback to MP3
       if (looksLikeM4b || (!looksLikeMp3 && (ext == 'm4b' || ext == 'm4a'))) {
         try {
-          parsedChapters = await M4bParser.parseChapters(file.path);
+          parsedChapters = await M4bParser.parseChapters(file.path).timeout(const Duration(seconds: 15));
         } catch (_) {}
         if (parsedChapters.isEmpty) {
           try {
-            parsedChapters = await Mp3Parser.parseChapters(file.path);
+            parsedChapters = await Mp3Parser.parseChapters(file.path).timeout(const Duration(seconds: 15));
           } catch (_) {}
         }
       } else {
         // Try MP3 first, fallback to M4B
         try {
-          parsedChapters = await Mp3Parser.parseChapters(file.path);
+          parsedChapters = await Mp3Parser.parseChapters(file.path).timeout(const Duration(seconds: 15));
         } catch (_) {}
         if (parsedChapters.isEmpty) {
           try {
-            parsedChapters = await M4bParser.parseChapters(file.path);
+            parsedChapters = await M4bParser.parseChapters(file.path).timeout(const Duration(seconds: 15));
           } catch (_) {}
         }
       }
@@ -1219,6 +1234,28 @@ class AudiobookRepository {
   // ─── Progress Tracking ─────────────────────────────────────────
 
   Future<String?> _findLocalFolderForBookId(String bookId) async {
+    if (bookId.startsWith('local:')) {
+      final path = bookId.substring(6);
+      if (await io.Directory(path).exists()) {
+        return path;
+      }
+      String parsedPath = path;
+      if (parsedPath.startsWith('file://')) {
+        try {
+          parsedPath = Uri.parse(parsedPath).toFilePath();
+        } catch (_) {}
+      }
+      if (parsedPath.contains('%')) {
+        try {
+          parsedPath = Uri.decodeComponent(parsedPath);
+        } catch (_) {}
+      }
+      if (await io.Directory(parsedPath).exists()) {
+        return parsedPath;
+      }
+      return null;
+    }
+
     try {
       final settings = getIt<TorBoxSettingsRepository>();
       final downloadDirPath = settings.audiobookFolder;
@@ -1380,24 +1417,56 @@ class AudiobookRepository {
       if (await progressFile.exists()) {
         final content = await progressFile.readAsString();
         final data = jsonDecode(content) as Map<String, dynamic>;
+        
+        // Restore EPUB reading progress if present
+        final epubProg = data['epubProgress'] as Map<String, dynamic>?;
+        if (epubProg != null) {
+          final prefs = await SharedPreferences.getInstance();
+          if (epubProg.containsKey('currentChapter')) {
+            await prefs.setInt('epub_chapter_$bookId', epubProg['currentChapter'] as int);
+          }
+          if (epubProg.containsKey('scrollOffset')) {
+            await prefs.setDouble('epub_scroll_$bookId', (epubProg['scrollOffset'] as num).toDouble());
+          }
+          if (epubProg.containsKey('fontSize')) {
+            await prefs.setDouble('epub_fontsize_$bookId', (epubProg['fontSize'] as num).toDouble());
+          }
+          if (epubProg.containsKey('totalChapters')) {
+            await prefs.setInt('epub_total_chapters_$bookId', epubProg['totalChapters'] as int);
+          }
+          if (epubProg.containsKey('pagesRead')) {
+            await prefs.setInt('epub_pages_read_$bookId', epubProg['pagesRead'] as int);
+          }
+          if (epubProg.containsKey('totalPages')) {
+            await prefs.setInt('epub_total_pages_$bookId', epubProg['totalPages'] as int);
+          }
+          if (epubProg.containsKey('progress')) {
+            await prefs.setDouble('epub_progress_$bookId', (epubProg['progress'] as num).toDouble());
+          }
+        }
+
         final jsonProgress = data['progress'] as List<dynamic>?;
         if (jsonProgress != null) {
           for (final entry in jsonProgress) {
-            final map = entry as Map<String, dynamic>;
-            final chIdx = map['chapterIndex'] as int;
-            
-            final existing = await _db.getAudiobookProgress(bookId, chIdx);
-            final localLastListened = DateTime.parse(map['lastListenedAt'] as String);
-            
-            if (existing == null || existing.lastListenedAt.isBefore(localLastListened)) {
-              await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
-                bookId: bookId,
-                chapterIndex: chIdx,
-                positionMillis: Value(map['positionMillis'] as int? ?? 0),
-                durationMillis: Value(map['durationMillis'] as int? ?? 0),
-                lastListenedAt: localLastListened,
-                isCompleted: Value(map['isCompleted'] as bool? ?? false),
-              ));
+            try {
+              final map = entry as Map<String, dynamic>;
+              final chIdx = map['chapterIndex'] as int;
+              
+              final existing = await _db.getAudiobookProgress(bookId, chIdx);
+              final localLastListened = DateTime.parse(map['lastListenedAt'] as String);
+              
+              if (existing == null || existing.lastListenedAt.isBefore(localLastListened)) {
+                await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
+                  bookId: bookId,
+                  chapterIndex: chIdx,
+                  positionMillis: Value(map['positionMillis'] as int? ?? 0),
+                  durationMillis: Value(map['durationMillis'] as int? ?? 0),
+                  lastListenedAt: localLastListened,
+                  isCompleted: Value(map['isCompleted'] as bool? ?? false),
+                ));
+              }
+            } catch (e) {
+              print('[AudiobookRepository] Error restoring single chapter progress entry: $e');
             }
           }
           print('[AudiobookRepository] Restored progress from ${progressFile.path}');
@@ -1567,7 +1636,7 @@ class AudiobookRepository {
   // ─── Metadata Cache ────────────────────────────────────────────
 
   /// Save audiobook metadata to local cache.
-  Future<void> cacheBookMetadata(AudiobookResult book) async {
+  Future<void> cacheBookMetadata(AudiobookResult book, {bool writeLocalBackup = true}) async {
     final normalizedId = normalizeBookId(book.id);
     final existing = await getCachedMetadata(normalizedId);
 
@@ -1679,76 +1748,78 @@ class AudiobookRepository {
     ));
 
     // Try to update local metadata.json if the backup directory exists
-    try {
-      final localDir = await getLocalBookDirectoryForBackup(book.id);
-      if (localDir != null) {
-        final metaFile = io.File(p.join(localDir, 'metadata.json'));
-        
-        Map<String, dynamic> metaMap = {};
-        if (await metaFile.exists()) {
-          try {
-            final content = await metaFile.readAsString();
-            metaMap = jsonDecode(content) as Map<String, dynamic>;
-          } catch (_) {}
-        }
-
-        final chapters = await getBookChapters(book.id);
-
-        final List<dynamic>? existingChapters = metaMap['chapters'] as List<dynamic>?;
-        List<Map<String, dynamic>> finalChaptersList = [];
-        
-        if (existingChapters != null && existingChapters.isNotEmpty && (chapters.length <= 2 && existingChapters.length > 2)) {
-          finalChaptersList = existingChapters.map((ch) => Map<String, dynamic>.from(ch as Map)).toList();
-        } else {
-          finalChaptersList = chapters.map((ch) => {
-            'id': ch.id,
-            'title': ch.title,
-            'chapterNumber': ch.chapterNumber,
-            'startTimeMillis': ch.startTimeMillis,
-            'durationMillis': ch.durationMillis,
-            'streamUrl': ch.streamUrl,
-          }).toList();
-        }
-
-        metaMap['bookId'] = book.id;
-        metaMap['title'] = title;
-        metaMap['author'] = author;
-        metaMap['description'] = dbDescription;
-        if (narrator != null) metaMap['narrator'] = narrator;
-        if (artworkUrl != null) metaMap['artworkUrl'] = artworkUrl;
-        if (totalChapters != null && totalChapters > 0) metaMap['totalChapters'] = totalChapters;
-        if (language != null) metaMap['language'] = language;
-        if (genre != null) metaMap['genre'] = genre;
-        metaMap['chapters'] = finalChaptersList;
-
-        await metaFile.writeAsString(jsonEncode(metaMap));
-
-        // Copy or download cover art to cover.jpg inside local folder
-        if (artworkUrl != null && artworkUrl.isNotEmpty) {
-          final coverFile = io.File(p.join(localDir, 'cover.jpg'));
-          if (artworkUrl.startsWith('/') || artworkUrl.startsWith('file://')) {
-            final srcPath = artworkUrl.startsWith('file://') 
-                ? Uri.parse(artworkUrl).toFilePath() 
-                : artworkUrl;
-            final srcFile = io.File(srcPath);
-            if (await srcFile.exists()) {
-              await srcFile.copy(coverFile.path);
-            }
-          } else {
+    if (writeLocalBackup) {
+      try {
+        final localDir = await getLocalBookDirectoryForBackup(book.id);
+        if (localDir != null) {
+          final metaFile = io.File(p.join(localDir, 'metadata.json'));
+          
+          Map<String, dynamic> metaMap = {};
+          if (await metaFile.exists()) {
             try {
-              final client = io.HttpClient();
-              final request = await client.getUrl(Uri.parse(artworkUrl));
-              final response = await request.close();
-              if (response.statusCode == 200) {
-                final bytes = await response.expand((b) => b).toList();
-                await coverFile.writeAsBytes(bytes);
-              }
+              final content = await metaFile.readAsString();
+              metaMap = jsonDecode(content) as Map<String, dynamic>;
             } catch (_) {}
           }
+
+          final chapters = await getBookChapters(book.id);
+
+          final List<dynamic>? existingChapters = metaMap['chapters'] as List<dynamic>?;
+          List<Map<String, dynamic>> finalChaptersList = [];
+          
+          if (existingChapters != null && existingChapters.isNotEmpty && (chapters.length <= 2 && existingChapters.length > 2)) {
+            finalChaptersList = existingChapters.map((ch) => Map<String, dynamic>.from(ch as Map)).toList();
+          } else {
+            finalChaptersList = chapters.map((ch) => {
+              'id': ch.id,
+              'title': ch.title,
+              'chapterNumber': ch.chapterNumber,
+              'startTimeMillis': ch.startTimeMillis,
+              'durationMillis': ch.durationMillis,
+              'streamUrl': ch.streamUrl,
+            }).toList();
+          }
+
+          metaMap['bookId'] = book.id;
+          metaMap['title'] = title;
+          metaMap['author'] = author;
+          metaMap['description'] = dbDescription;
+          if (narrator != null) metaMap['narrator'] = narrator;
+          if (artworkUrl != null) metaMap['artworkUrl'] = artworkUrl;
+          if (totalChapters != null && totalChapters > 0) metaMap['totalChapters'] = totalChapters;
+          if (language != null) metaMap['language'] = language;
+          if (genre != null) metaMap['genre'] = genre;
+          metaMap['chapters'] = finalChaptersList;
+
+          await metaFile.writeAsString(jsonEncode(metaMap));
+
+          // Copy or download cover art to cover.jpg inside local folder
+          if (artworkUrl != null && artworkUrl.isNotEmpty) {
+            final coverFile = io.File(p.join(localDir, 'cover.jpg'));
+            if (artworkUrl.startsWith('/') || artworkUrl.startsWith('file://')) {
+              final srcPath = artworkUrl.startsWith('file://') 
+                  ? Uri.parse(artworkUrl).toFilePath() 
+                  : artworkUrl;
+              final srcFile = io.File(srcPath);
+              if (await srcFile.exists() && srcFile.path != coverFile.path) {
+                await srcFile.copy(coverFile.path);
+              }
+            } else {
+              try {
+                final client = io.HttpClient();
+                final request = await client.getUrl(Uri.parse(artworkUrl));
+                final response = await request.close();
+                if (response.statusCode == 200) {
+                  final bytes = await response.expand((b) => b).toList();
+                  await coverFile.writeAsBytes(bytes);
+                }
+              } catch (_) {}
+            }
+          }
         }
+      } catch (e) {
+        print('[AudiobookRepository] Error updating local metadata file in cacheBookMetadata: $e');
       }
-    } catch (e) {
-      print('[AudiobookRepository] Error updating local metadata file in cacheBookMetadata: $e');
     }
   }
 
@@ -1783,7 +1854,7 @@ class AudiobookRepository {
             genre: data['genre'] as String?,
           );
           
-          await cacheBookMetadata(bookResult);
+          await cacheBookMetadata(bookResult, writeLocalBackup: false);
           return await _db.getAudiobookMetadata(normalizeBookId(bookId));
         }
       }

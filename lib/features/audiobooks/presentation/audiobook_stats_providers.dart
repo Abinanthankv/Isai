@@ -8,41 +8,8 @@ import 'audiobook_providers.dart'; // to read audiobookRepositoryProvider
 import '../../music/presentation/music_providers.dart'; // to read settingsProvider
 import '../../../core/database/database.dart';
 
-/// Future of ALL audiobook progress history. Loaded once when screen opens.
 final audiobookHistoryProvider = FutureProvider<List<DbAudiobookProgress>>((ref) async {
   final repo = ref.watch(audiobookRepositoryProvider);
-
-  // Proactively scan local audiobook directory to restore progress/metadata for cloud/torbox books
-  final settings = ref.watch(settingsProvider);
-  final downloadDirPath = settings.audiobookFolder;
-  if (downloadDirPath != null && downloadDirPath.isNotEmpty) {
-    try {
-      final dir = io.Directory(downloadDirPath);
-      if (await dir.exists()) {
-        await for (final entity in dir.list()) {
-          if (entity is io.Directory) {
-            final metaFile = io.File(p.join(entity.path, 'metadata.json'));
-            final progressFile = io.File(p.join(entity.path, 'progress.json'));
-            if (await metaFile.exists() && await progressFile.exists()) {
-              try {
-                final content = await metaFile.readAsString();
-                final data = jsonDecode(content) as Map<String, dynamic>;
-                final bookId = data['bookId'] as String?;
-                if (bookId != null) {
-                  // Restore progress and cache metadata
-                  await repo.restoreProgressFromLocalFolder(bookId, entity.path);
-                  await repo.getCachedMetadata(bookId);
-                }
-              } catch (_) {}
-            }
-          }
-        }
-      }
-    } catch (e) {
-      print('[audiobookHistoryProvider] Error scanning for cloud book restore: $e');
-    }
-  }
-
   return repo.getAllInProgressBooks();
 });
 

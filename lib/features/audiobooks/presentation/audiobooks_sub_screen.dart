@@ -318,8 +318,22 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 ),
               );
             },
-            loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-            error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+            loading: () => const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: Row(
+                  children: [
+                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 12),
+                    Text('Loading continue listening...', style: TextStyle(fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
+            error: (e, _) {
+              print('[AudiobooksSubScreen] Continue Listening error: $e');
+              return const SliverToBoxAdapter(child: SizedBox.shrink());
+            },
           ),
 
           // In Library (local audiobooks)

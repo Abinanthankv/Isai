@@ -14,11 +14,15 @@ import 'audiobook_providers.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
 import 'audiobook_now_playing_screen.dart';
+import 'epub_reader_screen.dart';
 import 'package:isai/main.dart'; // For audioHandler
 import 'package:audio_service/audio_service.dart';
 
 /// Provider to track if the chapters list is expanded for a given audiobook ID.
 final chaptersExpandedProvider = StateProvider.family<bool, String>((ref, bookId) => true);
+
+/// Provider to track which tab is selected inside the progress card: 'listening' or 'reading'
+final selectedProgressTabProvider = StateProvider.family<String, String>((ref, bookId) => 'listening');
 
 class AudiobookDetailScreen extends ConsumerWidget {
   final AudiobookResult book;
@@ -39,6 +43,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
     final torrentStatusAsync = normalBook.id.startsWith('torrent:') 
         ? ref.watch(torrentStatusProvider(normalBook.id)) 
         : null;
+    final epubPathAsync = ref.watch(bookEpubPathProvider(normalBook.id));
+    final epubProgressAsync = ref.watch(epubProgressProvider(normalBook.id));
     
     // Build a map of chapterIndex -> DbAudiobookProgress for quick lookup
     final Map<int, DbAudiobookProgress> chapterProgressMap = {};
@@ -50,6 +56,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
       }
     }
     final hasProgress = chapterProgressMap.isNotEmpty;
+    final epubPath = epubPathAsync.value;
+    final epubProgress = epubProgressAsync.value;
     
     // Use enriched details if available, else fallback to passed book
     final displayBook = detailsAsync.value ?? normalBook;
@@ -465,10 +473,19 @@ class AudiobookDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ],
-                  // Show progress summary card if user has listening progress
-                  if (hasProgress) ...[
+                  // Show progress summary card if user has listening progress OR has associated epub file
+                  if (hasProgress || epubPath != null) ...[
                     const SizedBox(height: 16),
-                    _buildOverallProgressCard(context, chapterProgressMap, chaptersAsync.value?.length ?? 0, chaptersAsync.value ?? []),
+                    _buildOverallProgressCard(
+                      context,
+                      ref,
+                      displayBook,
+                      chapterProgressMap,
+                      chaptersAsync.value?.length ?? 0,
+                      chaptersAsync.value ?? [],
+                      epubPath,
+                      epubProgress,
+                    ),
                   ]
                   // Show download button ONLY if it's a torrent that is NOT yet in library
                   else if (displayBook.id.startsWith('torrent:')) ...[  
@@ -729,29 +746,92 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     error: (_, __) => const SizedBox.shrink(),
                   ),
                   const SizedBox(height: 24),
-                  InkWell(
-                    onTap: () {
-                      ref.read(chaptersExpandedProvider(displayBook.id).notifier).state = !_chaptersExpanded;
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Chapters',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          ref.read(chaptersExpandedProvider(displayBook.id).notifier).state = !_chaptersExpanded;
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Chapters',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                _chaptersExpanded ? Icons.expand_less : Icons.expand_more,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert_rounded, color: Theme.of(context).colorScheme.primary),
+                        tooltip: 'Manage progress',
+                        onSelected: (value) async {
+                          final repo = ref.read(audiobookRepositoryProvider);
+                          final chaptersList = chaptersAsync.value ?? [];
+                          if (value == 'mark_all_completed') {
+                            for (int i = 0; i < chaptersList.length; i++) {
+                              final ch = chaptersList[i];
+                              final durationToUse = ch.durationMillis > 0 ? ch.durationMillis : 600000;
+                              await repo.saveProgress(
+                                bookId: displayBook.id,
+                                chapterIndex: i,
+                                positionMillis: ch.startTimeMillis + durationToUse,
+                                durationMillis: durationToUse,
+                                isCompleted: true,
+                              );
+                            }
+                          } else if (value == 'clear_all_progress') {
+                            for (int i = 0; i < chaptersList.length; i++) {
+                              final ch = chaptersList[i];
+                              await repo.saveProgress(
+                                bookId: displayBook.id,
+                                chapterIndex: i,
+                                positionMillis: ch.startTimeMillis,
+                                durationMillis: ch.durationMillis > 0 ? ch.durationMillis : 0,
+                                isCompleted: false,
+                              );
+                            }
+                          }
+                          ref.invalidate(bookChapterProgressProvider(displayBook.id));
+                          ref.invalidate(inProgressAudiobooksProvider);
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'mark_all_completed',
+                            child: Row(
+                              children: [
+                                Icon(Icons.done_all_rounded, size: 20),
+                                SizedBox(width: 8),
+                                Text('Mark all completed'),
+                              ],
                             ),
                           ),
-                          Icon(
-                            _chaptersExpanded ? Icons.expand_less : Icons.expand_more,
-                            color: Theme.of(context).colorScheme.primary,
+                          const PopupMenuItem(
+                            value: 'clear_all_progress',
+                            child: Row(
+                              children: [
+                                Icon(Icons.cleaning_services_rounded, size: 20),
+                                SizedBox(width: 8),
+                                Text('Clear all progress'),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -764,195 +844,202 @@ class AudiobookDetailScreen extends ConsumerWidget {
             chaptersAsync.when(
             data: (chapters) {
               if (chapters.isEmpty) {
-                return SliverFillRemaining(
-                  hasScrollBody: true,
-                  child: Consumer(
-                    builder: (context, ref, child) {
-                      // Helper to clean search string for torrent indexers
-                      String sanitizeTorrentQuery(String title, String author) {
-                        String cleanTitle = title.replaceAll(RegExp(r'\([^)]*\)'), '');
-                        cleanTitle = cleanTitle.replaceAll(RegExp(r'\[[^\]]*\]'), '');
-                        if (cleanTitle.contains(':')) {
-                          cleanTitle = cleanTitle.split(':').first;
-                        }
-                        if (cleanTitle.contains(' - ')) {
-                          cleanTitle = cleanTitle.split(' - ').first;
-                        }
-                        cleanTitle = cleanTitle
-                            .replaceAll(RegExp(r'\b(unabridged|abridged|novel|audiobook|book \d+)\b', caseSensitive: false), '')
-                            .trim();
-                        return '$cleanTitle $author'.replaceAll(RegExp(r'\s+'), ' ').trim();
+                return Consumer(
+                  builder: (context, ref, child) {
+                    // Helper to clean search string for torrent indexers
+                    String sanitizeTorrentQuery(String title, String author) {
+                      String cleanTitle = title.replaceAll(RegExp(r'\([^)]*\)'), '');
+                      cleanTitle = cleanTitle.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+                      if (cleanTitle.contains(':')) {
+                        cleanTitle = cleanTitle.split(':').first;
                       }
+                      if (cleanTitle.contains(' - ')) {
+                        cleanTitle = cleanTitle.split(' - ').first;
+                      }
+                      cleanTitle = cleanTitle
+                          .replaceAll(RegExp(r'\b(unabridged|abridged|novel|audiobook|book \d+)\b', caseSensitive: false), '')
+                          .trim();
+                      return '$cleanTitle $author'.replaceAll(RegExp(r'\s+'), ' ').trim();
+                    }
 
-                      final searchQuery = sanitizeTorrentQuery(displayBook.title, displayBook.author);
-                      final torrentsAsync = ref.watch(bookTorrentSearchProvider(searchQuery));
-                      
-                      return torrentsAsync.when(
-                        data: (torrents) {
-                          if (torrents.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.all(40),
-                              child: Center(child: Text('No chapters or torrent search results found.')),
-                            );
-                          }
-                          
-                          return SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                  child: Text(
-                                    'No direct streams found. Search results from torrents:',
-                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                    final searchQuery = sanitizeTorrentQuery(displayBook.title, displayBook.author);
+                    final torrentsAsync = ref.watch(bookTorrentSearchProvider(searchQuery));
+                    
+                    return torrentsAsync.when(
+                      data: (torrents) {
+                        if (torrents.isEmpty) {
+                          return const SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(40),
+                                child: Text('No chapters or torrent search results found.'),
+                              ),
+                            ),
+                          );
+                        }
+                        
+                        return SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                child: Text(
+                                  'No direct streams found. Search results from torrents:',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
-                                ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: torrents.length,
-                                  itemBuilder: (context, index) {
-                                    final torrentBook = torrents[index];
-                                    return ListTile(
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                                      leading: ClipRRect(
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: SizedBox(
-                                          width: 40,
-                                          height: 40,
-                                          child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
-                                              ? CachedNetworkImage(
-                                                  imageUrl: torrentBook.artworkUrl!,
-                                                  fit: BoxFit.cover,
-                                                  placeholder: (_, __) => Container(
-                                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                                  ),
-                                                  errorWidget: (_, __, ___) => Container(
-                                                    color: Theme.of(context).colorScheme.tertiaryContainer,
-                                                    child: Icon(
-                                                      Icons.download_for_offline_rounded,
-                                                      color: Theme.of(context).colorScheme.onTertiaryContainer,
-                                                    ),
-                                                  ),
-                                                )
-                                              : Container(
+                              ),
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: torrents.length,
+                                itemBuilder: (context, index) {
+                                  final torrentBook = torrents[index];
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: SizedBox(
+                                        width: 40,
+                                        height: 40,
+                                        child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: torrentBook.artworkUrl!,
+                                                fit: BoxFit.cover,
+                                                placeholder: (_, __) => Container(
+                                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                ),
+                                                errorWidget: (_, __, ___) => Container(
                                                   color: Theme.of(context).colorScheme.tertiaryContainer,
                                                   child: Icon(
                                                     Icons.download_for_offline_rounded,
                                                     color: Theme.of(context).colorScheme.onTertiaryContainer,
                                                   ),
                                                 ),
-                                        ),
+                                              )
+                                            : Container(
+                                                color: Theme.of(context).colorScheme.tertiaryContainer,
+                                                child: Icon(
+                                                  Icons.download_for_offline_rounded,
+                                                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                                ),
+                                              ),
                                       ),
-                                      title: Text(
-                                        torrentBook.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                    ),
+                                    title: Text(
+                                      torrentBook.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                    ),
+                                    subtitle: Text(
+                                      torrentBook.description ?? 'Torrent file',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                       ),
-                                      subtitle: Text(
-                                        torrentBook.description ?? 'Torrent file',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                      trailing: IconButton(
-                                        icon: const Icon(Icons.cloud_download_rounded),
-                                        color: Theme.of(context).colorScheme.primary,
-                                        iconSize: 28,
-                                        onPressed: () async {
-                                          String bookId = torrentBook.id;
-                                          if (bookId.startsWith('audiobookbay:')) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
-                                            );
-                                            final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
-                                            if (resolved != null && resolved.id.startsWith('torrent:')) {
-                                              bookId = resolved.id;
-                                            } else {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
-                                                );
-                                              }
-                                              return;
-                                            }
-                                          }
-                                          
-                                          final parts = bookId.split(':');
-                                          final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
-                                          if (magnet.isNotEmpty) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Adding torrent to TorBox...')),
-                                            );
-                                            
-                                            // Cache this book with normalized torrent ID (no magnet part)
-                                            // so it's found when opened from the library later
-                                            final normalizedTorrentId = AudiobookRepository.normalizeBookId(bookId);
-                                            final torrentAssociatedBook = AudiobookResult(
-                                              id: normalizedTorrentId,
-                                              title: displayBook.title,
-                                              author: displayBook.author,
-                                              artworkUrl: displayBook.artworkUrl,
-                                              description: displayBook.description,
-                                            );
-                                            await ref.read(audiobookRepositoryProvider).cacheBookMetadata(torrentAssociatedBook);
-  
-                                            final success = await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
+                                    ),
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.cloud_download_rounded),
+                                      color: Theme.of(context).colorScheme.primary,
+                                      iconSize: 28,
+                                      onPressed: () async {
+                                        String bookId = torrentBook.id;
+                                        if (bookId.startsWith('audiobookbay:')) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
+                                          );
+                                          final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
+                                          if (resolved != null && resolved.id.startsWith('torrent:')) {
+                                            bookId = resolved.id;
+                                          } else {
                                             if (context.mounted) {
-                                              if (success) {
-                                                ref.invalidate(localAudiobooksProvider);
-                                                ref.invalidate(inProgressAudiobooksProvider);
-                                                Navigator.pushReplacement(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) => AudiobookDetailScreen(book: torrentAssociatedBook),
-                                                  ),
-                                                );
-                                              }
                                               ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(success 
-                                                    ? 'Torrent added successfully! Loading torrent chapter list...' 
-                                                    : 'Failed to add torrent to TorBox.'),
+                                                const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+                                        
+                                        final parts = bookId.split(':');
+                                        final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
+                                        if (magnet.isNotEmpty) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Adding torrent to TorBox...')),
+                                          );
+                                          
+                                          // Cache this book with normalized torrent ID (no magnet part)
+                                          // so it's found when opened from the library later
+                                          final normalizedTorrentId = AudiobookRepository.normalizeBookId(bookId);
+                                          final torrentAssociatedBook = AudiobookResult(
+                                            id: normalizedTorrentId,
+                                            title: displayBook.title,
+                                            author: displayBook.author,
+                                            artworkUrl: displayBook.artworkUrl,
+                                            description: displayBook.description,
+                                          );
+                                          await ref.read(audiobookRepositoryProvider).cacheBookMetadata(torrentAssociatedBook);
+ 
+                                          final success = await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
+                                          if (context.mounted) {
+                                            if (success) {
+                                              ref.invalidate(localAudiobooksProvider);
+                                              ref.invalidate(inProgressAudiobooksProvider);
+                                              Navigator.pushReplacement(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) => AudiobookDetailScreen(book: torrentAssociatedBook),
                                                 ),
                                               );
                                             }
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(success 
+                                                  ? 'Torrent added successfully! Loading torrent chapter list...' 
+                                                  : 'Failed to add torrent to TorBox.'),
+                                              ),
+                                            );
                                           }
-                                        },
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        loading: () => const Padding(
-                          padding: EdgeInsets.all(50),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircularProgressIndicator(),
-                                SizedBox(height: 16),
-                                Text('Searching torrents...'),
-                              ],
-                            ),
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      loading: () => const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16),
+                              Text('Searching torrents...'),
+                            ],
                           ),
                         ),
-                        error: (e, _) => Padding(
-                          padding: const EdgeInsets.all(40),
-                          child: Center(child: Text('Failed to search torrents: $e')),
+                      ),
+                      error: (e, _) => SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(40),
+                            child: Text('Failed to search torrents: $e'),
+                          ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 );
               }
                            return SliverList(
@@ -1129,6 +1216,60 @@ class AudiobookDetailScreen extends ConsumerWidget {
           children: [
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              onLongPress: () {
+                showModalBottomSheet(
+                  context: context,
+                  builder: (context) {
+                    return SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary),
+                            title: const Text('Mark as Completed'),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              final repo = ref.read(audiobookRepositoryProvider);
+                              final durationToUse = chapter.durationMillis > 0 
+                                  ? chapter.durationMillis 
+                                  : (chProgress?.durationMillis != null && chProgress!.durationMillis > 0
+                                      ? chProgress.durationMillis
+                                      : 600000);
+                              final endPos = chapter.startTimeMillis + durationToUse;
+                              await repo.saveProgress(
+                                bookId: normalizedId,
+                                chapterIndex: index,
+                                positionMillis: endPos,
+                                durationMillis: durationToUse,
+                                isCompleted: true,
+                              );
+                              ref.invalidate(bookChapterProgressProvider(normalizedId));
+                              ref.invalidate(inProgressAudiobooksProvider);
+                            },
+                          ),
+                          ListTile(
+                            leading: Icon(Icons.cleaning_services_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            title: const Text('Clear Progress (Mark as Incomplete)'),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              final repo = ref.read(audiobookRepositoryProvider);
+                              await repo.saveProgress(
+                                bookId: normalizedId,
+                                chapterIndex: index,
+                                positionMillis: chapter.startTimeMillis,
+                                durationMillis: chapter.durationMillis > 0 ? chapter.durationMillis : (chProgress?.durationMillis ?? 0),
+                                isCompleted: false,
+                              );
+                              ref.invalidate(bookChapterProgressProvider(normalizedId));
+                              ref.invalidate(inProgressAudiobooksProvider);
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
               leading: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -1232,25 +1373,103 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                   ),
                                 )
                               : null))),
-              trailing: IconButton(
-                icon: Icon(isCurrent 
-                    ? Icons.pause_circle_filled_rounded 
-                    : (isCompleted ? Icons.replay_circle_filled_rounded : Icons.play_circle_fill)),
-                color: Theme.of(context).colorScheme.primary,
-                iconSize: 36,
-                onPressed: () async {
-                  if (isCurrent) {
-                    final playbackState = audioHandler.playbackState.value;
-                    if (playbackState.playing) {
-                      await audioHandler.pause();
-                    } else {
-                      await audioHandler.play();
-                    }
-                    return;
-                  }
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      isCompleted ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      color: isCompleted
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    ),
+                    tooltip: isCompleted ? 'Mark as incomplete' : 'Mark as completed',
+                    onPressed: () async {
+                      final repo = ref.read(audiobookRepositoryProvider);
+                      if (isCompleted) {
+                        // Reset progress for this chapter
+                        await repo.saveProgress(
+                          bookId: normalizedId,
+                          chapterIndex: index,
+                          positionMillis: chapter.startTimeMillis,
+                          durationMillis: chapter.durationMillis > 0 ? chapter.durationMillis : (chProgress?.durationMillis ?? 0),
+                          isCompleted: false,
+                        );
+                      } else {
+                        // Mark as completed by setting progress to duration/end
+                        final durationToUse = chapter.durationMillis > 0 
+                            ? chapter.durationMillis 
+                            : (chProgress?.durationMillis != null && chProgress!.durationMillis > 0
+                                ? chProgress.durationMillis
+                                : 600000); // 10 min fallback
+                        final endPos = chapter.startTimeMillis + durationToUse;
+                        await repo.saveProgress(
+                          bookId: normalizedId,
+                          chapterIndex: index,
+                          positionMillis: endPos,
+                          durationMillis: durationToUse,
+                          isCompleted: true,
+                        );
+                      }
+                      ref.invalidate(bookChapterProgressProvider(normalizedId));
+                      ref.invalidate(inProgressAudiobooksProvider);
+                    },
+                  ),
+                  IconButton(
+                    icon: Icon(isCurrent 
+                        ? Icons.pause_circle_filled_rounded 
+                        : (isCompleted ? Icons.replay_circle_filled_rounded : Icons.play_circle_fill)),
+                    color: Theme.of(context).colorScheme.primary,
+                    iconSize: 36,
+                    onPressed: () async {
+                      if (isCurrent) {
+                        final playbackState = audioHandler.playbackState.value;
+                        if (playbackState.playing) {
+                          await audioHandler.pause();
+                        } else {
+                          await audioHandler.play();
+                        }
+                        return;
+                      }
 
                   // Cache metadata and save initial progress immediately to DB so it shows in Continue Listening
                   final repo = ref.read(audiobookRepositoryProvider);
+                  
+                  // Show loading feedback while resolving
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Row(
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Resolving stream URL...'),
+                          ],
+                        ),
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                  
+                  final resolvedUrl = await repo.resolveChapterStream(chapter);
+                  if (resolvedUrl == null || resolvedUrl.isEmpty) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failed to resolve stream URL.')),
+                      );
+                    }
+                    return;
+                  }
+                  
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  }
+
                   await repo.cacheBookMetadata(displayBook.copyWith(id: normalizedId));
 
                   final initialPos = (chProgress?.positionMillis != null && chProgress!.positionMillis > 0)
@@ -1267,10 +1486,11 @@ class AudiobookDetailScreen extends ConsumerWidget {
 
                   // CRITICAL: Play via AudioHandler with mediaType guard
                   await audioHandler.customAction('play', {
-                    'url': chapter.streamUrl ?? '',
+                    'url': resolvedUrl,
                     'title': chapter.title,
                     'artist': displayBook.author,
                     'artworkUrl': displayBook.artworkUrl ?? '',
+                    'duration': '${chapter.durationMillis}',
                     'forceReplace': true,
                     'mediaType': 'audiobook', // CRITICAL GUARD
                     'extras': {
@@ -1289,6 +1509,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
                   }
                 },
               ),
+            ],
+          ),
             ),
             if (chProgress != null && !isCompleted && !isCurrent)
               Padding(
@@ -1310,69 +1532,17 @@ class AudiobookDetailScreen extends ConsumerWidget {
   /// Build an overall progress summary card.
   Widget _buildOverallProgressCard(
     BuildContext context,
+    WidgetRef ref,
+    AudiobookResult displayBook,
     Map<int, DbAudiobookProgress> progressMap,
     int totalChapters,
     List<AudiobookChapter> chapters,
+    String? epubPath,
+    Map<String, dynamic>? epubProgress,
   ) {
-    final completedChapters = progressMap.values.where((p) => p.isCompleted).length;
-    final listenedChapters = progressMap.length;
-    final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
-
-    int totalListenedMillis = 0;
-    int totalDurationMillis = 0;
-
-    if (hasOffsets && chapters.isNotEmpty) {
-      for (int i = 0; i < chapters.length; i++) {
-        final chapter = chapters[i];
-        final start = chapter.startTimeMillis;
-        final end = (i + 1 < chapters.length)
-            ? chapters[i + 1].startTimeMillis
-            : 0;
-        
-        int chDuration = chapter.durationMillis;
-        if (end > start) {
-          chDuration = (end - start).toInt();
-        } else if (progressMap.isNotEmpty) {
-          final overallProgressEntry = progressMap.values.firstWhere((p) => p.durationMillis > 3600000, orElse: () => progressMap.values.first);
-          if (overallProgressEntry.durationMillis > start) {
-            chDuration = (overallProgressEntry.durationMillis - start).toInt();
-          }
-        }
-        if (chDuration <= 0) {
-          chDuration = chapter.durationMillis > 0 ? chapter.durationMillis : 1;
-        }
-
-        totalDurationMillis += chDuration;
-
-        final chProgress = progressMap[i];
-        if (chProgress != null) {
-          if (chProgress.isCompleted) {
-            totalListenedMillis += chDuration;
-          } else {
-            final relativePos = (chProgress.positionMillis - start).clamp(0, chDuration);
-            totalListenedMillis += relativePos;
-          }
-        }
-      }
-    } else {
-      for (final p in progressMap.values) {
-        totalDurationMillis += p.durationMillis;
-        if (p.isCompleted) {
-          totalListenedMillis += p.durationMillis;
-        } else {
-          totalListenedMillis += p.positionMillis;
-        }
-      }
-    }
-
-    final double overallPercent;
-    if (totalDurationMillis > 0) {
-      overallPercent = (totalListenedMillis / totalDurationMillis).clamp(0.0, 1.0);
-    } else if (totalChapters > 0) {
-      overallPercent = (completedChapters / totalChapters).clamp(0.0, 1.0);
-    } else {
-      overallPercent = 0.0;
-    }
+    final selectedTab = epubPath != null
+        ? ref.watch(selectedProgressTabProvider(displayBook.id))
+        : 'listening';
 
     return Container(
       width: double.infinity,
@@ -1387,59 +1557,323 @@ class AudiobookDetailScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.headphones_rounded,
-                color: Theme.of(context).colorScheme.primary,
-                size: 20,
+          if (epubPath != null) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              height: 36,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(20),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'Your Progress',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => ref.read(selectedProgressTabProvider(displayBook.id).notifier).state = 'listening',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: selectedTab == 'listening'
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.headphones_rounded,
+                              size: 16,
+                              color: selectedTab == 'listening'
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Listening',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: selectedTab == 'listening'
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => ref.read(selectedProgressTabProvider(displayBook.id).notifier).state = 'reading',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: selectedTab == 'reading'
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        alignment: Alignment.center,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.menu_book_rounded,
+                              size: 16,
+                              color: selectedTab == 'reading'
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Reading',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: selectedTab == 'reading'
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(),
-              Text(
-                '${(overallPercent * 100).round()}%',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: overallPercent,
-              minHeight: 6,
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              color: Theme.of(context).colorScheme.primary,
             ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildProgressStat(
-                context,
-                Icons.check_circle_outline_rounded,
-                '$completedChapters / ${totalChapters > 0 ? totalChapters : listenedChapters}',
-                'Chapters done',
-              ),
-              const SizedBox(width: 24),
-              _buildProgressStat(
-                context,
-                Icons.timer_outlined,
-                _formatDuration(totalListenedMillis),
-                'Time listened',
-              ),
-            ],
-          ),
+          ],
+          if (selectedTab == 'listening') ...[
+            Builder(builder: (context) {
+              final completedChapters = progressMap.values.where((p) => p.isCompleted).length;
+              final listenedChapters = progressMap.length;
+              final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
+
+              int totalListenedMillis = 0;
+              int totalDurationMillis = 0;
+
+              if (hasOffsets && chapters.isNotEmpty) {
+                for (int i = 0; i < chapters.length; i++) {
+                  final chapter = chapters[i];
+                  final start = chapter.startTimeMillis;
+                  final end = (i + 1 < chapters.length)
+                      ? chapters[i + 1].startTimeMillis
+                      : 0;
+                  
+                  int chDuration = chapter.durationMillis;
+                  if (end > start) {
+                    chDuration = (end - start).toInt();
+                  } else if (progressMap.isNotEmpty) {
+                    final overallProgressEntry = progressMap.values.firstWhere((p) => p.durationMillis > 3600000, orElse: () => progressMap.values.first);
+                    if (overallProgressEntry.durationMillis > start) {
+                      chDuration = (overallProgressEntry.durationMillis - start).toInt();
+                    }
+                  }
+                  if (chDuration <= 0) {
+                    chDuration = chapter.durationMillis > 0 ? chapter.durationMillis : 1;
+                  }
+
+                  totalDurationMillis += chDuration;
+
+                  final chProgress = progressMap[i];
+                  if (chProgress != null) {
+                    if (chProgress.isCompleted) {
+                      totalListenedMillis += chDuration;
+                    } else {
+                      final relativePos = (chProgress.positionMillis - start).clamp(0, chDuration);
+                      totalListenedMillis += relativePos;
+                    }
+                  }
+                }
+              } else {
+                // Sum duration of ALL chapters in the book
+                for (final chapter in chapters) {
+                  totalDurationMillis += chapter.durationMillis;
+                }
+                for (int i = 0; i < chapters.length; i++) {
+                  final p = progressMap[i];
+                  if (p != null) {
+                    final chapter = chapters[i];
+                    final chDuration = chapter.durationMillis > 0 ? chapter.durationMillis : p.durationMillis;
+                    if (p.isCompleted) {
+                      totalListenedMillis += chDuration;
+                    } else {
+                      totalListenedMillis += p.positionMillis.clamp(0, chDuration);
+                    }
+                  }
+                }
+              }
+
+              final double overallPercent;
+              if (totalDurationMillis > 0) {
+                overallPercent = (totalListenedMillis / totalDurationMillis).clamp(0.0, 1.0);
+              } else if (totalChapters > 0) {
+                overallPercent = (completedChapters / totalChapters).clamp(0.0, 1.0);
+              } else {
+                overallPercent = 0.0;
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.headphones_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Listening Progress',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${(overallPercent * 100).round()}%',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: overallPercent,
+                      minHeight: 6,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildProgressStat(
+                        context,
+                        Icons.check_circle_outline_rounded,
+                        '$completedChapters / ${totalChapters > 0 ? totalChapters : listenedChapters}',
+                        'Chapters done',
+                      ),
+                      const SizedBox(width: 24),
+                      _buildProgressStat(
+                        context,
+                        Icons.timer_outlined,
+                        totalDurationMillis > 0 
+                            ? '${_formatDuration(totalListenedMillis)} / ${_formatDuration(totalDurationMillis)}'
+                            : _formatDuration(totalListenedMillis),
+                        'Time listened',
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            }),
+          ] else if (selectedTab == 'reading' && epubPath != null) ...[
+            Builder(builder: (context) {
+              final double epubPercent = epubProgress?['progress'] ?? 0.0;
+              final int currentChapter = epubProgress?['currentChapter'] ?? 0;
+              final int epubTotalChapters = epubProgress?['totalChapters'] ?? 0;
+              final int pagesRead = epubProgress?['pagesRead'] ?? 0;
+              final int totalPages = epubProgress?['totalPages'] ?? 0;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.menu_book_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Reading Progress',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${(epubPercent * 100).round()}%',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: epubPercent,
+                      minHeight: 6,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildProgressStat(
+                        context,
+                        Icons.format_list_numbered_rounded,
+                        epubTotalChapters > 0 ? 'Ch. ${currentChapter + 1} / $epubTotalChapters' : 'Ch. ${currentChapter + 1}',
+                        'Current Chapter',
+                      ),
+                      if (totalPages > 0) ...[
+                        const SizedBox(width: 24),
+                        _buildProgressStat(
+                          context,
+                          Icons.auto_stories_rounded,
+                          '$pagesRead / $totalPages',
+                          'Pages read',
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EpubReaderScreen(
+                              epubFilePath: epubPath,
+                              bookId: displayBook.id,
+                              onClose: () {
+                                Navigator.pop(context);
+                                ref.invalidate(epubProgressProvider(displayBook.id));
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.chrome_reader_mode_rounded),
+                      label: const Text('Continue Reading'),
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ],
         ],
       ),
     );

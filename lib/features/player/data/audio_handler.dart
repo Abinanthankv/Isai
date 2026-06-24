@@ -507,8 +507,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               title: hasValidTitle ? tagItem.title : extMeta.trackTitle,
               artist: hasValidArtist ? tagItem.artist : extMeta.artist,
               artUri: extMeta.artworkUrlHigh != null 
-                  ? Uri.parse(extMeta.artworkUrlHigh!) 
-                  : (extMeta.artworkUrlLow != null ? Uri.parse(extMeta.artworkUrlLow!) : tagItem.artUri),
+                  ? parseArtworkUri(extMeta.artworkUrlHigh!) 
+                  : (extMeta.artworkUrlLow != null ? parseArtworkUri(extMeta.artworkUrlLow!) : tagItem.artUri),
               album: extMeta.album ?? tagItem.album,
             );
           } else {
@@ -525,9 +525,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 title: hasValidTitle ? tagItem.title : (dbMeta.trackTitle ?? tagItem.title),
                 artist: hasValidArtist ? tagItem.artist : (dbMeta.artist ?? tagItem.artist),
                 artUri: (dbMeta.artworkUrlHigh != null && dbMeta.artworkUrlHigh!.isNotEmpty) 
-                   ? Uri.parse(dbMeta.artworkUrlHigh!) 
+                   ? parseArtworkUri(dbMeta.artworkUrlHigh!) 
                    : (dbMeta.artworkUrlLow != null && dbMeta.artworkUrlLow!.isNotEmpty) 
-                       ? Uri.parse(dbMeta.artworkUrlLow!) 
+                       ? parseArtworkUri(dbMeta.artworkUrlLow!) 
                        : tagItem.artUri,
               );
             }
@@ -1168,6 +1168,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             tag: newItem,
           );
           
+          final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
+          final currentPos = isActive ? _player.position : Duration.zero;
+          final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
+
           // Update the playlist with the new source
           if (index + 1 < _playlist.length) {
             await _playlist.insert(index + 1, newSource);
@@ -1175,6 +1179,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           } else {
             await _playlist.add(newSource);
             await _playlist.removeAt(index);
+          }
+
+          if (isActive) {
+            final targetPos = (initialPosMillis != null && initialPosMillis > 0 && currentPos == Duration.zero)
+                ? Duration(milliseconds: initialPosMillis)
+                : currentPos;
+            if (targetPos > Duration.zero) {
+              print('[AudioHandler] Using persistent local file: Re-seeking to ${targetPos.inMilliseconds}ms after replacement');
+              try {
+                await _player.seek(targetPos, index: index);
+              } catch (_) {}
+            }
           }
 
           // Update queue broadcast
@@ -1185,7 +1201,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           }
 
           // IMPORTANT: If this is the active track, update mediaItem so UI changes
-          final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
           if (isActive) {
             mediaItem.add(newItem);
             playbackState.add(_transformEvent(_player.playbackEvent));
@@ -1235,6 +1250,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         // we append the new one and then remove the old one if needed.
         // Or if it's the current track, we can use a more surgical approach.
         
+        final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
+        final currentPos = isActive ? _player.position : Duration.zero;
+        final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
+
         // If we're at the end, just add. Otherwise, insert at index + 1
         if (index + 1 < _playlist.length) {
           await _playlist.insert(index + 1, newSource);
@@ -1242,6 +1261,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         } else {
           await _playlist.add(newSource);
           await _playlist.removeAt(index);
+        }
+
+        if (isActive) {
+          final targetPos = (initialPosMillis != null && initialPosMillis > 0 && currentPos == Duration.zero)
+              ? Duration(milliseconds: initialPosMillis)
+              : currentPos;
+          if (targetPos > Duration.zero) {
+            print('[AudioHandler] Remote stream resolved: Re-seeking to ${targetPos.inMilliseconds}ms after replacement');
+            try {
+              await _player.seek(targetPos, index: index);
+            } catch (_) {}
+          }
         }
 
         // Update queue broadcast
@@ -1252,7 +1283,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
 
         // IMPORTANT: If this is the active track, update mediaItem so UI changes
-        final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
         if (isActive) {
           mediaItem.add(newItem);
           playbackState.add(_transformEvent(_player.playbackEvent));
@@ -1426,7 +1456,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       final initialPos = item.extras?['initialPositionMillis'] as int?;
       if (initialPos != null && initialPos > 0) {
         print('[AudioHandler] playMediaItem: Seeking to initial position ${initialPos}ms before play');
-        await _player.seek(Duration(milliseconds: initialPos));
+        try {
+          await _player.seek(Duration(milliseconds: initialPos), index: 0);
+        } catch (seekError) {
+          print('[AudioHandler] playMediaItem: Seek failed ($seekError), playing from beginning.');
+        }
       }
       print('[AudioHandler] playMediaItem: Calling _player.play()');
       await _player.play();
@@ -1474,8 +1508,19 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     }
   }
 
-  static Duration parseDuration(String? durationStr) {
-    if (durationStr == null || durationStr == 'Unknown') return Duration.zero;
+  static Duration parseDuration(dynamic durationVal) {
+    if (durationVal == null) return Duration.zero;
+    if (durationVal is num) {
+      return Duration(milliseconds: durationVal.toInt());
+    }
+    final durationStr = durationVal.toString().trim();
+    if (durationStr == 'Unknown' || durationStr.isEmpty) return Duration.zero;
+    
+    final ms = int.tryParse(durationStr);
+    if (ms != null) {
+      return Duration(milliseconds: ms);
+    }
+    
     final parts = durationStr.split(':');
     try {
       if (parts.length == 3) {
@@ -1492,6 +1537,17 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       }
     } catch (_) {}
     return Duration.zero;
+  }
+
+  static Uri? parseArtworkUri(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('file://')) {
+      return Uri.parse(path);
+    }
+    if (path.startsWith('/')) {
+      return Uri.file(path);
+    }
+    return Uri.tryParse(path);
   }
 
   @override
@@ -1590,7 +1646,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         title: title,
         artist: artist,
         album: extras['album'] as String? ?? '',
-        artUri: artworkUrl.isNotEmpty ? Uri.parse(artworkUrl) : null,
+        artUri: parseArtworkUri(artworkUrl),
+        duration: extras['duration'] != null ? parseDuration(extras['duration']) : null,
         extras: trackExtras,
       );
 
@@ -1634,9 +1691,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               id: m['url']?.toString() ?? '',
               title: m['title']?.toString() ?? 'Unknown track',
               artist: m['artist']?.toString() ?? 'TorBox',
-              artUri: (m['artworkUrl'] as String?)?.isNotEmpty == true 
-                  ? Uri.parse(m['artworkUrl'] as String) : null,
-              duration: m['duration'] != null ? parseDuration(m['duration'] as String) : null,
+              artUri: parseArtworkUri(m['artworkUrl'] as String?),
+              duration: m['duration'] != null ? parseDuration(m['duration']) : null,
               extras: m['extras'] as Map<String, dynamic>?,
             );
           }).toList();
@@ -1667,8 +1723,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: url,
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
-            artUri: (extras['artworkUrl'] as String?)?.isNotEmpty == true 
-                ? Uri.parse(extras['artworkUrl'] as String) : null,
+            artUri: parseArtworkUri(extras['artworkUrl'] as String?),
+            duration: extras['duration'] != null ? parseDuration(extras['duration']) : null,
             extras: {
               ...?requestedExtras,
               if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
@@ -1701,9 +1757,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: url ?? '',
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
-            artUri: (extras['artworkUrl'] as String?)?.isNotEmpty == true 
-                ? Uri.parse(extras['artworkUrl'] as String) : null,
-            duration: currentQueue[targetIndex].duration,
+            artUri: parseArtworkUri(extras['artworkUrl'] as String?),
+            duration: extras['duration'] != null ? parseDuration(extras['duration']) : currentQueue[targetIndex].duration,
             extras: requestedExtras,
           );
 
@@ -1728,8 +1783,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: url ?? '',
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
-            artUri: (extras['artworkUrl'] as String?)?.isNotEmpty == true 
-                ? Uri.parse(extras['artworkUrl'] as String) : null,
+            artUri: parseArtworkUri(extras['artworkUrl'] as String?),
+            duration: extras['duration'] != null ? parseDuration(extras['duration']) : null,
             extras: requestedExtras,
           );
           final source = await _createAudioSource(item);
@@ -1793,9 +1848,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: m['url']?.toString() ?? '',
             title: m['title']?.toString() ?? 'Unknown track',
             artist: m['artist']?.toString() ?? 'TorBox',
-            artUri: (m['artworkUrl'] as String?)?.isNotEmpty == true 
-                ? Uri.parse(m['artworkUrl'] as String) : null,
-            duration: m['duration'] != null ? parseDuration(m['duration'] as String) : null,
+            artUri: parseArtworkUri(m['artworkUrl'] as String?),
+            duration: m['duration'] != null ? parseDuration(m['duration']) : null,
             extras: m['extras'] as Map<String, dynamic>?,
           );
         }).toList();
