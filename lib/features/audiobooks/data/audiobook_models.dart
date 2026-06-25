@@ -205,6 +205,59 @@ class AudiobookWithProgress {
   });
 }
 
+/// Pre-computed progress for a book, stored in progress.json and cache.
+class BookProgress {
+  final String bookId;
+  final String title;
+  final String author;
+  final String? artworkUrl;
+  final int listenedMillis;
+  final int totalDurationMillis;
+  final int completedChapters;
+  final int totalChapters;
+  final DateTime lastListenedAt;
+  final double progressPercent;
+
+  const BookProgress({
+    required this.bookId,
+    required this.title,
+    this.author = 'Unknown Author',
+    this.artworkUrl,
+    this.listenedMillis = 0,
+    this.totalDurationMillis = 0,
+    this.completedChapters = 0,
+    this.totalChapters = 0,
+    required this.lastListenedAt,
+    this.progressPercent = 0.0,
+  });
+
+  factory BookProgress.fromJson(Map<String, dynamic> json) => BookProgress(
+    bookId: json['bookId'] as String? ?? '',
+    title: json['title'] as String? ?? 'Audiobook',
+    author: json['author'] as String? ?? 'Unknown Author',
+    artworkUrl: json['artworkUrl'] as String?,
+    listenedMillis: json['listenedMillis'] as int? ?? 0,
+    totalDurationMillis: json['totalDurationMillis'] as int? ?? 0,
+    completedChapters: json['completedChapters'] as int? ?? 0,
+    totalChapters: json['totalChapters'] as int? ?? 0,
+    lastListenedAt: DateTime.tryParse(json['lastListenedAt'] as String? ?? '') ?? DateTime(2000),
+    progressPercent: (json['progressPercent'] as num?)?.toDouble() ?? 0.0,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'bookId': bookId,
+    'title': title,
+    'author': author,
+    'artworkUrl': artworkUrl,
+    'listenedMillis': listenedMillis,
+    'totalDurationMillis': totalDurationMillis,
+    'completedChapters': completedChapters,
+    'totalChapters': totalChapters,
+    'lastListenedAt': lastListenedAt.toIso8601String(),
+    'progressPercent': progressPercent,
+  };
+}
+
 /// State class for audiobook search.
 class AudiobookSearchState {
   final List<AudiobookResult> results;

@@ -1,9 +1,12 @@
 import 'dart:io' as io;
 import 'dart:convert';
+import 'dart:math';
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:audiotags/audiotags.dart';
 import 'package:injectable/injectable.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/database/database.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
@@ -33,7 +36,15 @@ class AudiobookRepository {
   static String normalizeBookId(String bookId) {
     if (bookId.startsWith('torrent:')) {
       final parts = bookId.split(':');
-      // parts[0]='torrent', parts[1]=hash, parts[2+]=encoded magnet
+      // parts[0]='torrent', parts[1]=hash
+      if (parts.length >= 3) {
+        final fileId = int.tryParse(parts[2]);
+        if (fileId != null) {
+          // parts[2] is a numeric file ID → preserve it
+          return 'torrent:${parts[1]}:$fileId';
+        }
+      }
+      // parts[2+] was an encoded magnet or empty → strip it
       return 'torrent:${parts[1]}:';
     }
     return bookId;
@@ -85,6 +96,59 @@ class AudiobookRepository {
     return false;
   }
 
+  /// Returns true if the torrent name suggests it is NOT an audiobook/book
+  /// (e.g. porn, games, applications, software, music albums).
+  bool _looksLikeUnwantedContent(String name) {
+    final nameLower = name.toLowerCase();
+    final words = nameLower.split(RegExp(r'[\s._-]+'));
+
+    // Porn/adult keywords
+    final adultKeywords = [
+      'porn', 'xxx', 'porno', 'sex', 'erotic', 'onlyfans', 'adult',
+      'milf', 'teen', 'anal', 'cock', 'dick', 'pussy', 'blowjob',
+      'camgirl', 'webcam', 'nude', 'naked', 'nsfw',
+    ];
+    if (adultKeywords.any((k) => nameLower.contains(k))) return true;
+
+    // Gaming keywords
+    final gameKeywords = [
+      'game', 'pc game', 'xbox', 'playstation', 'ps4', 'ps5', 'nintendo',
+      'torrentgame', 'repack', 'crack', 'hack', 'cheat', 'trainer',
+      'gog', 'steam', 'update', 'dlc', 'expansion pack', 'fitgirl',
+      'codex', 'plaza', 'cpy', 'multiplayer', 'mod', 'mods',
+    ];
+    if (gameKeywords.any((k) => nameLower.contains(k))) return true;
+
+    // Software/applications
+    final softwareKeywords = [
+      'software', 'application', 'app ', 'installer', 'setup.exe', 'setup.exe',
+      'portable', 'keygen', 'cracked', 'activation', 'license key',
+      'windows', 'office', 'adobe', 'photoshop', 'illustrator', 'premiere',
+      'autocad', 'solidworks', 'visual studio', 'vmware', 'virtualbox',
+      'android studio', 'idm', 'internet download manager',
+      'alcohol', 'nero', 'daemon tools', 'utorrent', 'bitdefender',
+      'kaspersky', 'norton', 'mcafee', 'avg', 'avast', 'malwarebytes',
+    ];
+    if (softwareKeywords.any((k) => nameLower.contains(k))) return true;
+
+    // Common non-book file extensions / media types
+    final nonBookExtensions = [
+      '.exe', '.msi', '.dmg', '.iso', '.bin', '.cue', '.apk',
+      '.ipa', '.jar', '.sis', '.deb', '.rpm',
+    ];
+    if (nonBookExtensions.any((ext) => nameLower.endsWith(ext) || nameLower.contains('$ext '))) return true;
+
+    // Category patterns from torrent sites
+    final categoryPatterns = [
+      'applications', 'games', 'pc software', 'mac software',
+      'mobile phone', 'android', 'jailbreak',
+      'adult only', 'hentai', 'anime', 'cartoon',
+    ];
+    if (categoryPatterns.any((k) => nameLower.contains(k))) return true;
+
+    return false;
+  }
+
   /// Clean/sanitize a torrent filename/name by removing dot, underscores,
   /// hyphens, bracket content, years, quotes, and common release/format keywords.
   static String cleanTorrentName(String name) {
@@ -120,9 +184,20 @@ class AudiobookRepository {
     return clean;
   }
 
+  /// Strip extension and trailing part/volume/CD/disc numbers from a file name
+  /// to derive a base title for grouping multi-file audiobooks.
+  static String _extractBaseTitle(String fileName) {
+    String name = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    name = name.replaceAll(RegExp(r'[-–—]\s*(Part|Vol(?:ume)?|Book|Chapter|Ch|CD|Disc|Track)\s*\d+.*$', caseSensitive: false), '');
+    name = name.replaceAll(RegExp(r'\s*[-–—]\s*\d+(\s*of\s*\d+)?\s*$'), '');
+    name = name.replaceAll(RegExp(r'\s*[([]\d+[)\]]\s*$'), '');
+    name = name.replaceAll(RegExp(r'\s+\d+\s*$'), '');
+    return name.trim();
+  }
+
   /// Fetch all torrent audiobooks that are present in the user's TorBox library.
-  /// Only includes torrents that look like audiobooks (cached metadata, m4b files,
-  /// audiobook keywords in name, or many audio chapter files).
+  /// Groups files sharing the same base title (stripping extensions and part numbers)
+  /// into a single book entry so multi-part audiobooks appear as one item.
   Future<List<AudiobookResult>> getTorBoxLibraryAudiobooks() async {
     final List<AudiobookResult> results = [];
     try {
@@ -133,29 +208,61 @@ class AudiobookRepository {
 
       for (final torrent in library) {
         final hash = torrent.hash.toLowerCase();
+        final hasCached = cachedMetadataList.any((m) => m.bookId.toLowerCase().contains(hash));
+        if (!hasCached && !_looksLikeAudiobook(torrent)) continue;
 
-        // Check if we have cached metadata for this torrent hash (user previously opened it)
-        DbAudiobookMetadataCache? match;
+        // Find torrent-level cached metadata (old format, no file ID)
+        DbAudiobookMetadataCache? torrentMatch;
         for (final m in cachedMetadataList) {
           if (m.bookId.toLowerCase().contains(hash)) {
-            match = m;
+            torrentMatch = m;
             break;
           }
         }
 
-        if (match != null) {
-          // Use cached metadata (rich title, author, artwork)
-          results.add(metadataToResult(match));
-        } else if (_looksLikeAudiobook(torrent)) {
-          // No cached metadata yet, but torrent passes audiobook heuristics
+        // Group files by base title
+        final Map<String, List<TorBoxFile>> groups = {};
+        for (final file in torrent.files) {
+          final base = _extractBaseTitle(file.displayName);
+          groups.putIfAbsent(base, () => []).add(file);
+        }
+
+        for (final groupEntry in groups.entries) {
+          final baseTitle = groupEntry.key;
+          final groupFiles = groupEntry.value;
+          final firstFile = groupFiles.first;
+          final bookId = 'torrent:$hash:${firstFile.id}';
+
+          // Check for file-specific cached metadata
+          DbAudiobookMetadataCache? fileMatch;
+          for (final m in cachedMetadataList) {
+            if (m.bookId == bookId) { fileMatch = m; break; }
+          }
+          if (fileMatch != null) {
+            results.add(metadataToResult(fileMatch));
+            continue;
+          }
+
+          if (torrentMatch != null) {
+            results.add(AudiobookResult(
+              id: bookId,
+              title: baseTitle,
+              author: torrentMatch.author ?? 'TorBox Library',
+              artworkUrl: torrentMatch.artworkUrl,
+              description: groupFiles.length > 1 ? '${groupFiles.length} parts' : torrentMatch.description,
+              totalChapters: groupFiles.length > 1 ? groupFiles.length : null,
+            ));
+            continue;
+          }
+
           results.add(AudiobookResult(
-            id: 'torrent:$hash:',
-            title: cleanTorrentName(torrent.name),
+            id: bookId,
+            title: baseTitle,
             author: 'TorBox Library',
-            description: 'From TorBox library',
+            description: groupFiles.length > 1 ? '${groupFiles.length} parts' : 'From TorBox library',
+            totalChapters: groupFiles.length > 1 ? groupFiles.length : null,
           ));
         }
-        // Skip torrents that don't look like audiobooks (music files etc.)
       }
     } catch (e) {
       print('[AudiobookRepository] getTorBoxLibraryAudiobooks error: $e');
@@ -196,12 +303,20 @@ class AudiobookRepository {
       final addonResults = allResults[0] as List<AudiobookResult>;
       merged.addAll(addonResults);
 
-      // 3. Add Torrent Results
+      // 3. Add Torrent Results (only from audiobook-friendly sources)
+      final allowedSources = {'apibay', 'bitsearch', 'nyaa'};
       final torrentResults = allResults[1] as List<dynamic>;
       for (final t in torrentResults) {
+        final source = t.source as String? ?? '';
+        if (!allowedSources.contains(source)) {
+          continue; // Only show results from apibay, bitsearch, nyaa
+        }
         final name = t.name as String? ?? '';
         if (_looksLikeVideo(name)) {
           continue; // Skip videos (movies, TV shows, etc.)
+        }
+        if (_looksLikeUnwantedContent(name)) {
+          continue; // Skip porn, games, software, etc.
         }
 
         String magnet = t.magnetLink ?? '';
@@ -232,7 +347,10 @@ class AudiobookRepository {
       final cleanQuery = Uri.encodeComponent(query.toLowerCase().trim());
       final url = "https://audiobookbay.lu/?s=$cleanQuery";
       
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
       final response = await dio.get(
         url,
         options: Options(headers: {
@@ -321,6 +439,7 @@ class AudiobookRepository {
               author: author,
               artworkUrl: artworkUrl,
               description: 'Trending Audiobook',
+              durationMillis: item['duration'] as int? ?? item['durationMillis'] as int?,
             ));
           }
           return books;
@@ -368,6 +487,7 @@ class AudiobookRepository {
               author: author,
               description: description,
               artworkUrl: artworkUrl,
+              durationMillis: item['trackTimeMillis'] as int?,
               language: 'EN',
             ));
           }
@@ -411,7 +531,10 @@ class AudiobookRepository {
     if (bookId.startsWith('audiobookbay:')) {
       final detailUrl = Uri.decodeComponent(bookId.substring('audiobookbay:'.length));
       try {
-        final dio = Dio();
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
+        ));
         final res = await dio.get(
           detailUrl,
           options: Options(headers: {
@@ -656,7 +779,7 @@ class AudiobookRepository {
   static const _audioExtensions = {'.mp3', '.m4a', '.m4b', '.ogg', '.opus', '.flac', '.aac', '.wav', '.wma'};
 
   /// Get all chapters/streams for a book.
-  Future<List<AudiobookChapter>> getBookChapters(String bookId) async {
+  Future<List<AudiobookChapter>> getBookChapters(String bookId, {bool forceParse = false}) async {
     if (bookId.startsWith('local:')) {
       return _getLocalChapters(bookId);
     }
@@ -668,21 +791,25 @@ class AudiobookRepository {
         final metaFile = io.File(p.join(localDir, 'metadata.json'));
         if (await metaFile.exists()) {
           final content = await metaFile.readAsString();
-          final data = jsonDecode(content) as Map<String, dynamic>;
-          final jsonChapters = data['chapters'] as List<dynamic>?;
-          if (jsonChapters != null && jsonChapters.isNotEmpty) {
-            return jsonChapters.map((chMap) {
-              final map = chMap as Map<String, dynamic>;
-              return AudiobookChapter(
-                id: map['id'] as String? ?? 'local_ch_${map['chapterNumber']}',
-                title: map['title'] as String? ?? 'Chapter',
-                chapterNumber: map['chapterNumber'] as int? ?? 1,
-                startTimeMillis: map['startTimeMillis'] as int? ?? 0,
-                durationMillis: map['durationMillis'] as int? ?? 0,
-                streamUrl: map['streamUrl'] as String?,
-                source: 'Local metadata.json (Backup)',
-              );
-            }).toList();
+          if (content.trim().isEmpty) {
+            print('[AudiobookRepository] metadata.json is empty, skipping.');
+          } else {
+            final data = jsonDecode(content) as Map<String, dynamic>;
+            final jsonChapters = data['chapters'] as List<dynamic>?;
+            if (jsonChapters != null && jsonChapters.isNotEmpty) {
+              return jsonChapters.map((chMap) {
+                final map = chMap as Map<String, dynamic>;
+                return AudiobookChapter(
+                  id: map['id'] as String? ?? 'local_ch_${map['chapterNumber']}',
+                  title: map['title'] as String? ?? 'Chapter',
+                  chapterNumber: map['chapterNumber'] as int? ?? 1,
+                  startTimeMillis: map['startTimeMillis'] as int? ?? 0,
+                  durationMillis: map['durationMillis'] as int? ?? 0,
+                  streamUrl: map['streamUrl'] as String?,
+                  source: 'Local metadata.json (Backup)',
+                );
+              }).toList();
+            }
           }
         } else {
           final localChapters = await _getLocalChapters('local:$localDir');
@@ -711,21 +838,44 @@ class AudiobookRepository {
             final torrentFiles = dbFiles.where((f) => f.torrentId == torrent.id).toList();
             
             final validExtensions = ['.mp3', '.flac', '.aac', '.m4a', '.m4b', '.ogg', '.opus', '.wav'];
-            int idx = 0;
+            final audioFiles = torrentFiles.where((f) => validExtensions.any((ext) => f.name.toLowerCase().endsWith(ext))).toList();
             
-            for (final f in torrentFiles) {
-              final isAudio = validExtensions.any((ext) => f.name.toLowerCase().endsWith(ext));
-              if (isAudio) {
-                final streamUrl = 'https://lazy.torbox.internal/${torrent.id}/${f.id}';
-                chapters.add(AudiobookChapter(
-                  id: '${bookId}_ch_$idx',
-                  title: f.name,
-                  chapterNumber: idx + 1,
-                  streamUrl: streamUrl,
-                  source: 'TorBox Torrent (Local DB)',
-                ));
-                idx++;
+            // If the bookId includes a fileId, only show files from the same group
+            final int? bookFileId = parts.length >= 3 ? int.tryParse(parts[2]) : null;
+            
+            // Group files by base title so only files from the same group appear as chapters
+            final Map<String, List<DbFile>> groups = {};
+            for (final f in audioFiles) {
+              final shortName = f.name.split('/').last.split('\\').last;
+              final base = _extractBaseTitle(shortName);
+              groups.putIfAbsent(base, () => []).add(f);
+            }
+            
+            // Find the group that contains the book's fileId
+            final Set<int> allowedFileIds = {};
+            if (bookFileId != null) {
+              for (final g in groups.values) {
+                if (g.any((f) => f.id == bookFileId)) {
+                  allowedFileIds.addAll(g.map((f) => f.id));
+                  break;
+                }
               }
+            } else {
+              allowedFileIds.addAll(audioFiles.map((f) => f.id));
+            }
+            
+            int idx = 0;
+            for (final f in audioFiles) {
+              if (!allowedFileIds.contains(f.id)) continue;
+              final streamUrl = 'https://lazy.torbox.internal/${torrent.id}/${f.id}';
+              chapters.add(AudiobookChapter(
+                id: '${bookId}_ch_$idx',
+                title: f.name,
+                chapterNumber: idx + 1,
+                streamUrl: streamUrl,
+                source: 'TorBox Torrent (Local DB)',
+              ));
+              idx++;
             }
           }
         }
@@ -738,6 +888,10 @@ class AudiobookRepository {
       chapters = await _addonService.getBookChapters(bookId);
     }
     
+    // For TorBox books, skip auto-parsing by default.
+    // Refresh Chapters button can call with forceParse: true.
+    if (bookId.startsWith('torrent:') && !forceParse) return chapters;
+
     List<AudiobookChapter> workingChapters = chapters;
     
     // 1. Find candidates that look like M4B/M4A files
@@ -752,13 +906,14 @@ class AudiobookRepository {
       return name.endsWith('.mp3');
     }).toList();
 
-    // Determine the single-file candidate to try parsing:
-    // Prioritize M4B/M4A files if they exist.
-    // If no M4B/M4A files exist, but there is exactly 1 MP3 audio file, treat it as the candidate.
+    // Determine the candidate(s) to try parsing:
+    // Prioritize M4B/M4A files if they exist (single file with embedded chapters).
+    // If no M4B/M4A files exist, try each MP3 file as a candidate.
+    // This handles TorBox multi-file MP3 collections where any file may have embedded chapters.
     final List<AudiobookChapter> candidates;
     if (m4bFiles.isNotEmpty) {
       candidates = m4bFiles;
-    } else if (mp3Files.length == 1) {
+    } else if (mp3Files.isNotEmpty) {
       candidates = mp3Files;
     } else {
       candidates = [];
@@ -1199,32 +1354,40 @@ class AudiobookRepository {
     if (!bookId.startsWith('torrent:')) {
       return {'inLibrary': false, 'cached': false};
     }
-    
+
+    final normalizedId = normalizeBookId(bookId);
+
+    // If we already have cached metadata, the book is known to be in library
+    final existing = await _db.getAudiobookMetadata(normalizedId);
+    if (existing != null) {
+      return {'inLibrary': true, 'cached': true};
+    }
+
     final parts = bookId.split(':');
     final hash = parts[1].toLowerCase();
-    
+
     bool inLibrary = false;
     bool cached = false;
-    
+
     try {
       // 1. Check if cached on TorBox servers
       final cachedHashes = await _musicRepo.checkCached([hash]);
       cached = cachedHashes.any((h) => h.toLowerCase() == hash);
-      
+
       // 2. Check if in user's library
       final library = await _musicRepo.getLibrary();
       final match = library.firstWhere(
         (t) => t.hash.toLowerCase() == hash,
         orElse: () => TorBoxTorrent(id: 0, name: '', hash: '', cached: false, files: []),
       );
-      
+
       if (match.id != 0) {
         inLibrary = true;
       }
     } catch (e) {
       print('[AudiobookRepository] Error checking torrent status: $e');
     }
-    
+
     return {
       'inLibrary': inLibrary,
       'cached': cached,
@@ -1232,6 +1395,161 @@ class AudiobookRepository {
   }
 
   // ─── Progress Tracking ─────────────────────────────────────────
+
+  /// In-memory cache of the unified progress.json data.
+  Map<String, dynamic>? _progressData;
+  bool _progressMigrated = false;
+
+  /// Fires after each progress save so listeners (e.g. providers) can refresh.
+  final _progressChangedController = StreamController<void>.broadcast();
+  Stream<void> get progressChanged => _progressChangedController.stream;
+
+  /// Returns the path to the unified progress.json file.
+  Future<io.File> _getProgressFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return io.File(p.join(dir.path, 'audiobook_progress.json'));
+  }
+
+  /// Loads the unified progress.json into memory. Creates an empty file if
+  /// none exists. On first load, migrates any existing DB entries into the file.
+  Future<Map<String, dynamic>> _loadProgressData() async {
+    if (_progressData != null) return _progressData!;
+    final file = await _getProgressFile();
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      _progressData = jsonDecode(content) as Map<String, dynamic>;
+    } else {
+      _progressData = {
+        'version': 1,
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'books': <String, dynamic>{},
+      };
+    }
+    if (!_progressMigrated) {
+      _progressMigrated = true;
+      await _migrateDbToProgressIfNeeded();
+      await _restorePerBookProgressIfNeeded();
+    }
+    return _progressData!;
+  }
+
+  /// Flushes the in-memory progress data to disk (atomic write via temp file).
+  Future<void> _flushProgressData() async {
+    if (_progressData == null) return;
+    _progressData!['lastUpdated'] = DateTime.now().toIso8601String();
+    final file = await _getProgressFile();
+    final tempFile = io.File('${file.path}.tmp');
+    await tempFile.writeAsString(jsonEncode(_progressData));
+    await tempFile.rename(file.path);
+    _progressChangedController.add(null);
+  }
+
+  /// On first launch after migration, copies existing DB progress entries into
+  /// the unified progress.json so nothing is lost.
+  Future<void> _migrateDbToProgressIfNeeded() async {
+    final data = _progressData!;
+    final books = data['books'] as Map<String, dynamic>;
+    if (books.isNotEmpty) return;
+
+    final dbEntries = await _db.getAllAudiobookProgress();
+    if (dbEntries.isEmpty) return;
+
+    for (final entry in dbEntries) {
+      final normId = normalizeBookId(entry.bookId);
+      final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+      final chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
+      chapters.add({
+        'chapterIndex': entry.chapterIndex,
+        'positionMillis': entry.positionMillis,
+        'durationMillis': entry.durationMillis,
+        'isCompleted': entry.isCompleted,
+        'lastListenedAt': entry.lastListenedAt.toIso8601String(),
+        'originalBookId': entry.bookId,
+      });
+    }
+
+    // Populate book-level summary fields from metadata cache and chapters
+    for (final entry in books.entries) {
+      final bookObj = entry.value as Map<String, dynamic>;
+      final chapters = bookObj['chapters'] as List<dynamic>? ?? [];
+      int completed = 0;
+      int maxPos = 0;
+      int totalListened = 0;
+      int totalDuration = 0;
+      for (final ch in chapters) {
+        final chMap = ch as Map<String, dynamic>;
+        if (chMap['isCompleted'] == true) completed++;
+        final pos = (chMap['positionMillis'] as int?) ?? 0;
+        if (pos > maxPos) maxPos = pos;
+        totalListened += pos;
+        totalDuration += (chMap['durationMillis'] as int?) ?? 0;
+      }
+      final cached = await getCachedMetadata(entry.key);
+      int totalCh = cached?.totalChapters ?? 0;
+      if (totalCh <= 0 && chapters.isNotEmpty) {
+        int maxIdx = 0;
+        for (final ch in chapters) {
+          final idx = (ch as Map<String, dynamic>)['chapterIndex'] as int? ?? 0;
+          if (idx > maxIdx) maxIdx = idx;
+        }
+        totalCh = maxIdx + 1;
+      }
+      final pct = totalCh > 0 ? (completed / totalCh).clamp(0.0, 1.0) : 0.0;
+      bookObj['listenedMillis'] = maxPos;
+      bookObj['totalDurationMillis'] = totalDuration;
+      bookObj['completedChapters'] = completed;
+      bookObj['totalChapters'] = totalCh;
+      bookObj['progressPercent'] = pct;
+      if (cached != null) {
+        bookObj['title'] = cached.title;
+        bookObj['author'] = cached.author ?? 'Unknown Author';
+        bookObj['artworkUrl'] = cached.artworkUrl;
+      }
+    }
+
+    await _flushProgressData();
+  }
+
+  /// Scans the audiobookFolder for legacy per-book progress.json files and
+  /// imports them into the unified progress.json. Only runs on fresh starts
+  /// where the unified file has no data yet.
+  Future<void> _restorePerBookProgressIfNeeded() async {
+    final data = _progressData!;
+    final books = data['books'] as Map<String, dynamic>;
+    // Only run if we have no progress data yet (fresh install or cleared)
+    if (books.isNotEmpty) return;
+
+    try {
+      final settings = getIt<TorBoxSettingsRepository>();
+      final downloadDirPath = settings.audiobookFolder;
+      if (downloadDirPath == null || downloadDirPath.isEmpty) return;
+
+      final dir = io.Directory(downloadDirPath);
+      if (!await dir.exists()) return;
+
+      await for (final entity in dir.list()) {
+        if (entity is io.Directory) {
+          final progressFile = io.File(p.join(entity.path, 'progress.json'));
+          if (!await progressFile.exists()) continue;
+
+          try {
+            final content = await progressFile.readAsString();
+            final legacyData = jsonDecode(content) as Map<String, dynamic>;
+            final bookId = legacyData['bookId'] as String?;
+            final jsonProgress = legacyData['progress'] as List<dynamic>?;
+            if (bookId == null || jsonProgress == null || jsonProgress.isEmpty) continue;
+
+            await restoreProgressFromLocalFolder(bookId, entity.path);
+            print('[AudiobookRepository] Restored legacy progress from ${progressFile.path}');
+          } catch (e) {
+            print('[AudiobookRepository] Error restoring legacy progress from ${progressFile.path}: $e');
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error scanning for legacy progress files: $e');
+    }
+  }
 
   Future<String?> _findLocalFolderForBookId(String bookId) async {
     if (bookId.startsWith('local:')) {
@@ -1411,66 +1729,117 @@ class AudiobookRepository {
   }
 
   /// Restore listening progress from a local folder's progress.json if it exists.
+  /// Writes into the unified progress.json (primary) and DB (secondary).
   Future<void> restoreProgressFromLocalFolder(String bookId, String folderPath) async {
     try {
       final progressFile = io.File(p.join(folderPath, 'progress.json'));
-      if (await progressFile.exists()) {
-        final content = await progressFile.readAsString();
-        final data = jsonDecode(content) as Map<String, dynamic>;
-        
-        // Restore EPUB reading progress if present
-        final epubProg = data['epubProgress'] as Map<String, dynamic>?;
-        if (epubProg != null) {
-          final prefs = await SharedPreferences.getInstance();
-          if (epubProg.containsKey('currentChapter')) {
-            await prefs.setInt('epub_chapter_$bookId', epubProg['currentChapter'] as int);
-          }
-          if (epubProg.containsKey('scrollOffset')) {
-            await prefs.setDouble('epub_scroll_$bookId', (epubProg['scrollOffset'] as num).toDouble());
-          }
-          if (epubProg.containsKey('fontSize')) {
-            await prefs.setDouble('epub_fontsize_$bookId', (epubProg['fontSize'] as num).toDouble());
-          }
-          if (epubProg.containsKey('totalChapters')) {
-            await prefs.setInt('epub_total_chapters_$bookId', epubProg['totalChapters'] as int);
-          }
-          if (epubProg.containsKey('pagesRead')) {
-            await prefs.setInt('epub_pages_read_$bookId', epubProg['pagesRead'] as int);
-          }
-          if (epubProg.containsKey('totalPages')) {
-            await prefs.setInt('epub_total_pages_$bookId', epubProg['totalPages'] as int);
-          }
-          if (epubProg.containsKey('progress')) {
-            await prefs.setDouble('epub_progress_$bookId', (epubProg['progress'] as num).toDouble());
-          }
+      if (!await progressFile.exists()) return;
+
+      final content = await progressFile.readAsString();
+      final data = jsonDecode(content) as Map<String, dynamic>;
+
+      // Determine bookId from the file if not provided
+      final resolvedBookId = bookId.isNotEmpty ? bookId : (data['bookId'] as String? ?? '');
+      if (resolvedBookId.isEmpty) return;
+
+      // Restore EPUB reading progress if present
+      final epubProg = data['epubProgress'] as Map<String, dynamic>?;
+      if (epubProg != null) {
+        final prefs = await SharedPreferences.getInstance();
+        if (epubProg.containsKey('currentChapter')) {
+          await prefs.setInt('epub_chapter_$resolvedBookId', epubProg['currentChapter'] as int);
+        }
+        if (epubProg.containsKey('scrollOffset')) {
+          await prefs.setDouble('epub_scroll_$resolvedBookId', (epubProg['scrollOffset'] as num).toDouble());
+        }
+        if (epubProg.containsKey('fontSize')) {
+          await prefs.setDouble('epub_fontsize_$resolvedBookId', (epubProg['fontSize'] as num).toDouble());
+        }
+        if (epubProg.containsKey('totalChapters')) {
+          await prefs.setInt('epub_total_chapters_$resolvedBookId', epubProg['totalChapters'] as int);
+        }
+        if (epubProg.containsKey('pagesRead')) {
+          await prefs.setInt('epub_pages_read_$resolvedBookId', epubProg['pagesRead'] as int);
+        }
+        if (epubProg.containsKey('totalPages')) {
+          await prefs.setInt('epub_total_pages_$resolvedBookId', epubProg['totalPages'] as int);
+        }
+        if (epubProg.containsKey('progress')) {
+          await prefs.setDouble('epub_progress_$resolvedBookId', (epubProg['progress'] as num).toDouble());
         }
 
-        final jsonProgress = data['progress'] as List<dynamic>?;
-        if (jsonProgress != null) {
-          for (final entry in jsonProgress) {
-            try {
-              final map = entry as Map<String, dynamic>;
-              final chIdx = map['chapterIndex'] as int;
-              
-              final existing = await _db.getAudiobookProgress(bookId, chIdx);
-              final localLastListened = DateTime.parse(map['lastListenedAt'] as String);
-              
-              if (existing == null || existing.lastListenedAt.isBefore(localLastListened)) {
-                await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
-                  bookId: bookId,
-                  chapterIndex: chIdx,
-                  positionMillis: Value(map['positionMillis'] as int? ?? 0),
-                  durationMillis: Value(map['durationMillis'] as int? ?? 0),
-                  lastListenedAt: localLastListened,
-                  isCompleted: Value(map['isCompleted'] as bool? ?? false),
-                ));
-              }
-            } catch (e) {
-              print('[AudiobookRepository] Error restoring single chapter progress entry: $e');
+        // Also persist epubProgress in unified progress.json
+        try {
+          final progressData = await _loadProgressData();
+          final books = progressData['books'] as Map<String, dynamic>;
+          final normId = normalizeBookId(resolvedBookId);
+          final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+          bookObj['epubProgress'] = {
+            'currentChapter': epubProg['currentChapter'],
+            'totalChapters': epubProg['totalChapters'],
+            'scrollOffset': epubProg['scrollOffset'],
+            'pagesRead': epubProg['pagesRead'],
+            'totalPages': epubProg['totalPages'],
+            'progress': epubProg['progress'],
+            'fontSize': epubProg['fontSize'],
+            'lastReadAt': DateTime.now().toIso8601String(),
+          };
+          await _flushProgressData();
+        } catch (_) {}
+      }
+
+      // Restore listening progress
+      final jsonProgress = data['progress'] as List<dynamic>?;
+      if (jsonProgress != null) {
+        for (final entry in jsonProgress) {
+          try {
+            final map = entry as Map<String, dynamic>;
+            final chIdx = map['chapterIndex'] as int;
+            final lastListenedStr = map['lastListenedAt'] as String? ?? DateTime.now().toIso8601String();
+            final localLastListened = DateTime.parse(lastListenedStr);
+
+            // Write to unified progress.json (primary)
+            final progressData = await _loadProgressData();
+            final books = progressData['books'] as Map<String, dynamic>;
+            final normId = normalizeBookId(resolvedBookId);
+            final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+            final chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
+
+            final existingIdx = chapters.indexWhere(
+              (c) => (c as Map<String, dynamic>)['chapterIndex'] == chIdx,
+            );
+            final entryMap = {
+              'chapterIndex': chIdx,
+              'positionMillis': map['positionMillis'] as int? ?? 0,
+              'durationMillis': map['durationMillis'] as int? ?? 0,
+              'isCompleted': map['isCompleted'] as bool? ?? false,
+              'lastListenedAt': lastListenedStr,
+              'originalBookId': resolvedBookId,
+            };
+            if (existingIdx >= 0) {
+              chapters[existingIdx] = entryMap;
+            } else {
+              chapters.add(entryMap);
             }
+            await _flushProgressData();
+
+            // Sync to DB (secondary)
+            final existing = await _db.getAudiobookProgress(resolvedBookId, chIdx);
+            if (existing == null || existing.lastListenedAt.isBefore(localLastListened)) {
+              await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
+                bookId: resolvedBookId,
+                chapterIndex: chIdx,
+                positionMillis: Value(map['positionMillis'] as int? ?? 0),
+                durationMillis: Value(map['durationMillis'] as int? ?? 0),
+                lastListenedAt: localLastListened,
+                isCompleted: Value(map['isCompleted'] as bool? ?? false),
+              ));
+            }
+          } catch (e) {
+            print('[AudiobookRepository] Error restoring single chapter progress entry: $e');
           }
-          print('[AudiobookRepository] Restored progress from ${progressFile.path}');
         }
+        print('[AudiobookRepository] Restored progress from ${progressFile.path}');
       }
     } catch (e) {
       print('[AudiobookRepository] Error restoring progress from local folder: $e');
@@ -1478,6 +1847,8 @@ class AudiobookRepository {
   }
 
   /// Save listening progress for a specific chapter.
+  /// Writes to unified progress.json (primary source), per-book progress.json
+  /// (local folder backup), and DB (secondary).
   Future<void> saveProgress({
     required String bookId,
     required int chapterIndex,
@@ -1487,6 +1858,113 @@ class AudiobookRepository {
   }) async {
     await undisimissBookFromContinueListening(bookId);
 
+    // 1. Write to unified progress.json (primary source)
+    int completed = 0;
+    int maxPos = 0;
+    int totalCh = 0;
+    int totalDuration = 0;
+    List<dynamic>? chapters;
+    String? cachedTitle;
+    String? cachedAuthor;
+    double pct = 0.0;
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+      chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
+
+      final existingIdx = chapters.indexWhere(
+        (c) => (c as Map<String, dynamic>)['chapterIndex'] == chapterIndex,
+      );
+      final entry = {
+        'chapterIndex': chapterIndex,
+        'positionMillis': positionMillis,
+        'durationMillis': durationMillis,
+        'isCompleted': isCompleted,
+        'lastListenedAt': DateTime.now().toIso8601String(),
+        'originalBookId': bookId,
+      };
+      if (existingIdx >= 0) {
+        chapters[existingIdx] = entry;
+      } else {
+        chapters.add(entry);
+      }
+
+      // Recompute book-level summary using time-based progress
+      int totalListened = 0;
+      for (final ch in chapters) {
+        final chMap = ch as Map<String, dynamic>;
+        totalListened += (chMap['positionMillis'] as int?) ?? 0;
+        totalDuration += (chMap['durationMillis'] as int?) ?? 0;
+        final pos = (chMap['positionMillis'] as int?) ?? 0;
+        if (pos > maxPos) maxPos = pos;
+        if (chMap['isCompleted'] == true) completed++;
+      }
+
+      final cachedMeta = await getCachedMetadata(normId);
+      totalCh = cachedMeta?.totalChapters ?? 0;
+      // If metadata doesn't have total chapters, estimate from max chapter index
+      if (totalCh <= 0 && chapters.isNotEmpty) {
+        int maxIdx = 0;
+        for (final ch in chapters) {
+          final idx = (ch as Map<String, dynamic>)['chapterIndex'] as int? ?? 0;
+          if (idx > maxIdx) maxIdx = idx;
+        }
+        totalCh = maxIdx + 1;
+      }
+      cachedTitle = cachedMeta?.title;
+      cachedAuthor = cachedMeta?.author;
+      pct = totalCh > 0 ? (completed / totalCh).clamp(0.0, 1.0) : 0.0;
+
+      bookObj['listenedMillis'] = maxPos;
+      bookObj['totalDurationMillis'] = totalDuration;
+      bookObj['completedChapters'] = completed;
+      bookObj['totalChapters'] = totalCh;
+      bookObj['lastListenedAt'] = DateTime.now().toIso8601String();
+      bookObj['progressPercent'] = pct;
+      bookObj['originalBookId'] = bookId;
+      if (cachedMeta != null) {
+        bookObj['title'] = cachedMeta.title;
+        bookObj['author'] = cachedMeta.author ?? 'Unknown Author';
+        bookObj['artworkUrl'] = cachedMeta.artworkUrl;
+      }
+
+      await _flushProgressData();
+    } catch (e) {
+      print('[AudiobookRepository] Error saving progress to progress.json: $e');
+    }
+
+    // 2. Backup to per-book progress.json in local folder if available
+    try {
+      final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
+      if (dirPath != null && chapters != null) {
+        final List<Map<String, dynamic>> jsonList = chapters.map((ch) {
+          final chMap = ch as Map<String, dynamic>;
+          return Map<String, dynamic>.from(chMap)..remove('originalBookId');
+        }).cast<Map<String, dynamic>>().toList();
+        
+        final progressFile = io.File(p.join(dirPath, 'progress.json'));
+        final backupData = {
+          'bookId': bookId,
+          'title': cachedTitle ?? 'Audiobook',
+          'author': cachedAuthor ?? 'Unknown Author',
+          'maxPositionMillis': maxPos,
+          'totalDurationMillis': totalDuration,
+          'completedChapters': completed,
+          'totalChapters': totalCh,
+          'lastListenedAt': DateTime.now().toIso8601String(),
+          'progressPercent': pct,
+          'progress': jsonList,
+        };
+        await progressFile.writeAsString(jsonEncode(backupData));
+        print('[AudiobookRepository] Backed up progress to ${progressFile.path}');
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error backing up progress to local folder: $e');
+    }
+
+    // 3. Sync to DB (secondary / backward-compatibility)
     await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
       bookId: bookId,
       chapterIndex: chapterIndex,
@@ -1495,68 +1973,114 @@ class AudiobookRepository {
       lastListenedAt: DateTime.now(),
       isCompleted: Value(isCompleted),
     ));
-
-    // Back up progress to the local download folder if it exists
-    try {
-      final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
-      if (dirPath != null) {
-        final progressList = await getBookChapterProgress(bookId);
-        final List<Map<String, dynamic>> jsonList = [];
-        final Set<int> processedIndices = {};
-        
-        jsonList.add({
-          'chapterIndex': chapterIndex,
-          'positionMillis': positionMillis,
-          'durationMillis': durationMillis,
-          'isCompleted': isCompleted,
-          'lastListenedAt': DateTime.now().toIso8601String(),
-        });
-        processedIndices.add(chapterIndex);
-        
-        for (final p in progressList) {
-          if (!processedIndices.contains(p.chapterIndex)) {
-            jsonList.add({
-              'chapterIndex': p.chapterIndex,
-              'positionMillis': p.positionMillis,
-              'durationMillis': p.durationMillis,
-              'isCompleted': p.isCompleted,
-              'lastListenedAt': p.lastListenedAt.toIso8601String(),
-            });
-            processedIndices.add(p.chapterIndex);
-          }
-        }
-        
-        final data = {
-          'bookId': bookId,
-          'lastListenedAt': DateTime.now().toIso8601String(),
-          'progress': jsonList,
-        };
-        
-        final progressFile = io.File(p.join(dirPath, 'progress.json'));
-        await progressFile.writeAsString(jsonEncode(data));
-        print('[AudiobookRepository] Progress backed up to ${progressFile.path}');
-      }
-    } catch (e) {
-      print('[AudiobookRepository] Error backing up progress to local folder: $e');
-    }
   }
 
   /// Get progress for a specific book's chapter.
-  Future<DbAudiobookProgress?> getChapterProgress(String bookId, int chapterIndex) {
+  /// Reads from progress.json (primary), falls back to DB.
+  Future<DbAudiobookProgress?> getChapterProgress(String bookId, int chapterIndex) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      final chaptersJson = bookObj?['chapters'] as List<dynamic>?;
+      if (chaptersJson != null) {
+        for (final ch in chaptersJson) {
+          final chMap = ch as Map<String, dynamic>;
+          if ((chMap['chapterIndex'] as int?) == chapterIndex) {
+            final lastListenedStr = chMap['lastListenedAt'] as String?;
+            return DbAudiobookProgress(
+              id: 0,
+              bookId: bookId,
+              chapterIndex: chapterIndex,
+              positionMillis: chMap['positionMillis'] as int? ?? 0,
+              durationMillis: chMap['durationMillis'] as int? ?? 0,
+              lastListenedAt: DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000),
+              isCompleted: chMap['isCompleted'] as bool? ?? false,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error reading chapter progress from progress.json: $e');
+    }
     return _db.getAudiobookProgress(bookId, chapterIndex);
   }
 
   /// Get the latest progress for a book (most recently listened chapter).
-  Future<DbAudiobookProgress?> getLatestBookProgress(String bookId) {
+  /// Reads from progress.json (primary), falls back to DB.
+  Future<DbAudiobookProgress?> getLatestBookProgress(String bookId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      final chaptersJson = bookObj?['chapters'] as List<dynamic>?;
+      if (chaptersJson != null && chaptersJson.isNotEmpty) {
+        DbAudiobookProgress? latest;
+        for (final ch in chaptersJson) {
+          final chMap = ch as Map<String, dynamic>;
+          final lastListenedStr = chMap['lastListenedAt'] as String?;
+          final dt = DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000);
+          if (latest == null || dt.isAfter(latest.lastListenedAt)) {
+            latest = DbAudiobookProgress(
+              id: 0,
+              bookId: bookId,
+              chapterIndex: chMap['chapterIndex'] as int? ?? 0,
+              positionMillis: chMap['positionMillis'] as int? ?? 0,
+              durationMillis: chMap['durationMillis'] as int? ?? 0,
+              lastListenedAt: dt,
+              isCompleted: chMap['isCompleted'] as bool? ?? false,
+            );
+          }
+        }
+        if (latest != null) return latest;
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error reading latest progress from progress.json: $e');
+    }
     return _db.getLatestAudiobookProgress(bookId);
   }
 
   /// Get all books with progress (for "Continue Listening" section).
-  Future<List<DbAudiobookProgress>> getAllInProgressBooks() {
+  /// Reads from progress.json (primary), falls back to DB.
+  Future<List<DbAudiobookProgress>> getAllInProgressBooks() async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final List<DbAudiobookProgress> result = [];
+
+      for (final entry in books.entries) {
+        final bookObj = entry.value as Map<String, dynamic>;
+        final chaptersJson = bookObj['chapters'] as List<dynamic>?;
+        if (chaptersJson == null || chaptersJson.isEmpty) continue;
+
+        for (final ch in chaptersJson) {
+          final chMap = ch as Map<String, dynamic>;
+          final lastListenedStr = chMap['lastListenedAt'] as String?;
+          // Use originalBookId if stored, otherwise fall back to the normalized key
+          final resolvedBookId = chMap['originalBookId'] as String? ?? entry.key;
+          result.add(DbAudiobookProgress(
+            id: 0,
+            bookId: resolvedBookId,
+            chapterIndex: chMap['chapterIndex'] as int? ?? 0,
+            positionMillis: chMap['positionMillis'] as int? ?? 0,
+            durationMillis: chMap['durationMillis'] as int? ?? 0,
+            lastListenedAt: DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000),
+            isCompleted: chMap['isCompleted'] as bool? ?? false,
+          ));
+        }
+      }
+
+      result.sort((a, b) => b.lastListenedAt.compareTo(a.lastListenedAt));
+      return result;
+    } catch (e) {
+      print('[AudiobookRepository] Error reading all progress from progress.json: $e');
+    }
     return _db.getAllAudiobookProgress();
   }
 
-  /// Watch all books with progress.
+  /// Watch all books with progress (continues reading from DB stream).
   Stream<List<DbAudiobookProgress>> watchAllInProgressBooks() {
     return _db.watchAllAudiobookProgress();
   }
@@ -1573,14 +2097,54 @@ class AudiobookRepository {
   }
 
   /// Get all chapter-level progress entries for a specific book.
-  Future<List<DbAudiobookProgress>> getBookChapterProgress(String bookId) {
+  /// Reads from progress.json (primary), falls back to DB.
+  Future<List<DbAudiobookProgress>> getBookChapterProgress(String bookId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      final chaptersJson = bookObj?['chapters'] as List<dynamic>?;
+
+      if (chaptersJson != null && chaptersJson.isNotEmpty) {
+        return chaptersJson.map((ch) {
+          final chMap = ch as Map<String, dynamic>;
+          final lastListenedStr = chMap['lastListenedAt'] as String?;
+          return DbAudiobookProgress(
+            id: 0,
+            bookId: bookId,
+            chapterIndex: chMap['chapterIndex'] as int? ?? 0,
+            positionMillis: chMap['positionMillis'] as int? ?? 0,
+            durationMillis: chMap['durationMillis'] as int? ?? 0,
+            lastListenedAt: DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000),
+            isCompleted: chMap['isCompleted'] as bool? ?? false,
+          );
+        }).toList()
+          ..sort((a, b) => a.chapterIndex.compareTo(b.chapterIndex));
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error reading book chapter progress from progress.json: $e');
+    }
     return _db.getBookChapterProgress(bookId);
   }
 
   /// Clear all progress for a book.
   Future<void> clearBookProgress(String bookId) async {
+    // Remove from progress.json (primary)
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      books.remove(normId);
+      await _flushProgressData();
+    } catch (e) {
+      print('[AudiobookRepository] Error clearing progress from progress.json: $e');
+    }
+
     await _db.clearAudiobookProgress(bookId);
     await undisimissBookFromContinueListening(bookId);
+
+    // Also remove legacy per-book progress.json
     try {
       final localDir = await getLocalBookDirectoryForBackup(bookId);
       if (localDir != null) {
@@ -1593,6 +2157,28 @@ class AudiobookRepository {
     } catch (e) {
       print('[AudiobookRepository] Error deleting local progress file: $e');
     }
+  }
+
+  /// Clear ALL audiobook data: progress history, metadata cache, dismissed list, goals.
+  Future<void> clearAllAudiobookData() async {
+    // Clear progress.json (primary)
+    try {
+      _progressData = {
+        'version': 1,
+        'lastUpdated': DateTime.now().toIso8601String(),
+        'books': <String, dynamic>{},
+      };
+      await _flushProgressData();
+    } catch (e) {
+      print('[AudiobookRepository] Error clearing progress.json: $e');
+    }
+
+    await _db.clearAllAudiobookProgress();
+    await _db.clearAllAudiobookMetadataCache();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('dismissed_continue_listening_audiobooks');
+    await prefs.remove('goal_daily_min');
+    await prefs.remove('goal_weekly_min');
   }
 
   /// Dismiss a book from Continue Listening shelf.
@@ -1633,6 +2219,57 @@ class AudiobookRepository {
     return _db.deleteAudiobookMetadata(normalizeBookId(bookId));
   }
 
+  /// Get EPUB reading progress from the unified progress.json.
+  Future<Map<String, dynamic>?> getEpubProgress(String bookId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      return bookObj?['epubProgress'] as Map<String, dynamic>?;
+    } catch (e) {
+      print('[AudiobookRepository] Error reading epub progress from progress.json: $e');
+    }
+    return null;
+  }
+
+  /// Save EPUB reading progress to the unified progress.json.
+  Future<void> saveEpubProgress(String bookId, Map<String, dynamic> epubProgress) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+      epubProgress['lastReadAt'] = DateTime.now().toIso8601String();
+      bookObj['epubProgress'] = epubProgress;
+      await _flushProgressData();
+    } catch (e) {
+      print('[AudiobookRepository] Error saving epub progress to progress.json: $e');
+    }
+  }
+
+  /// Get book-level progress summary (completedChapters, totalChapters, progressPercent)
+  /// from the unified progress.json. Returns null if no progress exists for this book.
+  Future<Map<String, dynamic>?> getBookProgressSummary(String bookId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      if (bookObj == null) return null;
+      return {
+        'completedChapters': bookObj['completedChapters'] ?? 0,
+        'totalChapters': bookObj['totalChapters'] ?? 0,
+        'progressPercent': bookObj['progressPercent'] ?? 0.0,
+        'listenedMillis': bookObj['listenedMillis'] ?? 0,
+        'lastListenedAt': bookObj['lastListenedAt'],
+      };
+    } catch (e) {
+      print('[AudiobookRepository] Error reading book progress summary: $e');
+    }
+    return null;
+  }
+
   // ─── Metadata Cache ────────────────────────────────────────────
 
   /// Save audiobook metadata to local cache.
@@ -1670,10 +2307,20 @@ class AudiobookRepository {
     }
 
     if (existing != null) {
-      // 1. Keep richer description
-      if (!isPlaceholderDescription(existing.description)) {
+      // 1. Keep richer description (decode JSON_EXT: wrapper first)
+      String existingDescription = existing.description ?? '';
+      if (existingDescription.startsWith('JSON_EXT:')) {
+        try {
+          final rawJson = existingDescription.substring('JSON_EXT:'.length);
+          final data = jsonDecode(rawJson) as Map<String, dynamic>;
+          existingDescription = data['description'] as String? ?? '';
+        } catch (_) {
+          existingDescription = '';
+        }
+      }
+      if (!isPlaceholderDescription(existingDescription)) {
         if (isPlaceholderDescription(description)) {
-          description = existing.description;
+          description = existingDescription;
         }
       }
 
@@ -1836,10 +2483,14 @@ class AudiobookRepository {
           final content = await metaFile.readAsString();
           final data = jsonDecode(content) as Map<String, dynamic>;
           
-          final coverFile = io.File(p.join(folderPath, 'cover.jpg'));
+          final coverNames = ['cover.jpg', 'cover.png', 'folder.jpg', 'folder.png', 'poster.jpg', 'poster.png', 'AlbumArt.jpg', 'AlbumArt.png', 'front.jpg', 'front.png'];
           String? artworkUrl = data['artworkUrl'] as String?;
-          if (await coverFile.exists()) {
-            artworkUrl = 'file://${coverFile.path}';
+          for (final name in coverNames) {
+            final cf = io.File(p.join(folderPath, name));
+            if (await cf.exists()) {
+              artworkUrl = 'file://${cf.path}';
+              break;
+            }
           }
           
           final bookResult = AudiobookResult(
@@ -1896,7 +2547,14 @@ class AudiobookRepository {
         durationMillis = data['durationMillis'] as int?;
         rating = (data['rating'] as num?)?.toDouble();
         ratingCount = data['ratingCount'] as int?;
-      } catch (_) {}
+      } catch (_) {
+        description = null;
+      }
+    }
+
+    // Safety: ensure no raw JSON_EXT: prefix leaks to the UI
+    if (description != null && description!.startsWith('JSON_EXT:')) {
+      description = null;
     }
 
     return AudiobookResult(
@@ -1918,10 +2576,21 @@ class AudiobookRepository {
     );
   }
 
-  /// Query online APIs (iTunes first, Open Library fallback) for book details.
+  /// Query online APIs (iTunes and Open Library in parallel) for book details.
   Future<Map<String, dynamic>?> _fetchOnlineMetadata(String title) async {
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+    final results = await Future.wait([
+      _fetchItunesMetadata(dio, title),
+      _fetchOpenLibraryMetadata(dio, title),
+    ]);
+    return results.firstWhere((r) => r != null, orElse: () => null);
+  }
+
+  Future<Map<String, dynamic>?> _fetchItunesMetadata(Dio dio, String title) async {
     try {
-      final dio = Dio();
       final res = await dio.get(
         'https://itunes.apple.com/search',
         queryParameters: {
@@ -1973,9 +2642,11 @@ class AudiobookRepository {
     } catch (e) {
       print('[AudiobookRepository] iTunes online lookup failed: $e');
     }
+    return null;
+  }
 
+  Future<Map<String, dynamic>?> _fetchOpenLibraryMetadata(Dio dio, String title) async {
     try {
-      final dio = Dio();
       final res = await dio.get(
         'https://openlibrary.org/search.json',
         queryParameters: {'title': title, 'limit': 1},
@@ -2014,14 +2685,16 @@ class AudiobookRepository {
     } catch (e) {
       print('[AudiobookRepository] Open Library lookup failed: $e');
     }
-
     return null;
   }
 
   /// Helper to lookup a specific item on iTunes.
   Future<AudiobookResult?> _lookupItunes(String itemId) async {
     try {
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       final res = await dio.get(
         'https://itunes.apple.com/lookup',
         queryParameters: {'id': itemId},
@@ -2076,12 +2749,389 @@ class AudiobookRepository {
     return null;
   }
 
+  /// Fetch top-rated audiobooks by searching iTunes for popular/bestseller terms
+  /// and sorting by weighted rating (rating × log(ratingCount)).
+  Future<List<AudiobookResult>> fetchTopRated({int limit = 50}) async {
+    final Set<String> seen = {};
+    final List<AudiobookResult> all = [];
+
+    for (final term in ['bestseller audiobook', 'top audiobook', 'popular audiobook']) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ));
+        final res = await dio.get(
+          'https://itunes.apple.com/search',
+          queryParameters: {
+            'term': term,
+            'entity': 'audiobook',
+            'limit': 50,
+            'country': 'us',
+            'lang': 'en_us',
+          },
+        );
+        if (res.statusCode == 200 && res.data != null) {
+          final data = res.data is String ? jsonDecode(res.data) : res.data;
+          final items = data['results'] as List<dynamic>?;
+          if (items != null) {
+            for (final item in items) {
+              final collectionId = item['collectionId'];
+              final trackId = item['trackId'];
+              final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? '';
+              if (title.isEmpty) continue;
+              final dedupKey = collectionId ?? trackId ?? title;
+              if (seen.contains(dedupKey.toString())) continue;
+              seen.add(dedupKey.toString());
+
+              final artworkUrl100 = item['artworkUrl100'] as String?;
+              all.add(AudiobookResult(
+                id: 'itunes_meta:${collectionId ?? trackId ?? title.hashCode}',
+                title: title,
+                author: item['artistName'] as String? ?? 'Unknown Author',
+                artworkUrl: artworkUrl100?.replaceAll('100x100bb', '600x600bb'),
+                genre: item['primaryGenreName'] as String?,
+                durationMillis: item['trackTimeMillis'] as int?,
+                rating: (item['averageUserRating'] as num?)?.toDouble(),
+                ratingCount: item['userRatingCount'] as int?,
+              ));
+            }
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Top-rated search failed for "$term": $e');
+      }
+    }
+
+    // Sort by weighted rating (rating × log(ratingCount)), items without rating sink to bottom
+    all.sort((a, b) {
+      final aRating = a.rating ?? 0;
+      final aCount = (a.ratingCount ?? 0).toDouble();
+      final bRating = b.rating ?? 0;
+      final bCount = (b.ratingCount ?? 0).toDouble();
+      final aScore = (aRating > 0 && aCount > 0) ? aRating * _log10(aCount + 1) : 0;
+      final bScore = (bRating > 0 && bCount > 0) ? bRating * _log10(bCount + 1) : 0;
+      return bScore.compareTo(aScore);
+    });
+
+    return all.take(limit).toList();
+  }
+
+  double _log10(double x) => log(x) / log(10);
+
+  /// Fetch recently released audiobooks by searching iTunes with current-year terms.
+  Future<List<AudiobookResult>> fetchNewReleases({int limit = 50}) async {
+    final Set<String> seen = {};
+    final List<AudiobookResult> all = [];
+    final currentYear = DateTime.now().year;
+
+    for (final term in ['$currentYear audiobook', 'new audiobook releases', 'new release audiobook']) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ));
+        final res = await dio.get(
+          'https://itunes.apple.com/search',
+          queryParameters: {
+            'term': term,
+            'entity': 'audiobook',
+            'limit': 50,
+            'country': 'us',
+            'lang': 'en_us',
+          },
+        );
+        if (res.statusCode == 200 && res.data != null) {
+          final data = res.data is String ? jsonDecode(res.data) : res.data;
+          final items = data['results'] as List<dynamic>?;
+          if (items != null) {
+            for (final item in items) {
+              final collectionId = item['collectionId'];
+              final trackId = item['trackId'];
+              final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? '';
+              if (title.isEmpty) continue;
+              final dedupKey = collectionId ?? trackId ?? title;
+              if (seen.contains(dedupKey.toString())) continue;
+              seen.add(dedupKey.toString());
+
+              final artworkUrl100 = item['artworkUrl100'] as String?;
+              all.add(AudiobookResult(
+                id: 'itunes_meta:${collectionId ?? trackId ?? title.hashCode}',
+                title: title,
+                author: item['artistName'] as String? ?? 'Unknown Author',
+                artworkUrl: artworkUrl100?.replaceAll('100x100bb', '600x600bb'),
+                genre: item['primaryGenreName'] as String?,
+                durationMillis: item['trackTimeMillis'] as int?,
+                releaseDate: item['releaseDate'] as String?,
+              ));
+            }
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] New releases search failed for "$term": $e');
+      }
+    }
+
+    // Sort by releaseDate descending (newest first)
+    all.sort((a, b) {
+      if (a.releaseDate == null && b.releaseDate == null) return 0;
+      if (a.releaseDate == null) return 1;
+      if (b.releaseDate == null) return -1;
+      return b.releaseDate!.compareTo(a.releaseDate!);
+    });
+
+    return all.take(limit).toList();
+  }
+
+  /// Fetch free classic audiobooks from LibriVox (via Eclipse addon) and Open Library.
+  Future<List<AudiobookResult>> fetchFreeClassics({int limit = 50}) async {
+    final Set<String> seen = {};
+    final List<AudiobookResult> all = [];
+
+    // 1. LibriVox via Eclipse addon
+    try {
+      final libriVoxBooks = await _addonService.getCatalog(catalogId: 'librivox-audiobooks', skip: 0);
+      for (final book in libriVoxBooks) {
+        final key = book.id;
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        all.add(book.copyWith(description: book.description ?? 'Free public domain audiobook from LibriVox'));
+      }
+    } catch (e) {
+      print('[AudiobookRepository] LibriVox catalog fetch failed: $e');
+    }
+
+    // 2. Open Library classic literature search
+    for (final classicQuery in ['classic literature audiobook', 'public domain audiobook']) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ));
+        final res = await dio.get(
+          'https://openlibrary.org/search.json',
+          queryParameters: {'q': classicQuery, 'limit': 30},
+        );
+        if (res.statusCode == 200 && res.data != null) {
+          final docs = res.data['docs'] as List<dynamic>?;
+          if (docs != null) {
+            for (final doc in docs) {
+              final key = doc['key'] as String? ?? '';
+              final title = doc['title'] as String? ?? '';
+              if (title.isEmpty || key.isEmpty) continue;
+              if (seen.contains(key)) continue;
+              seen.add(key);
+
+              final authorName = doc['author_name'] as List<dynamic>?;
+              final coverId = doc['cover_i'] as num?;
+              all.add(AudiobookResult(
+                id: 'openlibrary_meta:$key',
+                title: title,
+                author: authorName != null && authorName.isNotEmpty ? authorName.first.toString() : 'Unknown Author',
+                artworkUrl: coverId != null ? 'https://covers.openlibrary.org/b/id/$coverId-L.jpg' : null,
+                description: 'Free classic literature from Open Library',
+              ));
+            }
+          }
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Open Library classic search failed: $e');
+      }
+    }
+
+    // 3. iTunes classics search
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
+      final res = await dio.get(
+        'https://itunes.apple.com/search',
+        queryParameters: {
+          'term': 'classics audiobook',
+          'entity': 'audiobook',
+          'limit': 30,
+          'country': 'us',
+        },
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final data = res.data is String ? jsonDecode(res.data) : res.data;
+        final items = data['results'] as List<dynamic>?;
+        if (items != null) {
+          for (final item in items) {
+            final collectionId = item['collectionId'];
+            final trackId = item['trackId'];
+            final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? '';
+            if (title.isEmpty) continue;
+            final dedupKey = collectionId ?? trackId ?? title;
+            if (seen.contains(dedupKey.toString())) continue;
+            seen.add(dedupKey.toString());
+
+            final artworkUrl100 = item['artworkUrl100'] as String?;
+            all.add(AudiobookResult(
+              id: 'itunes_meta:${collectionId ?? trackId ?? title.hashCode}',
+              title: title,
+              author: item['artistName'] as String? ?? 'Unknown Author',
+              artworkUrl: artworkUrl100?.replaceAll('100x100bb', '600x600bb'),
+              genre: item['primaryGenreName'] as String?,
+              durationMillis: item['trackTimeMillis'] as int?,
+            ));
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] iTunes classics search failed: $e');
+    }
+
+    return all.take(limit).toList();
+  }
+
+  /// Fetch audiobooks by a specific author from iTunes.
+  /// Results with ratings are sorted first (trending/popular).
+  Future<List<AudiobookResult>> fetchBooksByAuthor(String author, {int limit = 50}) async {
+    if (author.isEmpty) return [];
+    final Set<String> seen = {};
+    final List<AudiobookResult> all = [];
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
+      final res = await dio.get(
+        'https://itunes.apple.com/search',
+        queryParameters: {
+          'term': author,
+          'entity': 'audiobook',
+          'limit': limit.clamp(1, 200),
+          'country': 'us',
+          'lang': 'en_us',
+        },
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final data = res.data is String ? jsonDecode(res.data) : res.data;
+        final items = data['results'] as List<dynamic>?;
+        if (items != null) {
+          for (final item in items) {
+            final collectionId = item['collectionId'];
+            final trackId = item['trackId'];
+            final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? '';
+            if (title.isEmpty) continue;
+            final dedupKey = collectionId ?? trackId ?? title;
+            if (seen.contains(dedupKey.toString())) continue;
+            seen.add(dedupKey.toString());
+
+            // Skip the current book matching the title too closely
+            final artworkUrl100 = item['artworkUrl100'] as String?;
+            all.add(AudiobookResult(
+              id: 'itunes_meta:${collectionId ?? trackId ?? title.hashCode}',
+              title: title,
+              author: item['artistName'] as String? ?? author,
+              artworkUrl: artworkUrl100?.replaceAll('100x100bb', '600x600bb'),
+              genre: item['primaryGenreName'] as String?,
+              durationMillis: item['trackTimeMillis'] as int?,
+              releaseDate: item['releaseDate'] as String?,
+              rating: (item['averageUserRating'] as num?)?.toDouble(),
+              ratingCount: item['userRatingCount'] as int?,
+            ));
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Author search failed for "$author": $e');
+    }
+
+    // Sort: rated books first (by weighted rating), then unrated
+    all.sort((a, b) {
+      final aRating = (a.rating ?? 0) * ((a.ratingCount ?? 0) > 0 ? _log10((a.ratingCount! + 1).toDouble()) : 0);
+      final bRating = (b.rating ?? 0) * ((b.ratingCount ?? 0) > 0 ? _log10((b.ratingCount! + 1).toDouble()) : 0);
+      return bRating.compareTo(aRating);
+    });
+
+    return all;
+  }
+
+  /// Search iTunes catalog with the given query.
+  /// Returns up to [limit] results (max 200 per iTunes API).
+  Future<List<AudiobookResult>> searchItunesCatalog(String query, {int limit = 50}) async {
+    final List<AudiobookResult> results = [];
+    if (query.trim().isEmpty) return results;
+    try {
+      print('[AudiobookRepository] Searching iTunes catalog for "$query"...');
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
+      final res = await dio.get(
+        'https://itunes.apple.com/search',
+        queryParameters: {
+          'term': query,
+          'entity': 'audiobook',
+          'limit': limit.clamp(1, 200),
+          'country': 'us',
+          'lang': 'en_us',
+        },
+      );
+      if (res.statusCode == 200 && res.data != null) {
+        final Map<String, dynamic> data;
+        if (res.data is String) {
+          data = jsonDecode(res.data as String) as Map<String, dynamic>;
+        } else {
+          data = res.data as Map<String, dynamic>;
+        }
+        final items = data['results'] as List<dynamic>?;
+        if (items != null) {
+          print('[AudiobookRepository] iTunes catalog returned ${items.length} items');
+          for (final item in items) {
+            final title = item['collectionName'] as String? ?? item['trackName'] as String? ?? 'Unknown Title';
+            final author = item['artistName'] as String? ?? 'Unknown Author';
+            final description = item['description'] as String? ?? '';
+            final artworkUrl100 = item['artworkUrl100'] as String?;
+            final artworkUrl = artworkUrl100 != null
+                ? artworkUrl100.replaceAll('100x100bb', '600x600bb')
+                : null;
+
+            String? narrator;
+            if (author.toLowerCase().contains('narrated by')) {
+              final parts = author.split(RegExp(r',?\s*narrated by\s*', caseSensitive: false));
+              if (parts.length > 1) {
+                narrator = parts[1].trim();
+              }
+            }
+
+            results.add(AudiobookResult(
+              id: 'itunes_meta:${item['collectionId'] ?? item['trackId'] ?? title.hashCode}',
+              title: title,
+              author: author,
+              narrator: narrator,
+              description: description,
+              artworkUrl: artworkUrl,
+              language: 'EN',
+              genre: item['primaryGenreName'] as String?,
+              releaseDate: item['releaseDate'] as String?,
+              publisher: item['copyright'] as String?,
+              previewUrl: item['previewUrl'] as String?,
+              durationMillis: item['trackTimeMillis'] as int?,
+              rating: (item['averageUserRating'] as num?)?.toDouble(),
+              ratingCount: item['userRatingCount'] as int?,
+            ));
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] iTunes catalog search failed: $e');
+    }
+    return results;
+  }
+
   /// Helper to search iTunes.
   Future<List<AudiobookResult>> _searchItunes(String query) async {
     final List<AudiobookResult> results = [];
     try {
       print('[AudiobookRepository] Searching iTunes for "$query"...');
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       final res = await dio.get(
         'https://itunes.apple.com/search',
         queryParameters: {
@@ -2150,7 +3200,10 @@ class AudiobookRepository {
     final List<AudiobookResult> results = [];
     try {
       print('[AudiobookRepository] Searching Open Library for "$query"...');
-      final dio = Dio();
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
       final res = await dio.get(
         'https://openlibrary.org/search.json',
         queryParameters: {'title': query, 'limit': 8},
@@ -2253,7 +3306,10 @@ class AudiobookRepository {
     if (partialBook.id.startsWith('openlibrary_meta:')) {
       final workKey = partialBook.id.substring('openlibrary_meta:'.length);
       try {
-        final dio = Dio();
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ));
         final workRes = await dio.get('https://openlibrary.org$workKey.json');
         if (workRes.statusCode == 200 && workRes.data != null) {
           final descObj = workRes.data['description'];

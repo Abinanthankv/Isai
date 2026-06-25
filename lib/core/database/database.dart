@@ -568,6 +568,16 @@ class AppDatabase extends _$AppDatabase {
     return (delete(audiobookProgress)..where((t) => t.bookId.equals(bookId))).go();
   }
 
+  /// Clear ALL audiobook progress entries.
+  Future<void> clearAllAudiobookProgress() {
+    return delete(audiobookProgress).go();
+  }
+
+  /// Clear ALL audiobook metadata cache entries.
+  Future<void> clearAllAudiobookMetadataCache() {
+    return delete(audiobookMetadataCache).go();
+  }
+
   /// Save audiobook metadata to local cache.
   Future<void> saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion entry) {
     return into(audiobookMetadataCache).insertOnConflictUpdate(entry);

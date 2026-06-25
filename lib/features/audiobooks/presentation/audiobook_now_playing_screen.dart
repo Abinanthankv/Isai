@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'audiobook_providers.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
@@ -31,6 +32,15 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   Timer? _seekDebounceTimer;
   int _accumulatedSeekSeconds = 0;
   Duration? _initialSeekPosition;
+
+  // Sleep timer
+  int? _sleepTimerMinutes; // null = off, otherwise minutes
+  Timer? _sleepTimer;
+  DateTime? _sleepTimerEnd;
+
+  // Playback speed
+  double _playbackSpeed = 1.0;
+  static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
   void _accumulateSeek(int seconds, Duration currentPosition) {
     if (_initialSeekPosition == null) {
@@ -101,13 +111,37 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     _playbackStateSub = audioHandler.playbackState.listen((state) {
       final isPlaying = state.playing;
       if (_wasPlaying && !isPlaying) {
-        // Transitioned from playing to paused — save progress
         _saveCurrentProgress();
       }
       _wasPlaying = isPlaying;
+
+      // Check sleep timer expiration
+      if (_sleepTimerEnd != null && !isPlaying && _sleepTimer != null) {
+        _sleepTimer?.cancel();
+        _sleepTimer = null;
+        if (mounted) setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+      }
     });
     // Find epub file in background
     _findEpubFile();
+    // Load saved playback speed
+    _loadPlaybackSpeed();
+  }
+
+  Future<void> _loadPlaybackSpeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getDouble('audiobook_speed_${widget.book.id}') ?? 1.0;
+    if (mounted) {
+      setState(() => _playbackSpeed = saved);
+      await audioHandler.customAction('setSpeed', {'speed': saved});
+    }
+  }
+
+  Future<void> _setPlaybackSpeed(double speed) async {
+    setState(() => _playbackSpeed = speed);
+    await audioHandler.customAction('setSpeed', {'speed': speed});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('audiobook_speed_${widget.book.id}', speed);
   }
 
   /// Determines the local folder for this book and searches for an .epub file.
@@ -155,9 +189,111 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   void dispose() {
     _playbackStateSub?.cancel();
     _seekDebounceTimer?.cancel();
+    _sleepTimer?.cancel();
     // Final save on screen close
     _saveCurrentProgress();
     super.dispose();
+  }
+
+  void _startSleepTimer(int minutes) {
+    _sleepTimer?.cancel();
+    final end = DateTime.now().add(Duration(minutes: minutes));
+    setState(() {
+      _sleepTimerMinutes = minutes;
+      _sleepTimerEnd = end;
+    });
+    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (DateTime.now().isAfter(end)) {
+        _sleepTimer?.cancel();
+        _sleepTimer = null;
+        setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+        audioHandler.pause();
+      } else {
+        setState(() {});
+      }
+    });
+  }
+
+  void _cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+  }
+
+  Duration? get _sleepTimeRemaining {
+    if (_sleepTimerEnd == null) return null;
+    final remaining = _sleepTimerEnd!.difference(DateTime.now());
+    return remaining.isNegative ? Duration.zero : remaining;
+  }
+
+  void _showSleepTimerSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text('Sleep Timer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+            _sleepTimerOption(ctx, '15 minutes', 15),
+            _sleepTimerOption(ctx, '30 minutes', 30),
+            _sleepTimerOption(ctx, '45 minutes', 45),
+            _sleepTimerOption(ctx, '60 minutes', 60),
+            if (_sleepTimerMinutes != null)
+              _sleepTimerOption(ctx, 'Cancel Timer', -1),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sleepTimerOption(BuildContext ctx, String label, int minutes) {
+    return ListTile(
+      title: Text(label),
+      trailing: _sleepTimerMinutes == minutes && minutes > 0
+          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+          : null,
+      onTap: () {
+        Navigator.pop(ctx);
+        if (minutes == -1) {
+          _cancelSleepTimer();
+        } else {
+          _startSleepTimer(minutes);
+        }
+      },
+    );
+  }
+
+  void _showSpeedSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text('Playback Speed', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+            ..._speedOptions.map((speed) => ListTile(
+              title: Text('${speed}x'),
+              trailing: _playbackSpeed == speed
+                  ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                  : null,
+              onTap: () {
+                Navigator.pop(ctx);
+                _setPlaybackSpeed(speed);
+              },
+            )),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _saveCurrentProgress() async {
@@ -227,6 +363,48 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
             title: const Text('Now Playing', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             centerTitle: true,
             actions: [
+              // Sleep timer
+              IconButton(
+                icon: _sleepTimerMinutes != null
+                    ? Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          const Icon(Icons.bedtime_rounded, size: 24),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Icon(Icons.bedtime_outlined),
+                tooltip: _sleepTimerMinutes != null
+                    ? 'Sleep timer: ${_sleepTimeRemaining?.inMinutes ?? 0} min remaining'
+                    : 'Sleep timer',
+                onPressed: _showSleepTimerSheet,
+              ),
+              // Playback speed
+              IconButton(
+                icon: Text(
+                  '${_playbackSpeed}x',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: _playbackSpeed != 1.0
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+                tooltip: 'Playback speed',
+                onPressed: _showSpeedSheet,
+              ),
               // Epub reader toggle — only show if epub file was found
               if (_epubFilePath != null)
                 IconButton(
@@ -359,34 +537,69 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                     child: Column(
                       children: [
                         const SizedBox(height: 24),
-                        // Large Artwork
-                        Center(
-                          child: Container(
-                            width: 260,
-                            height: 260,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.3),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: artworkUrl != null
-                                  ? ((artworkUrl.startsWith('/') || artworkUrl.startsWith('file://'))
-                                      ? Image.file(
-                                          File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : CachedNetworkImage(imageUrl: artworkUrl, fit: BoxFit.cover))
-                                  : Container(
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                      child: const Icon(Icons.book, size: 100),
-                                    ),
+                        // Large Artwork (swipe up/down for chapter navigation)
+                        GestureDetector(
+                          onVerticalDragEnd: (details) {
+                            // Only trigger for fast swipes
+                            if (details.primaryVelocity == null) return;
+                            chaptersAsync.whenData((chapters) {
+                              if (chapters.isEmpty) return;
+                              final currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
+                              int targetIdx;
+                              if (details.primaryVelocity! < -200) {
+                                // Swipe up → next chapter
+                                targetIdx = (currentIdx + 1).clamp(0, chapters.length - 1);
+                              } else if (details.primaryVelocity! > 200) {
+                                // Swipe down → previous chapter
+                                targetIdx = (currentIdx - 1).clamp(0, chapters.length - 1);
+                              } else {
+                                return;
+                              }
+                              if (targetIdx == currentIdx) return;
+                              final ch = chapters[targetIdx];
+                              audioHandler.customAction('play', {
+                                'url': ch.streamUrl ?? '',
+                                'title': ch.title,
+                                'artist': widget.book.author,
+                                'artworkUrl': widget.book.artworkUrl ?? '',
+                                'forceReplace': true,
+                                'mediaType': 'audiobook',
+                                'extras': {
+                                  'bookId': widget.book.id,
+                                  'chapterIndex': targetIdx,
+                                  'initialPositionMillis': ch.startTimeMillis,
+                                },
+                              });
+                            });
+                          },
+                          child: Center(
+                            child: Container(
+                              width: 260,
+                              height: 260,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: artworkUrl != null
+                                    ? ((artworkUrl.startsWith('/') || artworkUrl.startsWith('file://'))
+                                        ? Image.file(
+                                            File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
+                                            fit: BoxFit.cover,
+                                          )
+                                        : CachedNetworkImage(imageUrl: artworkUrl, fit: BoxFit.cover))
+                                    : Container(
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        child: const Icon(Icons.book, size: 100),
+                                      ),
+                              ),
                             ),
                           ),
                         ),
@@ -416,48 +629,113 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                         ),
                         
                         const SizedBox(height: 24),
-                        // Progress
-                        StreamBuilder<Duration>(
-                          stream: AudioService.position,
-                          builder: (context, posSnapshot) {
-                            final position = posSnapshot.data ?? Duration.zero;
-                            final duration = mediaItem?.duration ?? Duration.zero;
-                            double progress = 0.0;
-                            if (duration.inMilliseconds > 0) {
-                              progress = (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
-                            }
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SliderTheme(
-                                  data: SliderTheme.of(context).copyWith(
-                                    trackHeight: 4,
-                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                                  ),
-                                  child: Slider(
-                                    value: progress,
-                                    activeColor: Theme.of(context).colorScheme.primary,
-                                    inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    onChanged: (val) {
-                                      final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
-                                      audioHandler.seek(seekPos);
-                                    },
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(_formatDuration(position), style: Theme.of(context).textTheme.bodySmall),
-                                      Text(_formatDuration(duration), style: Theme.of(context).textTheme.bodySmall),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                        // Chapter info + time remaining
+                        chaptersAsync.when(
+                          data: (chapters) {
+                            if (chapters.isEmpty) return const SizedBox.shrink();
+                            final chaptersList = chapters;
+                            return StreamBuilder<Duration>(
+                              stream: AudioService.position,
+                              builder: (context, posSnapshot) {
+                                final position = posSnapshot.data ?? Duration.zero;
+                                final currentPosMs = position.inMilliseconds;
+                                final hasOffsets = chaptersList.any((ch) => ch.startTimeMillis > 0);
+
+                                int currentIdx = 0;
+                                if (hasOffsets) {
+                                  for (int i = 0; i < chaptersList.length; i++) {
+                                    final start = chaptersList[i].startTimeMillis;
+                                    final end = (i + 1 < chaptersList.length)
+                                        ? chaptersList[i + 1].startTimeMillis
+                                        : double.infinity;
+                                    if (currentPosMs >= start && currentPosMs < end) {
+                                      currentIdx = i;
+                                      break;
+                                    }
+                                  }
+                                } else {
+                                  currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
+                                }
+
+                                final ch = chaptersList[currentIdx];
+                                final chStart = ch.startTimeMillis;
+                                final chEnd = (currentIdx + 1 < chaptersList.length)
+                                    ? chaptersList[currentIdx + 1].startTimeMillis
+                                    : (mediaItem?.duration?.inMilliseconds ?? chStart);
+                                final chDuration = chEnd - chStart;
+                                final chElapsed = hasOffsets ? (currentPosMs - chStart).clamp(0, chDuration) : position.inMilliseconds;
+                                final chRemaining = (chDuration - chElapsed).clamp(0, chDuration);
+
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      child: Text(
+                                        'Chapter ${currentIdx + 1} of ${chaptersList.length}  •  ${_formatDuration(Duration(milliseconds: chRemaining))} remaining',
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    // Progress
+                                    StreamBuilder<Duration>(
+                                      stream: AudioService.position,
+                                      builder: (context, posSnapshot2) {
+                                        final pos = posSnapshot2.data ?? Duration.zero;
+                                        final dur = mediaItem?.duration ?? Duration.zero;
+                                        double prog = 0.0;
+                                        if (dur.inMilliseconds > 0) {
+                                          prog = (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
+                                        }
+                                        return Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            SliderTheme(
+                                              data: SliderTheme.of(context).copyWith(
+                                                trackHeight: 4,
+                                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                                              ),
+                                              child: Slider(
+                                                value: prog,
+                                                activeColor: Theme.of(context).colorScheme.primary,
+                                                inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                onChanged: (val) {
+                                                  final seekPos = Duration(milliseconds: (val * dur.inMilliseconds).toInt());
+                                                  audioHandler.seek(seekPos);
+                                                },
+                                              ),
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Text(_formatDuration(pos), style: Theme.of(context).textTheme.bodySmall),
+                                                  Text(' -${_formatDuration(Duration(milliseconds: (dur.inMilliseconds - pos.inMilliseconds).clamp(0, dur.inMilliseconds)))}',
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                );
+                              },
                             );
                           },
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
                         ),
                         
                         const SizedBox(height: 24),

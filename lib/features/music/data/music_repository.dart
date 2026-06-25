@@ -1592,9 +1592,17 @@ class MusicRepositoryImpl implements MusicRepository {
         
         final magnetLink = magnetMatch.group(1) ?? '';
         
-        final titleRegex = RegExp(r'title="([^"]+)"[^>]*href="/view/', caseSensitive: false);
-        final titleMatch = titleRegex.firstMatch(rowHtml);
-        final name = titleMatch?.group(1)?.trim() ?? 'Nyaa Result';
+        final titleRegex = RegExp(r'<a[^>]*href="/view/[^"]*"[^>]*title="([^"]+)"', caseSensitive: false);
+        var titleMatch = titleRegex.firstMatch(rowHtml);
+        var name = titleMatch?.group(1)?.trim();
+        if (name == null || name.isEmpty) {
+          // Fallback: extract display text from the link
+          final fallbackRegex = RegExp(r'<a[^>]*href="/view/[^>]*>([^<]+)</a>', caseSensitive: false);
+          final fallbackMatch = fallbackRegex.firstMatch(rowHtml);
+          name = fallbackMatch?.group(1)?.trim();
+        }
+        // Ensure name is never null
+        name ??= 'Nyaa Result';
         
         final tdRegex = RegExp(r'<td[^>]*>(.*?)</td>', dotAll: true);
         final tds = tdRegex.allMatches(rowHtml).map((m) => m.group(1)?.replaceAll(RegExp(r'<[^>]*>'), '').trim() ?? '').toList();

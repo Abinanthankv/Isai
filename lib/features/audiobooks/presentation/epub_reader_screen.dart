@@ -6,6 +6,8 @@ import 'package:archive/archive_io.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:path/path.dart' as p;
+import '../../../core/di/injection.dart';
+import '../data/audiobook_repository.dart';
 
 /// A full-screen EPUB reader widget that uses the `archive` package to
 /// parse EPUB files and displays chapter content with chapter navigation.
@@ -40,6 +42,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   bool _isAutoScrolling = false;
   double _autoScrollSpeed = 25.0; // pixels per second
   Timer? _autoScrollTimer;
+
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  List<int> _searchMatchPositions = [];
+  int _currentMatchIndex = -1;
+  String _readingTheme = 'original';
 
   void _toggleAutoScroll() {
     setState(() {
@@ -82,6 +91,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   static const String _prefKeyChapter = 'epub_chapter_';
   static const String _prefKeyScroll = 'epub_scroll_';
   static const String _prefKeyFontSize = 'epub_fontsize_';
+  static const String _prefKeyTheme = 'epub_theme_';
 
   @override
   void initState() {
@@ -108,6 +118,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     _autoScrollTimer?.cancel();
     _saveProgress();
     _scrollController.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -117,6 +129,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       await prefs.setInt('${_prefKeyChapter}${widget.bookId}', _currentChapterIndex);
       await prefs.setDouble('${_prefKeyScroll}${widget.bookId}', _currentScrollOffset);
       await prefs.setDouble('${_prefKeyFontSize}${widget.bookId}', _fontSize);
+      await prefs.setString('${_prefKeyTheme}${widget.bookId}', _readingTheme);
       
       if (_chapters.isNotEmpty) {
         await prefs.setInt('epub_total_chapters_${widget.bookId}', _chapters.length);
@@ -180,6 +193,20 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             print('[EpubReaderScreen] Saved epub progress to progress.json');
           }
         } catch (_) {}
+
+        // Also save to unified progress.json (primary source)
+        try {
+          final repo = getIt<AudiobookRepository>();
+          await repo.saveEpubProgress(widget.bookId, {
+            'currentChapter': _currentChapterIndex,
+            'totalChapters': _chapters.length,
+            'scrollOffset': _currentScrollOffset,
+            'pagesRead': pagesRead,
+            'totalPages': totalPages,
+            'progress': progressPercent,
+            'fontSize': _fontSize,
+          });
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -190,9 +217,14 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       final savedChapter = prefs.getInt('${_prefKeyChapter}${widget.bookId}') ?? 0;
       final savedFontSize = prefs.getDouble('${_prefKeyFontSize}${widget.bookId}') ?? 16.0;
       final savedScroll = prefs.getDouble('${_prefKeyScroll}${widget.bookId}') ?? 0.0;
+      final savedTheme = prefs.getString('${_prefKeyTheme}${widget.bookId}') ?? 'original';
+      // Migrate legacy theme names
+      final migrated = {'light': 'original', 'sepia': 'focus', 'dark': 'quiet'};
+      final finalTheme = migrated[savedTheme] ?? savedTheme;
       
       setState(() {
         _fontSize = savedFontSize;
+        _readingTheme = finalTheme;
         _currentChapterIndex = savedChapter.clamp(0, _chapters.length - 1);
         _pendingScrollRestore = savedScroll;
       });
@@ -430,6 +462,331 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     return text;
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchController.clear();
+        _searchMatchPositions = [];
+        _currentMatchIndex = -1;
+      } else {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _updateSearch() {
+    final query = _searchController.text;
+    if (query.isEmpty) {
+      setState(() {
+        _searchMatchPositions = [];
+        _currentMatchIndex = -1;
+      });
+      return;
+    }
+    final content = _chapters[_currentChapterIndex].content;
+    final lowerContent = content.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final positions = <int>[];
+    int start = 0;
+    while (true) {
+      final idx = lowerContent.indexOf(lowerQuery, start);
+      if (idx == -1) break;
+      positions.add(idx);
+      start = idx + 1;
+    }
+    setState(() {
+      _searchMatchPositions = positions;
+      _currentMatchIndex = positions.isEmpty ? -1 : 0;
+    });
+    if (positions.isNotEmpty) _scrollToMatch(positions[0]);
+  }
+
+  void _nextMatch() {
+    if (_searchMatchPositions.isEmpty) return;
+    final next = (_currentMatchIndex + 1) % _searchMatchPositions.length;
+    setState(() => _currentMatchIndex = next);
+    _scrollToMatch(_searchMatchPositions[next]);
+  }
+
+  void _previousMatch() {
+    if (_searchMatchPositions.isEmpty) return;
+    final prev = (_currentMatchIndex - 1 + _searchMatchPositions.length) % _searchMatchPositions.length;
+    setState(() => _currentMatchIndex = prev);
+    _scrollToMatch(_searchMatchPositions[prev]);
+  }
+
+  void _scrollToMatch(int charPos) {
+    if (!_scrollController.hasClients) return;
+    final content = _chapters[_currentChapterIndex].content;
+    if (content.isEmpty) return;
+    final ratio = charPos / content.length;
+    final target = ratio * _scrollController.position.maxScrollExtent;
+    _scrollController.animateTo(
+      target.clamp(0.0, _scrollController.position.maxScrollExtent),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _showThemeSettings() {
+    final themeData = [
+      {'key': 'original', 'name': 'Original', 'bg': 0xFFFFFFFF, 'text': 0xFF1A1A1A},
+      {'key': 'quiet', 'name': 'Quiet', 'bg': 0xFF3A3A3A, 'text': 0xFFC8C8C8},
+      {'key': 'paper', 'name': 'Paper', 'bg': 0xFFE8E4F0, 'text': 0xFF6B6380},
+      {'key': 'calm', 'name': 'Calm', 'bg': 0xFFF5E4E4, 'text': 0xFF3D2C2C},
+      {'key': 'focus', 'name': 'Focus', 'bg': 0xFFF5ECD7, 'text': 0xFF6B6050},
+      {'key': 'bold', 'name': 'Bold', 'bg': 0xFFFFFFFF, 'text': 0xFF000000},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8F7F4),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Themes & Settings',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1A1A1A),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Text(
+                                  'Focus Options',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: const Color(0xFF1A1A1A).withOpacity(0.5),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 16,
+                                  color: const Color(0xFF1A1A1A).withOpacity(0.3),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(Icons.close_rounded, size: 18, color: const Color(0xFF1A1A1A).withOpacity(0.5)),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Font size & page layout controls
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEEEDEA),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0));
+                                    _saveProgress();
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    child: Center(
+                                      child: Text('A', style: TextStyle(fontSize: 14, color: const Color(0xFF1A1A1A).withOpacity(0.7))),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Container(width: 1, height: 20, color: const Color(0xFF1A1A1A).withOpacity(0.1)),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0));
+                                    _saveProgress();
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    child: Center(
+                                      child: Text('A', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A).withOpacity(0.9))),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEEDEA),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              child: Icon(Icons.chrome_reader_mode_rounded, size: 20, color: const Color(0xFF1A1A1A).withOpacity(0.7)),
+                            ),
+                            Container(width: 1, height: 20, color: const Color(0xFF1A1A1A).withOpacity(0.1)),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              child: Icon(Icons.view_column_rounded, size: 20, color: const Color(0xFF1A1A1A).withOpacity(0.4)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // Theme grid
+                  GridView.count(
+                    crossAxisCount: 3,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.85,
+                    children: themeData.map((t) {
+                      final key = t['key'] as String;
+                      final isActive = _readingTheme == key;
+                      final bg = Color(t['bg'] as int);
+                      final text = Color(t['text'] as int);
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() => _readingTheme = key);
+                          _saveProgress();
+                          Navigator.pop(ctx);
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isActive ? const Color(0xFF5B7FFF) : const Color(0xFF1A1A1A).withOpacity(0.08),
+                              width: isActive ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Aa',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: key == 'bold' ? FontWeight.w900 : FontWeight.w400,
+                                  color: text,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                t['name'] as String,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: text.withOpacity(0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  IconData _getThemeIcon() {
+    switch (_readingTheme) {
+      case 'quiet':
+        return Icons.dark_mode_rounded;
+      case 'paper':
+        return Icons.palette_outlined;
+      case 'calm':
+        return Icons.wb_sunny_rounded;
+      case 'focus':
+        return Icons.light_mode_rounded;
+      case 'bold':
+        return Icons.format_bold_rounded;
+      case 'original':
+      default:
+        return Icons.light_mode_rounded;
+    }
+  }
+
+  TextSpan _buildHighlightedText(String content, Color textColor) {
+    final query = _searchController.text;
+    if (query.isEmpty || _searchMatchPositions.isEmpty) {
+      return TextSpan(text: content);
+    }
+
+    final lowerContent = content.toLowerCase();
+    final lowerQuery = query.toLowerCase();
+    final spans = <TextSpan>[];
+    int lastEnd = 0;
+
+    for (int i = 0; i < _searchMatchPositions.length; i++) {
+      final matchStart = _searchMatchPositions[i];
+      if (matchStart > lastEnd) {
+        spans.add(TextSpan(text: content.substring(lastEnd, matchStart)));
+      }
+      final isActive = i == _currentMatchIndex;
+      spans.add(TextSpan(
+        text: content.substring(matchStart, matchStart + query.length),
+        style: TextStyle(
+          backgroundColor: isActive ? Colors.orange : Colors.yellow.withOpacity(0.4),
+          color: isActive ? Colors.white : textColor,
+          fontWeight: FontWeight.bold,
+        ),
+      ));
+      lastEnd = matchStart + query.length;
+    }
+
+    if (lastEnd < content.length) {
+      spans.add(TextSpan(text: content.substring(lastEnd)));
+    }
+
+    return TextSpan(children: spans);
+  }
+
   void _goToChapter(int index) {
     if (index < 0 || index >= _chapters.length) return;
     _saveProgress();
@@ -438,13 +795,40 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       _currentScrollOffset = 0.0;
     });
     _scrollController.jumpTo(0);
+    if (_isSearching) _updateSearch();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFFAF8F5);
-    final textColor = isDark ? const Color(0xFFE8E0D8) : const Color(0xFF2D2420);
+    Color bgColor;
+    Color textColor;
+    switch (_readingTheme) {
+      case 'quiet':
+        bgColor = const Color(0xFF3A3A3A);
+        textColor = const Color(0xFFC8C8C8);
+        break;
+      case 'paper':
+        bgColor = const Color(0xFFE8E4F0);
+        textColor = const Color(0xFF6B6380);
+        break;
+      case 'calm':
+        bgColor = const Color(0xFFF5E4E4);
+        textColor = const Color(0xFF3D2C2C);
+        break;
+      case 'focus':
+        bgColor = const Color(0xFFF5ECD7);
+        textColor = const Color(0xFF6B6050);
+        break;
+      case 'bold':
+        bgColor = const Color(0xFFFFFFFF);
+        textColor = const Color(0xFF000000);
+        break;
+      case 'original':
+      default:
+        bgColor = const Color(0xFFFFFFFF);
+        textColor = const Color(0xFF1A1A1A);
+        break;
+    }
     final accentColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
@@ -453,7 +837,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
           ? _buildLoading(bgColor, accentColor)
           : _error != null
               ? _buildError(bgColor, textColor)
-              : _buildReader(bgColor, textColor, accentColor, isDark),
+              : _buildReader(bgColor, textColor, accentColor),
     );
   }
 
@@ -497,7 +881,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     );
   }
 
-  Widget _buildReader(Color bg, Color textColor, Color accent, bool isDark) {
+  Widget _buildReader(Color bg, Color textColor, Color accent) {
     final chapter = _chapters[_currentChapterIndex];
 
     return GestureDetector(
@@ -528,8 +912,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                         ),
                         const SizedBox(height: 24),
                         // Chapter content
-                        SelectableText(
-                          chapter.content,
+                        SelectableText.rich(
+                          _buildHighlightedText(chapter.content, textColor),
                           style: TextStyle(
                             fontSize: _fontSize,
                             color: textColor,
@@ -591,22 +975,36 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                       child: Row(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.close_rounded),
+                            icon: Icon(Icons.close_rounded, color: textColor.withOpacity(0.7)),
                             onPressed: widget.onClose,
                             tooltip: 'Back to player',
                           ),
                           Expanded(
-                            child: Text(
-                              chapter.title,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: textColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
+                            child: _isSearching
+                                ? TextField(
+                                    controller: _searchController,
+                                    focusNode: _searchFocusNode,
+                                    style: TextStyle(fontSize: 14, color: textColor),
+                                    decoration: InputDecoration(
+                                      hintText: 'Search...',
+                                      hintStyle: TextStyle(color: textColor.withOpacity(0.4)),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                    onChanged: (_) => _updateSearch(),
+                                  )
+                                : Text(
+                                    chapter.title,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: textColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                  ),
                           ),
                           // Auto scroll toggle
                           IconButton(
@@ -617,24 +1015,81 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                           ),
                           // Font size controls
                           IconButton(
-                            icon: const Icon(Icons.text_decrease_rounded, size: 20),
-                            onPressed: () => setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0)),
+                            icon: Icon(Icons.text_decrease_rounded, size: 20, color: textColor.withOpacity(0.7)),
+                            onPressed: () {
+                              setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0));
+                              _saveProgress();
+                            },
                             tooltip: 'Decrease font size',
                           ),
                           IconButton(
-                            icon: const Icon(Icons.text_increase_rounded, size: 20),
-                            onPressed: () => setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0)),
+                            icon: Icon(Icons.text_increase_rounded, size: 20, color: textColor.withOpacity(0.7)),
+                            onPressed: () {
+                              setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0));
+                              _saveProgress();
+                            },
                             tooltip: 'Increase font size',
+                          ),
+                          // Theme toggle
+                          IconButton(
+                            icon: Icon(_getThemeIcon(), size: 20, color: textColor.withOpacity(0.7)),
+                            onPressed: _showThemeSettings,
+                            tooltip: 'Reading theme',
+                          ),
+                          // Search button
+                          IconButton(
+                            icon: Icon(_isSearching ? Icons.search_off_rounded : Icons.search_rounded, size: 20, color: textColor.withOpacity(0.7)),
+                            onPressed: _toggleSearch,
+                            tooltip: _isSearching ? 'Close search' : 'Search',
                           ),
                           // TOC button
                           IconButton(
-                            icon: const Icon(Icons.format_list_bulleted_rounded, size: 20),
+                            icon: Icon(Icons.format_list_bulleted_rounded, size: 20, color: textColor.withOpacity(0.7)),
                             onPressed: () => _showToc(context, textColor, bg, accent),
                             tooltip: 'Table of contents',
                           ),
                         ],
                       ),
                     ),
+                    if (_isSearching)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border(top: BorderSide(color: textColor.withOpacity(0.05))),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.search_rounded, size: 14, color: textColor.withOpacity(0.5)),
+                            const SizedBox(width: 8),
+                            Text(
+                              _searchMatchPositions.isEmpty
+                                  ? _searchController.text.isEmpty
+                                      ? 'Type to search'
+                                      : 'No matches'
+                                  : '${_currentMatchIndex + 1} of ${_searchMatchPositions.length}',
+                              style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.6)),
+                            ),
+                            if (_searchMatchPositions.isNotEmpty) ...[
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                                onPressed: _currentMatchIndex > 0 ? _previousMatch : null,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                color: textColor.withOpacity(0.6),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.chevron_right_rounded, size: 18),
+                                onPressed: _currentMatchIndex < _searchMatchPositions.length - 1 ? _nextMatch : null,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                color: textColor.withOpacity(0.6),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
                     // Auto Scroll Speed controller (Only shown when auto scrolling is active or controls are shown)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

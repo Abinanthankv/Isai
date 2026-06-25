@@ -26,6 +26,34 @@ class AudiobookStatsScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (value) {
+              if (value == 'goals') {
+                _showGoalSettingsDialog(context, ref);
+              } else if (value == 'reset') {
+                _showResetConfirmationDialog(context, ref);
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'goals', child: Row(
+                children: [
+                  Icon(Icons.tune_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Listening Goals'),
+                ],
+              )),
+              const PopupMenuItem(value: 'reset', child: Row(
+                children: [
+                  Icon(Icons.delete_sweep_rounded, size: 20, color: Colors.redAccent),
+                  SizedBox(width: 12),
+                  Text('Reset Statistics', style: TextStyle(color: Colors.redAccent)),
+                ],
+              )),
+            ],
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -33,11 +61,13 @@ class AudiobookStatsScreen extends ConsumerWidget {
           ref.invalidate(audiobookStatsSummaryProvider);
           ref.invalidate(topAudiobooksProvider);
           ref.invalidate(audiobookGenreBreakdownProvider);
-          
+          ref.invalidate(audiobookAuthorsProvider);
+
           await ref.read(audiobookHistoryProvider.future);
           await ref.read(audiobookStatsSummaryProvider.future);
           await ref.read(topAudiobooksProvider.future);
           await ref.read(audiobookGenreBreakdownProvider.future);
+          await ref.read(audiobookAuthorsProvider.future);
         },
         color: Theme.of(context).colorScheme.primary,
         child: historyAsync.when(
@@ -97,6 +127,7 @@ class AudiobookStatsScreen extends ConsumerWidget {
     final topBooksAsync = ref.watch(topAudiobooksProvider);
     final habits = ref.watch(audiobookListeningHabitsProvider);
     final genresAsync = ref.watch(audiobookGenreBreakdownProvider);
+    final authorsAsync = ref.watch(audiobookAuthorsProvider);
 
     return summaryAsync.when(
       data: (summary) {
@@ -112,52 +143,85 @@ class AudiobookStatsScreen extends ConsumerWidget {
                 const SizedBox(height: 20),
               ],
 
-              // 2. Metrics Grid
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.6,
+              // Activity Calendar
+              _buildActivityCalendar(context, ref, isDark),
+              const SizedBox(height: 20),
+
+              // Metrics Grid
+              Column(
                 children: [
-                  _buildStatCard(
-                    context,
-                    isDark: isDark,
-                    icon: Icons.headphones_outlined,
-                    label: 'Listening Time',
-                    value: summary['totalListeningTime'].toString(),
-                    subValue: 'Total Duration',
+                  Row(
+                    children: [
+                      Expanded(child: SizedBox(
+                        height: 110,
+                        child: _buildStatCard(
+                          context,
+                          isDark: isDark,
+                          icon: Icons.headphones_outlined,
+                          label: 'Listening Time',
+                          value: summary['totalListeningTime'].toString(),
+                          subValue: 'Total Duration',
+                        ),
+                      )),
+                      const SizedBox(width: 12),
+                      Expanded(child: SizedBox(
+                        height: 110,
+                        child: _buildStatCard(
+                          context,
+                          isDark: isDark,
+                          icon: Icons.book_outlined,
+                          label: 'Books Started',
+                          value: summary['totalBooks'].toString(),
+                          subValue: 'Unique titles',
+                        ),
+                      )),
+                    ],
                   ),
-                  _buildStatCard(
-                    context,
-                    isDark: isDark,
-                    icon: Icons.book_outlined,
-                    label: 'Books Started',
-                    value: summary['totalBooks'].toString(),
-                    subValue: 'Unique titles',
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: SizedBox(
+                        height: 110,
+                        child: _buildStatCard(
+                          context,
+                          isDark: isDark,
+                          icon: Icons.bookmark_added_outlined,
+                          label: 'Completed Books',
+                          value: summary['completedBooks'].toString(),
+                          subValue: 'Finished completely',
+                        ),
+                      )),
+                      const SizedBox(width: 12),
+                      Expanded(child: SizedBox(
+                        height: 110,
+                        child: _buildStatCard(
+                          context,
+                          isDark: isDark,
+                          icon: Icons.playlist_play_rounded,
+                          label: 'Chapters Played',
+                          value: summary['totalChapters'].toString(),
+                          subValue: 'Listened chapters',
+                        ),
+                      )),
+                    ],
                   ),
-                  _buildStatCard(
-                    context,
-                    isDark: isDark,
-                    icon: Icons.bookmark_added_outlined,
-                    label: 'Completed Books',
-                    value: summary['completedBooks'].toString(),
-                    subValue: 'Finished completely',
-                  ),
-                  _buildStatCard(
-                    context,
-                    isDark: isDark,
-                    icon: Icons.playlist_play_rounded,
-                    label: 'Chapters Played',
-                    value: summary['totalChapters'].toString(),
-                    subValue: 'Listened chapters',
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 110,
+                    child: _buildStatCard(
+                      context,
+                      isDark: isDark,
+                      icon: Icons.people,
+                      label: 'Authors',
+                      value: '${authorsAsync.value?.length ?? 0}',
+                      subValue: 'Unique authors',
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 28),
 
-              // 3. Top Audiobooks Section
+              // Top Audiobooks
               topBooksAsync.when(
                 data: (books) {
                   if (books.isEmpty) return const SizedBox.shrink();
@@ -175,13 +239,13 @@ class AudiobookStatsScreen extends ConsumerWidget {
                 error: (_, __) => const SizedBox.shrink(),
               ),
 
-              // 4. Habits Section
+              // Habits
               _buildSectionHeader(context, 'Weekly Activity'),
               const SizedBox(height: 12),
               _buildHabitsCard(context, habits, isDark),
               const SizedBox(height: 28),
 
-              // 5. Genre Breakdown Section
+              // Genre Breakdown
               genresAsync.when(
                 data: (genres) {
                   if (genres.isEmpty) return const SizedBox.shrink();
@@ -191,12 +255,16 @@ class AudiobookStatsScreen extends ConsumerWidget {
                       _buildSectionHeader(context, 'Genre Breakdown'),
                       const SizedBox(height: 12),
                       _buildGenreCard(context, genres, isDark),
+                      const SizedBox(height: 28),
                     ],
                   );
                 },
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
               ),
+
+              // Top 10 Authors
+              _buildAuthorsColumn(context, authorsAsync, isDark),
             ],
           ),
         );
@@ -219,6 +287,223 @@ class AudiobookStatsScreen extends ConsumerWidget {
           ),
     );
   }
+
+  // ── Activity Calendar ────────────────────────────────────────
+
+  Widget _buildActivityCalendar(BuildContext context, WidgetRef ref, bool isDark) {
+    final calendarMonth = ref.watch(calendarMonthProvider);
+    final dayDataAsync = ref.watch(monthListeningDataProvider(calendarMonth));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Month header with navigation
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => ref.read(calendarMonthProvider.notifier).previousMonth(),
+            ),
+            Text(
+              '${_monthName(calendarMonth.month)} ${calendarMonth.year}',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              onPressed: () => ref.read(calendarMonthProvider.notifier).nextMonth(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Day of week headers
+        Row(
+          children: ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => Expanded(
+            child: Center(
+              child: Text(d, style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white38 : Colors.black38,
+              )),
+            ),
+          )).toList(),
+        ),
+        const SizedBox(height: 4),
+        // Calendar grid
+        dayDataAsync.when(
+          data: (dayData) => _buildCalendarGrid(context, calendarMonth, dayData, isDark),
+          loading: () => const SizedBox(
+            height: 200, child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          error: (_, __) => const SizedBox(height: 200),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarGrid(BuildContext context, DateTime month, Map<int, Map<String, dynamic>> dayData, bool isDark) {
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final firstWeekday = DateTime(month.year, month.month, 1).weekday; // 1=Mon ... 7=Sun
+    final today = DateTime.now();
+    final todayDay = (today.year == month.year && today.month == month.month) ? today.day : -1;
+
+    // Find max seconds for color intensity scaling
+    double maxSec = 1;
+    for (final entry in dayData.entries) {
+      final sec = (entry.value['seconds'] as int?)?.toDouble() ?? 0;
+      if (sec > maxSec) maxSec = sec;
+    }
+
+    final cells = <Widget>[];
+    // Leading empty cells
+    for (int i = 1; i < firstWeekday; i++) {
+      cells.add(const Expanded(child: SizedBox(height: 38)));
+    }
+    // Day cells
+    for (int day = 1; day <= daysInMonth; day++) {
+      final data = dayData[day];
+      final sec = (data?['seconds'] as int?) ?? 0;
+      final intensity = maxSec > 0 ? (sec / maxSec).clamp(0.0, 1.0) : 0.0;
+      final isToday = day == todayDay;
+      final hasActivity = sec > 0;
+
+      cells.add(Expanded(
+        child: GestureDetector(
+          onTap: hasActivity ? () => _showDayDetail(context, day, data!, isDark) : null,
+          child: Container(
+            height: 38,
+            margin: const EdgeInsets.all(1.5),
+            decoration: BoxDecoration(
+              color: hasActivity
+                  ? Color.lerp(
+                      isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      Colors.amber,
+                      intensity,
+                    )
+                  : (isDark ? Colors.grey.shade900 : Colors.grey.shade100),
+              borderRadius: BorderRadius.circular(6),
+              border: isToday ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null,
+            ),
+            child: Center(
+              child: Text(
+                '$day',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                  color: hasActivity ? Colors.white : (isDark ? Colors.white38 : Colors.black38),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ));
+    }
+
+    return Column(
+      children: [
+        // Calendar grid rows (up to 6 rows)
+        ...List.generate(6, (row) {
+          final start = row * 7;
+          final rowCells = cells.skip(start).take(7).toList();
+          if (rowCells.isEmpty) return const SizedBox.shrink();
+          if (rowCells.length < 7) {
+            // Pad remaining cells
+            while (rowCells.length < 7) {
+              rowCells.add(const Expanded(child: SizedBox(height: 38)));
+            }
+          }
+          return Row(children: rowCells);
+        }).where((w) => w is SizedBox ? false : true),
+        // Legend
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('Less', style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.black38)),
+            const SizedBox(width: 4),
+            ...[-0.25, 0.25, 0.5, 0.75, 1.0].map((v) => Container(
+              width: 12, height: 12, margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: Color.lerp(
+                  isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                  Colors.amber, v,
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            )),
+            const SizedBox(width: 4),
+            Text('More', style: TextStyle(fontSize: 10, color: isDark ? Colors.white38 : Colors.black38)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _showDayDetail(BuildContext context, int day, Map<String, dynamic> data, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Day $day', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            _detailRow(Icons.headphones_outlined, 'Listening time', data['formattedTime'] as String? ?? '0m'),
+            const SizedBox(height: 10),
+            _detailRow(Icons.book_outlined, 'Books listened', '${data['booksCount'] ?? 0}'),
+            const SizedBox(height: 10),
+            _detailRow(Icons.playlist_play_rounded, 'Chapters played', '${data['chaptersCount'] ?? 0}'),
+            if ((data['bookTitles'] as List?)?.isNotEmpty == true) ...[
+              const SizedBox(height: 14),
+              Text('Books', style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white60 : Colors.black54,
+              )),
+              const SizedBox(height: 6),
+              ...((data['bookTitles'] as List).map((t) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('• $t', style: const TextStyle(fontSize: 13)),
+              ))),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.amber),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.amber)),
+      ],
+    );
+  }
+
+  String _monthName(int month) {
+    const names = ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    return names[month - 1];
+  }
+
+  // ── Stat Card ────────────────────────────────────────────────
 
   Widget _buildStatCard(
     BuildContext context, {
@@ -270,6 +555,8 @@ class AudiobookStatsScreen extends ConsumerWidget {
     );
   }
 
+  // ── Streak Card ──────────────────────────────────────────────
+
   Widget _buildStreakCard(BuildContext context, int streak, bool isDark) {
     return Container(
       width: double.infinity,
@@ -302,7 +589,7 @@ class AudiobookStatsScreen extends ConsumerWidget {
                 shape: BoxShape.circle,
               ),
               child: const Text(
-                '🔥',
+                '\u{1F525}',
                 style: TextStyle(fontSize: 28),
               ),
             ),
@@ -335,6 +622,8 @@ class AudiobookStatsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  // ── Top Books List ───────────────────────────────────────────
 
   Widget _buildTopBooksList(
       BuildContext context, List<Map<String, dynamic>> books, bool isDark) {
@@ -438,6 +727,8 @@ class AudiobookStatsScreen extends ConsumerWidget {
     );
   }
 
+  // ── Habits Card (Weekly Activity) ────────────────────────────
+
   Widget _buildHabitsCard(
       BuildContext context, Map<String, dynamic> habits, bool isDark) {
     final weekdayCounts = habits['weekdays'] as Map<int, int>;
@@ -517,6 +808,8 @@ class AudiobookStatsScreen extends ConsumerWidget {
     );
   }
 
+  // ── Old: Genre Breakdown Card ────────────────────────────────
+
   Widget _buildGenreCard(BuildContext context, List<Map<String, dynamic>> genres,
       bool isDark) {
     final colors = [
@@ -580,5 +873,203 @@ class AudiobookStatsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildAuthorsColumn(BuildContext context, AsyncValue<List<Map<String, dynamic>>> authorsAsync, bool isDark) {
+    return GlassCard(
+      padding: const EdgeInsets.all(14),
+      borderRadius: 16,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Top 10 Authors', style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          )),
+          const SizedBox(height: 12),
+          authorsAsync.when(
+            data: (authors) {
+              if (authors.isEmpty) return const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('No author data',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+              );
+              return Column(
+                children: authors.asMap().entries.map((entry) {
+                  final i = entry.key + 1;
+                  final a = entry.value;
+                  final count = a['count'] as int? ?? 0;
+                  final percent = a['percent'] as double? ?? 0.0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          child: Text(
+                            '$i.',
+                            style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white38 : Colors.black38,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            a['author'] as String? ?? '',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: SizedBox(
+                            width: 60,
+                            height: 6,
+                            child: LinearProgressIndicator(
+                              value: percent.clamp(0.0, 1.0),
+                              backgroundColor: isDark ? Colors.white12 : Colors.black12,
+                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.amber),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 24,
+                          child: Text(
+                            '$count',
+                            style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+            loading: () => const SizedBox(height: 40, child: Center(child: SizedBox(
+              width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ))),
+            error: (_, __) => const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Error', style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Dialogs ──────────────────────────────────────────────────
+
+  Future<void> _showGoalSettingsDialog(BuildContext context, WidgetRef ref) async {
+    final goals = await ref.read(listeningGoalsProvider.future);
+    final dailyCtrl = TextEditingController(text: goals.dailyMinutes > 0 ? goals.dailyMinutes.toString() : '');
+    final weeklyCtrl = TextEditingController(text: goals.weeklyMinutes > 0 ? goals.weeklyMinutes.toString() : '');
+
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Listening Goals'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: dailyCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Daily goal (minutes)',
+                hintText: 'e.g. 30',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: weeklyCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Weekly goal (minutes)',
+                hintText: 'e.g. 180',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final daily = int.tryParse(dailyCtrl.text) ?? 0;
+              final weekly = int.tryParse(weeklyCtrl.text) ?? 0;
+              setListeningGoals(
+                ref,
+                dailyMinutes: daily > 0 ? daily : null,
+                weeklyMinutes: weekly > 0 ? weekly : null,
+              );
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showResetConfirmationDialog(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_rounded, color: Colors.redAccent, size: 24),
+            SizedBox(width: 8),
+            Text('Reset All Statistics'),
+          ],
+        ),
+        content: const Text(
+          'This will permanently delete:\n\n'
+          '• All listening history and progress\n'
+          '• Book metadata cache\n'
+          '• Continue Listening shelf\n'
+          '• Daily & weekly goals\n\n'
+          'Your audiobook files will NOT be deleted.\n\n'
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Reset Everything'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      await resetAllAudiobookStats(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All audiobook statistics have been reset.')),
+        );
+      }
+    }
   }
 }

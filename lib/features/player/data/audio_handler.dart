@@ -1881,6 +1881,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       final volume = extras['volume'] as double?;
       if (volume != null) _player.setVolume(volume);
       return true;
+    } else if (name == 'setSpeed' && extras != null) {
+      final speed = extras['speed'] as double?;
+      if (speed != null) _player.setSpeed(speed);
+      return true;
     }
     return super.customAction(name, extras);
   }

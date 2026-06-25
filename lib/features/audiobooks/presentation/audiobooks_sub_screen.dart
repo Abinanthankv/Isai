@@ -20,8 +20,10 @@ class AudiobooksSubScreen extends ConsumerStatefulWidget {
 
 class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _continueSearchController = TextEditingController();
   Timer? _debounce;
   String _libraryTab = 'local';
+  String _librarySort = 'recent'; // recent, author, title, progress
 
   static const List<String> _genres = [
     'All',
@@ -39,6 +41,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _continueSearchController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -290,29 +293,75 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
           inProgressAsync.when(
             data: (progressList) {
               if (progressList.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+
+              final filteredList = _continueSearchController.text.isEmpty
+                  ? progressList
+                  : progressList.where((p) =>
+                      p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
+                      p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
+                    ).toList();
+
               return SliverToBoxAdapter(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text(
-                        'Continue Listening',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Continue Listening',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          ),
+                          if (progressList.length > 3)
+                            SizedBox(
+                              width: 140,
+                              height: 32,
+                              child: TextField(
+                                controller: _continueSearchController,
+                                onChanged: (_) => setState(() {}),
+                                style: const TextStyle(fontSize: 12),
+                                decoration: InputDecoration(
+                                  hintText: 'Search...',
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  suffixIcon: _continueSearchController.text.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear, size: 14),
+                                          onPressed: () {
+                                            _continueSearchController.clear();
+                                            setState(() {});
+                                          },
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    SizedBox(
-                      height: 180,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: progressList.length,
-                        itemBuilder: (context, index) {
-                          final progress = progressList[index];
-                          return _buildProgressCard(context, progress);
-                        },
+                    if (filteredList.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      )
+                    else
+                      SizedBox(
+                        height: 180,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          itemCount: filteredList.length,
+                          itemBuilder: (context, index) {
+                            final progress = filteredList[index];
+                            return _buildProgressCard(context, progress);
+                          },
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -336,6 +385,48 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
             },
           ),
 
+          // Wishlist section
+          ref.watch(audiobookWishlistProvider).when(
+            data: (wishlist) {
+              if (wishlist.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+              return SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        'Plan to Read (${wishlist.length})',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 180,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: wishlist.length,
+                        itemBuilder: (context, index) {
+                          final item = wishlist[index];
+                          final book = AudiobookResult(
+                            id: item.bookId,
+                            title: item.title,
+                            author: item.author,
+                            artworkUrl: item.artworkUrl,
+                          );
+                          return _buildLocalBookCard(context, book);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+            error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+          ),
+
           // In Library (local audiobooks)
           localAudiobooksAsync.when(
             data: (allBooks) {
@@ -344,7 +435,18 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
               final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
               final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
 
-              final displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
+              List<AudiobookResult> displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
+              switch (_librarySort) {
+                case 'author':
+                  displayBooks = List.from(displayBooks)..sort((a, b) => a.author.compareTo(b.author));
+                  break;
+                case 'title':
+                  displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
+                  break;
+                case 'recent':
+                default:
+                  break;
+              }
 
               return SliverToBoxAdapter(
                 child: Column(
@@ -359,7 +461,40 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                             'In Library',
                             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                           ),
-                          SegmentedButton<String>(
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Sort dropdown
+                              PopupMenuButton<String>(
+                                icon: const Icon(Icons.sort_rounded, size: 20),
+                                tooltip: 'Sort by',
+                                onSelected: (value) => setState(() => _librarySort = value),
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(value: 'recent', child: Row(
+                                    children: [
+                                      Icon(Icons.access_time_rounded, size: 18, color: _librarySort == 'recent' ? Theme.of(context).colorScheme.primary : null),
+                                      const SizedBox(width: 8),
+                                      Text('Recently Added', style: TextStyle(fontWeight: _librarySort == 'recent' ? FontWeight.bold : FontWeight.normal)),
+                                    ],
+                                  )),
+                                  PopupMenuItem(value: 'author', child: Row(
+                                    children: [
+                                      Icon(Icons.person_rounded, size: 18, color: _librarySort == 'author' ? Theme.of(context).colorScheme.primary : null),
+                                      const SizedBox(width: 8),
+                                      Text('Author', style: TextStyle(fontWeight: _librarySort == 'author' ? FontWeight.bold : FontWeight.normal)),
+                                    ],
+                                  )),
+                                  PopupMenuItem(value: 'title', child: Row(
+                                    children: [
+                                      Icon(Icons.sort_by_alpha_rounded, size: 18, color: _librarySort == 'title' ? Theme.of(context).colorScheme.primary : null),
+                                      const SizedBox(width: 8),
+                                      Text('Title', style: TextStyle(fontWeight: _librarySort == 'title' ? FontWeight.bold : FontWeight.normal)),
+                                    ],
+                                  )),
+                                ],
+                              ),
+                              const SizedBox(width: 4),
+                              SegmentedButton<String>(
                             segments: const [
                               ButtonSegment<String>(
                                 value: 'local',
@@ -382,6 +517,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                             style: const ButtonStyle(
                               visualDensity: VisualDensity.compact,
                             ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -395,7 +532,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                               ? 'No downloaded or local books.'
                               : 'No books in TorBox cloud library.',
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                             fontSize: 14,
                           ),
                         ),
@@ -422,6 +559,36 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
             error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
           ),
 
+          // ── Discovery Sections ──
+          _buildDiscoverySection(
+            context,
+            title: 'Trending',
+            icon: Icons.trending_up_rounded,
+            async: ref.watch(trendingAudiobooksProvider),
+            onSeeMore: () => _openCatalogScreen(context, 'Trending', ref.read(trendingAudiobooksProvider)),
+          ),
+          _buildDiscoverySection(
+            context,
+            title: 'New Releases',
+            icon: Icons.fiber_new_rounded,
+            async: ref.watch(newReleasesAudiobooksProvider),
+            onSeeMore: () => _openCatalogScreen(context, 'New Releases', ref.read(newReleasesAudiobooksProvider)),
+          ),
+          _buildDiscoverySection(
+            context,
+            title: 'Top Rated',
+            icon: Icons.star_rounded,
+            async: ref.watch(topRatedAudiobooksProvider),
+            onSeeMore: () => _openCatalogScreen(context, 'Top Rated', ref.read(topRatedAudiobooksProvider)),
+          ),
+          _buildDiscoverySection(
+            context,
+            title: 'Free Classics',
+            icon: Icons.auto_stories_rounded,
+            async: ref.watch(freeClassicsProvider),
+            onSeeMore: () => _openCatalogScreen(context, 'Free Classics', ref.read(freeClassicsProvider)),
+          ),
+
           // Browse Catalog Title
           SliverToBoxAdapter(
             child: Padding(
@@ -441,7 +608,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => AudiobookCatalogAllScreen(catalog: catalog),
+                              builder: (_) => AudiobookCatalogAllScreen(title: 'Browse Audiobooks', catalog: catalog),
                             ),
                           );
                         },
@@ -599,19 +766,19 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 
                 switch (format) {
                   case 'EPUB':
-                    bgColor = Colors.orange.withOpacity(0.15);
+                    bgColor = Colors.orange.withValues(alpha: 0.15);
                     fgColor = Colors.orange.shade800;
                     break;
                   case 'PDF':
-                    bgColor = Colors.red.withOpacity(0.15);
+                    bgColor = Colors.red.withValues(alpha: 0.15);
                     fgColor = Colors.red.shade800;
                     break;
                   case 'MOBI':
-                    bgColor = Colors.blue.withOpacity(0.15);
+                    bgColor = Colors.blue.withValues(alpha: 0.15);
                     fgColor = Colors.blue.shade800;
                     break;
                   default:
-                    bgColor = Colors.green.withOpacity(0.15);
+                    bgColor = Colors.green.withValues(alpha: 0.15);
                     fgColor = Colors.green.shade800;
                 }
                 
@@ -642,7 +809,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ],
@@ -697,6 +864,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
               imageUrl: url,
               width: width,
               height: height,
+              memCacheWidth: (width != null && width.isFinite) ? width.round() : null,
+              memCacheHeight: (height != null && height.isFinite) ? height.round() : null,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
                 width: width,
@@ -838,55 +1007,358 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 borderRadius: 12,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    value: progress.progressPercent,
+                    strokeWidth: 4,
+                    strokeCap: StrokeCap.round,
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${(progress.progressPercent * 100).round()}%',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
             Text(
               progress.book.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: progress.progressPercent,
-              minHeight: 4,
-              borderRadius: BorderRadius.circular(2),
-            ),
           ],
         ),
       ),
     );
   }
+
+  void _openCatalogScreen(BuildContext context, String title, AsyncValue<List<AudiobookResult>> asyncValue) {
+    asyncValue.whenData((catalog) {
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AudiobookCatalogAllScreen(title: title, catalog: catalog),
+          ),
+        );
+      }
+    });
+  }
+
+  Widget _buildDiscoverySection(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required AsyncValue<List<AudiobookResult>> async,
+    required VoidCallback onSeeMore,
+  }) {
+    return async.when(
+      data: (books) {
+        if (books.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        final theme = Theme.of(context);
+        return SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(icon, size: 20, color: theme.colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text(
+                            title,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      TextButton(
+                        onPressed: onSeeMore,
+                        child: const Text('See More'),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: books.length,
+                    itemBuilder: (context, index) {
+                      final book = books[index];
+                      return _buildLocalBookCard(context, book);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+    );
+  }
 }
 
-class AudiobookCatalogAllScreen extends StatelessWidget {
+class AudiobookCatalogAllScreen extends ConsumerStatefulWidget {
+  final String title;
   final List<AudiobookResult> catalog;
 
-  const AudiobookCatalogAllScreen({super.key, required this.catalog});
+  const AudiobookCatalogAllScreen({super.key, required this.title, required this.catalog});
+
+  @override
+  ConsumerState<AudiobookCatalogAllScreen> createState() => _AudiobookCatalogAllScreenState();
+}
+
+class _AudiobookCatalogAllScreenState extends ConsumerState<AudiobookCatalogAllScreen> {
+  bool _isGridView = true;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<AudiobookResult>? _searchResults;
+  bool _isSearching = false;
+  Timer? _searchDebounce;
+
+  List<AudiobookResult> get _displayedCatalog => _searchResults ?? widget.catalog;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _searchItunes(String query) async {
+    _searchDebounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = null;
+        _isSearching = false;
+        _searchQuery = '';
+      });
+      return;
+    }
+    setState(() { _searchQuery = query; });
+
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
+      setState(() => _isSearching = true);
+      try {
+        final repo = ref.read(audiobookRepositoryProvider);
+        final results = await repo.searchItunesCatalog(query);
+        if (mounted) {
+          setState(() {
+            _searchResults = results;
+            _isSearching = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) setState(() => _isSearching = false);
+      }
+    });
+  }
+
+  String _formatDuration(int? millis) {
+    if (millis == null || millis <= 0) return '';
+    final duration = Duration(milliseconds: millis);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Browse Audiobooks'),
+        title: Text(widget.title),
         backgroundColor: Colors.transparent,
         elevation: 0,
-      ),
-      body: SafeArea(
-        child: GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 0.7,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
+        actions: [
+          IconButton(
+            icon: Icon(_isGridView ? Icons.list_rounded : Icons.grid_view_rounded),
+            tooltip: _isGridView ? 'Switch to list view' : 'Switch to grid view',
+            onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
-          itemCount: catalog.length,
-          itemBuilder: (context, index) {
-            final book = catalog[index];
-            return _buildGridCardForAllScreen(context, book);
-          },
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SearchBar(
+              controller: _searchController,
+              hintText: 'Search iTunes catalog...',
+              leading: const Icon(Icons.search),
+              trailing: [
+                if (_searchQuery.isNotEmpty || _searchResults != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                      _searchDebounce?.cancel();
+                      setState(() {
+                        _searchResults = null;
+                        _isSearching = false;
+                        _searchQuery = '';
+                      });
+                    },
+                  ),
+              ],
+              onChanged: _searchItunes,
+            ),
+          ),
+          Expanded(
+            child: _isSearching
+                ? const Center(child: CircularProgressIndicator())
+                : _displayedCatalog.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_off_rounded, size: 48, color: theme.colorScheme.onSurfaceVariant),
+                            const SizedBox(height: 12),
+                            Text(
+                              _searchQuery.isNotEmpty
+                                  ? 'No results for "$_searchQuery"'
+                                  : 'No audiobooks available',
+                              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      )
+                    : _isGridView
+                        ? _buildGridView(_displayedCatalog)
+                        : _buildListView(_displayedCatalog),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGridView(List<AudiobookResult> catalog) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.7,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: catalog.length,
+      itemBuilder: (context, index) {
+        final book = catalog[index];
+        return _buildGridCardForAllScreen(context, book);
+      },
+    );
+  }
+
+  Widget _buildListView(List<AudiobookResult> catalog) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: catalog.length,
+      itemBuilder: (context, index) {
+        final book = catalog[index];
+        return _buildListTileForAllScreen(context, book);
+      },
+    );
+  }
+
+  Widget _buildListTileForAllScreen(BuildContext context, AudiobookResult book) {
+    final durationStr = _formatDuration(book.durationMillis);
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(8),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: book.artworkUrl!,
+                    memCacheWidth: 56,
+                    memCacheHeight: 56,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: theme.colorScheme.surfaceContainerHighest),
+                    errorWidget: (_, __, ___) => Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.book, size: 28),
+                    ),
+                  )
+                : Container(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.book, size: 28),
+                  ),
+            ),
+          ),
+        title: Text(
+          book.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Text(
+              book.author,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+            ),
+            if (durationStr.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Icon(Icons.timer_outlined, size: 12, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 4),
+                  Text(
+                    durationStr,
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book)),
+          );
+        },
       ),
     );
   }
@@ -949,3 +1421,5 @@ class AudiobookCatalogAllScreen extends StatelessWidget {
     );
   }
 }
+
+

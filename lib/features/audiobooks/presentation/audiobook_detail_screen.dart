@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -19,7 +20,7 @@ import 'package:isai/main.dart'; // For audioHandler
 import 'package:audio_service/audio_service.dart';
 
 /// Provider to track if the chapters list is expanded for a given audiobook ID.
-final chaptersExpandedProvider = StateProvider.family<bool, String>((ref, bookId) => true);
+final chaptersExpandedProvider = StateProvider.family<bool, String>((ref, bookId) => false);
 
 /// Provider to track which tab is selected inside the progress card: 'listening' or 'reading'
 final selectedProgressTabProvider = StateProvider.family<String, String>((ref, bookId) => 'listening');
@@ -45,13 +46,14 @@ class AudiobookDetailScreen extends ConsumerWidget {
         : null;
     final epubPathAsync = ref.watch(bookEpubPathProvider(normalBook.id));
     final epubProgressAsync = ref.watch(epubProgressProvider(normalBook.id));
-    
+    final wishlistAsync = ref.watch(isBookInWishlistProvider(normalBook.id));
+    final inLibraryAsync = ref.watch(isBookInLibraryProvider(normalBook.id));
+
     // Build a map of chapterIndex -> DbAudiobookProgress for quick lookup
     final Map<int, DbAudiobookProgress> chapterProgressMap = {};
     final progressList = chapterProgressAsync.value;
     if (progressList != null) {
-      for (final p in progressList) {
-        final progress = p as DbAudiobookProgress;
+      for (final progress in progressList) {
         chapterProgressMap[progress.chapterIndex] = progress;
       }
     }
@@ -62,6 +64,10 @@ class AudiobookDetailScreen extends ConsumerWidget {
     // Use enriched details if available, else fallback to passed book
     final displayBook = detailsAsync.value ?? normalBook;
     final downloadState = ref.watch(audiobookDownloadProvider)[displayBook.id];
+
+    // Pre-compute torrent search query so it survives collapse/expand of chapters
+    final torrentSearchQuery = _sanitizeTorrentQuery(displayBook.title, displayBook.author);
+    final torrentSearchAsync = ref.watch(bookTorrentSearchProvider(torrentSearchQuery));
 
     // Proactively cache metadata to ensure the DB registers the correct title/author immediately.
     // We cache displayBook which contains enriched details if loaded, rather than normalBook.
@@ -79,12 +85,6 @@ class AudiobookDetailScreen extends ConsumerWidget {
             expandedHeight: 320,
             pinned: true,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                displayBook.title,
-                style: const TextStyle(shadows: [
-                  Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1))
-                ]),
-              ),
               background: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -107,14 +107,14 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     ),
                     Center(
                       child: Container(
-                        width: 180,
-                        height: 180,
-                        margin: const EdgeInsets.only(top: 20),
+                        width: 200,
+                        height: 200,
+                        margin: const EdgeInsets.only(top: 16),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.4),
+                              color: Colors.black.withValues(alpha: 0.4),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -206,8 +206,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Row(
-                          children: List.generate(5, (index) {
+                          ...List.generate(5, (index) {
                             final starVal = index + 1;
                             if (displayBook.rating! >= starVal) {
                               return const Icon(Icons.star_rounded, color: Colors.amber, size: 18);
@@ -217,7 +216,6 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               return const Icon(Icons.star_outline_rounded, color: Colors.amber, size: 18);
                             }
                           }),
-                        ),
                         const SizedBox(width: 8),
                         Text(
                           displayBook.rating!.toStringAsFixed(1),
@@ -241,66 +239,131 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     AudiobookPreviewWidget(previewUrl: displayBook.previewUrl!),
                   ],
                    if (displayBook.id.startsWith('local:') || displayBook.id.startsWith('torrent:')) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _showMetadataSearchSheet(context, ref, displayBook),
-                            icon: const Icon(Icons.cloud_sync_rounded, size: 18),
-                            label: const Text('Fetch Metadata'),
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Re-extracting chapters from files...')),
-                              );
-                              final repo = ref.read(audiobookRepositoryProvider);
-                              print('[RefreshChapters] Refreshing chapters for: ${displayBook.id}');
-                              final localDir = await repo.getLocalBookDirectoryForBackup(displayBook.id);
-                              print('[RefreshChapters] Local directory: $localDir');
-                              if (localDir != null) {
-                                final metaFile = File(p.join(localDir, 'metadata.json'));
-                                if (await metaFile.exists()) {
-                                  print('[RefreshChapters] Deleting existing metadata.json');
-                                  await metaFile.delete();
+                     const SizedBox(height: 12),
+                     Row(
+                       children: [
+                         Expanded(
+                           child: OutlinedButton.icon(
+                             onPressed: () => _showMetadataSearchSheet(context, ref, displayBook),
+                             icon: const Icon(Icons.cloud_sync_rounded, size: 18),
+                             label: const Text('Fetch Metadata'),
+                             style: OutlinedButton.styleFrom(
+                               visualDensity: VisualDensity.compact,
+                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                             ),
+                           ),
+                         ),
+                         const SizedBox(width: 8),
+                         Expanded(
+                           child: OutlinedButton.icon(
+                             onPressed: () async {
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 const SnackBar(content: Text('Re-extracting chapters from files...')),
+                               );
+                               final repo = ref.read(audiobookRepositoryProvider);
+                               print('[RefreshChapters] Refreshing chapters for: ${displayBook.id}');
+                               final localDir = await repo.getLocalBookDirectoryForBackup(displayBook.id);
+                               print('[RefreshChapters] Local directory: $localDir');
+                               if (localDir != null) {
+                                 final metaFile = File(p.join(localDir, 'metadata.json'));
+                                 if (await metaFile.exists()) {
+                                   print('[RefreshChapters] Deleting existing metadata.json');
+                                   await metaFile.delete();
+                                 }
+                               }
+                               
+                                ref.invalidate(bookChaptersProvider(displayBook.id));
+                                ref.invalidate(bookDetailsProvider(displayBook.id));
+                                ref.invalidate(bookChapterProgressProvider(displayBook.id));
+                                
+                                try {
+                                  final freshChapters = await repo.getBookChapters(displayBook.id, forceParse: true);
+                                  print('[RefreshChapters] Scanned chapters count: ${freshChapters.length}');
+                                  await repo.cacheBookMetadata(displayBook);
+                                  if (freshChapters.isNotEmpty && localDir != null) {
+                                    final metaFile = File(p.join(localDir, 'metadata.json'));
+                                    final chaptersList = freshChapters.map((ch) => {
+                                      'id': ch.id,
+                                      'title': ch.title,
+                                      'chapterNumber': ch.chapterNumber,
+                                      'startTimeMillis': ch.startTimeMillis,
+                                      'durationMillis': ch.durationMillis,
+                                      'streamUrl': ch.streamUrl,
+                                    }).toList();
+                                    Map<String, dynamic> metaMap = {};
+                                    if (await metaFile.exists()) {
+                                      try {
+                                        metaMap = jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>;
+                                      } catch (_) {}
+                                    }
+                                    metaMap['chapters'] = chaptersList;
+                                    metaMap['bookId'] = displayBook.id;
+                                    metaMap['title'] = displayBook.title;
+                                    metaMap['author'] = displayBook.author;
+                                    if (displayBook.totalChapters != null) metaMap['totalChapters'] = displayBook.totalChapters;
+                                    await metaFile.writeAsString(jsonEncode(metaMap));
+                                  }
+                                  ref.invalidate(bookChaptersProvider(displayBook.id));
+                                  print('[RefreshChapters] Successfully regenerated metadata.json and invalidated provider');
+                                } catch (e) {
+                                  print('[RefreshChapters] Error rebuilding chapters: $e');
                                 }
-                              }
-                              
-                              ref.invalidate(bookChaptersProvider(displayBook.id));
-                              ref.invalidate(bookDetailsProvider(displayBook.id));
-                              ref.invalidate(bookChapterProgressProvider(displayBook.id));
-                              
-                              try {
-                                final freshChapters = await ref.read(bookChaptersProvider(displayBook.id).future);
-                                print('[RefreshChapters] Scanned chapters count: ${freshChapters.length}');
-                                await repo.cacheBookMetadata(displayBook);
-                                print('[RefreshChapters] Successfully regenerated metadata.json');
-                              } catch (e) {
-                                print('[RefreshChapters] Error rebuilding chapters: $e');
-                              }
-                            },
-                            icon: const Icon(Icons.refresh_rounded, size: 18),
-                            label: const Text('Refresh Chapters'),
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
+                             },
+                             icon: const Icon(Icons.refresh_rounded, size: 18),
+                             label: const Text('Refresh Chapters'),
+                             style: OutlinedButton.styleFrom(
+                               visualDensity: VisualDensity.compact,
+                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                             ),
+                           ),
+                         ),
+                       ],
+                     ),
+                   ],
+                   const SizedBox(height: 12),
+                    inLibraryAsync.when(
+                      data: (inLibrary) {
+                        if (inLibrary) return const SizedBox.shrink();
+                        return wishlistAsync.when(
+                          data: (inWishlist) => Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await toggleWishlist(displayBook);
+                                    ref.invalidate(isBookInWishlistProvider(normalBook.id));
+                                    ref.invalidate(audiobookWishlistProvider);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(inWishlist ? 'Removed from Plan to Read' : 'Added to Plan to Read')),
+                                      );
+                                    }
+                                  },
+                                  icon: Icon(
+                                    inWishlist ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(inWishlist ? 'In Plan to Read' : 'Plan to Read'),
+                                  style: OutlinedButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    foregroundColor: inWishlist ? Theme.of(context).colorScheme.primary : null,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          loading: () => const SizedBox.shrink(),
+                          error: (_, __) => const SizedBox.shrink(),
+                        );
+                      },
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
-                  ],
-                  if (torrentStatusAsync != null) ...[
+                    if (torrentStatusAsync != null) ...[
                     const SizedBox(height: 12),
                     torrentStatusAsync.when(
                       data: (status) {
@@ -312,11 +375,11 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: cached 
-                                  ? Colors.green.withOpacity(0.15) 
-                                  : Colors.orange.withOpacity(0.15),
+                                  ? Colors.green.withValues(alpha: 0.15) 
+                                  : Colors.orange.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: cached ? Colors.green.withOpacity(0.5) : Colors.orange.withOpacity(0.5),
+                                  color: cached ? Colors.green.withValues(alpha: 0.5) : Colors.orange.withValues(alpha: 0.5),
                                   width: 1,
                                 ),
                               ),
@@ -345,11 +408,11 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: inLibrary 
-                                  ? Colors.blue.withOpacity(0.15) 
-                                  : Colors.grey.withOpacity(0.15),
+                                  ? Colors.blue.withValues(alpha: 0.15) 
+                                  : Colors.grey.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: inLibrary ? Colors.blue.withOpacity(0.5) : Colors.grey.withOpacity(0.5),
+                                  color: inLibrary ? Colors.blue.withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.5),
                                   width: 1,
                                 ),
                               ),
@@ -385,7 +448,9 @@ class AudiobookDetailScreen extends ConsumerWidget {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  if (displayBook.description != null && displayBook.description!.isNotEmpty) ...[
+                  if (displayBook.description != null && 
+                      displayBook.description!.isNotEmpty &&
+                      !displayBook.description!.startsWith('JSON_EXT:')) ...[
                     Text(
                       'About',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -596,8 +661,16 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
+                children: [
+                  // Book Title
+                  Text(
+                    displayBook.title,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
                                           children: [
                                             const SizedBox(
                                               width: 14,
@@ -618,7 +691,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                           downloadState.currentChapterTitle,
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -628,7 +701,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                           '$downloadedMB MB / $totalMB (${(progress * 100).round()}%)',
                                           style: TextStyle(
                                             fontSize: 11,
-                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                                           ),
                                         ),
                                       ],
@@ -844,205 +917,169 @@ class AudiobookDetailScreen extends ConsumerWidget {
             chaptersAsync.when(
             data: (chapters) {
               if (chapters.isEmpty) {
-                return Consumer(
-                  builder: (context, ref, child) {
-                    // Helper to clean search string for torrent indexers
-                    String sanitizeTorrentQuery(String title, String author) {
-                      String cleanTitle = title.replaceAll(RegExp(r'\([^)]*\)'), '');
-                      cleanTitle = cleanTitle.replaceAll(RegExp(r'\[[^\]]*\]'), '');
-                      if (cleanTitle.contains(':')) {
-                        cleanTitle = cleanTitle.split(':').first;
-                      }
-                      if (cleanTitle.contains(' - ')) {
-                        cleanTitle = cleanTitle.split(' - ').first;
-                      }
-                      cleanTitle = cleanTitle
-                          .replaceAll(RegExp(r'\b(unabridged|abridged|novel|audiobook|book \d+)\b', caseSensitive: false), '')
-                          .trim();
-                      return '$cleanTitle $author'.replaceAll(RegExp(r'\s+'), ' ').trim();
-                    }
-
-                    final searchQuery = sanitizeTorrentQuery(displayBook.title, displayBook.author);
-                    final torrentsAsync = ref.watch(bookTorrentSearchProvider(searchQuery));
-                    
-                    return torrentsAsync.when(
-                      data: (torrents) {
-                        if (torrents.isEmpty) {
-                          return const SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(40),
-                                child: Text('No chapters or torrent search results found.'),
-                              ),
-                            ),
-                          );
-                        }
-                        
-                        return SliverToBoxAdapter(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                child: Text(
-                                  'No direct streams found. Search results from torrents:',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: torrents.length,
-                                itemBuilder: (context, index) {
-                                  final torrentBook = torrents[index];
-                                  return ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                                    leading: ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: SizedBox(
-                                        width: 40,
-                                        height: 40,
-                                        child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
-                                            ? CachedNetworkImage(
-                                                imageUrl: torrentBook.artworkUrl!,
-                                                fit: BoxFit.cover,
-                                                placeholder: (_, __) => Container(
-                                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                                ),
-                                                errorWidget: (_, __, ___) => Container(
-                                                  color: Theme.of(context).colorScheme.tertiaryContainer,
-                                                  child: Icon(
-                                                    Icons.download_for_offline_rounded,
-                                                    color: Theme.of(context).colorScheme.onTertiaryContainer,
-                                                  ),
-                                                ),
-                                              )
-                                            : Container(
-                                                color: Theme.of(context).colorScheme.tertiaryContainer,
-                                                child: Icon(
-                                                  Icons.download_for_offline_rounded,
-                                                  color: Theme.of(context).colorScheme.onTertiaryContainer,
-                                                ),
-                                              ),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      torrentBook.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                    ),
-                                    subtitle: Text(
-                                      torrentBook.description ?? 'Torrent file',
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.cloud_download_rounded),
-                                      color: Theme.of(context).colorScheme.primary,
-                                      iconSize: 28,
-                                      onPressed: () async {
-                                        String bookId = torrentBook.id;
-                                        if (bookId.startsWith('audiobookbay:')) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
-                                          );
-                                          final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
-                                          if (resolved != null && resolved.id.startsWith('torrent:')) {
-                                            bookId = resolved.id;
-                                          } else {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
-                                              );
-                                            }
-                                            return;
-                                          }
-                                        }
-                                        
-                                        final parts = bookId.split(':');
-                                        final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
-                                        if (magnet.isNotEmpty) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Adding torrent to TorBox...')),
-                                          );
-                                          
-                                          // Cache this book with normalized torrent ID (no magnet part)
-                                          // so it's found when opened from the library later
-                                          final normalizedTorrentId = AudiobookRepository.normalizeBookId(bookId);
-                                          final torrentAssociatedBook = AudiobookResult(
-                                            id: normalizedTorrentId,
-                                            title: displayBook.title,
-                                            author: displayBook.author,
-                                            artworkUrl: displayBook.artworkUrl,
-                                            description: displayBook.description,
-                                          );
-                                          await ref.read(audiobookRepositoryProvider).cacheBookMetadata(torrentAssociatedBook);
- 
-                                          final success = await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
-                                          if (context.mounted) {
-                                            if (success) {
-                                              ref.invalidate(localAudiobooksProvider);
-                                              ref.invalidate(inProgressAudiobooksProvider);
-                                              Navigator.pushReplacement(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => AudiobookDetailScreen(book: torrentAssociatedBook),
-                                                ),
-                                              );
-                                            }
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(
-                                                content: Text(success 
-                                                  ? 'Torrent added successfully! Loading torrent chapter list...' 
-                                                  : 'Failed to add torrent to TorBox.'),
-                                              ),
-                                            );
-                                          }
-                                        }
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      loading: () => const SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              CircularProgressIndicator(),
-                              SizedBox(height: 16),
-                              Text('Searching torrents...'),
-                            ],
-                          ),
-                        ),
-                      ),
-                      error: (e, _) => SliverFillRemaining(
+                return torrentSearchAsync.when(
+                  data: (torrents) {
+                    if (torrents.isEmpty) {
+                      return const SliverFillRemaining(
                         hasScrollBody: false,
                         child: Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(40),
-                            child: Text('Failed to search torrents: $e'),
+                            padding: EdgeInsets.all(40),
+                            child: Text('No chapters or torrent search results found.'),
                           ),
                         ),
+                      );
+                    }
+                    
+                    return SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            child: Text(
+                              'No direct streams found. Search results from torrents:',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: torrents.length,
+                            itemBuilder: (context, index) {
+                              final torrentBook = torrents[index];
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: torrentBook.artworkUrl!,
+                                            memCacheWidth: 40,
+                                            memCacheHeight: 40,
+                                            fit: BoxFit.cover,
+                                            placeholder: (_, __) => Container(
+                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                            ),
+                                            errorWidget: (_, __, ___) => Container(
+                                              color: Theme.of(context).colorScheme.tertiaryContainer,
+                                              child: Icon(
+                                                Icons.download_for_offline_rounded,
+                                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                              ),
+                                            ),
+                                          )
+                                        : Container(
+                                            color: Theme.of(context).colorScheme.tertiaryContainer,
+                                            child: Icon(
+                                              Icons.download_for_offline_rounded,
+                                              color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                                title: Text(
+                                  torrentBook.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                ),
+                                subtitle: Text(
+                                  torrentBook.description ?? 'Torrent file',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.cloud_download_rounded),
+                                  color: Theme.of(context).colorScheme.primary,
+                                  iconSize: 28,
+                                  onPressed: () async {
+                                    String bookId = torrentBook.id;
+                                    if (bookId.startsWith('audiobookbay:')) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
+                                      );
+                                      final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
+                                      if (resolved != null && resolved.id.startsWith('torrent:')) {
+                                        bookId = resolved.id;
+                                      } else {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
+                                          );
+                                        }
+                                        return;
+                                      }
+                                    }
+                                    
+                                    final parts = bookId.split(':');
+                                    final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
+                                    if (magnet.isNotEmpty) {
+                                      try {
+                                        await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Torrent added to TorBox!'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Failed to add torrent: $e')),
+                                          );
+                                        }
+                                      }
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Failed to extract magnet link.')),
+                                      );
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     );
                   },
+                  loading: () => SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Searching torrents...'),
+                        ],
+                      ),
+                    ),
+                  ),
+                  error: (e, _) => SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(40),
+                        child: Text('Failed to search torrents: $e'),
+                      ),
+                    ),
+                  ),
                 );
               }
-                           return SliverList(
+              return SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final chapter = chapters[index];
@@ -1142,7 +1179,13 @@ class AudiobookDetailScreen extends ConsumerWidget {
           )
           else
             const SliverToBoxAdapter(child: SizedBox.shrink()),
-          
+
+          // More from Author
+          _buildMoreFromAuthorSection(context, ref, displayBook),
+
+          // More from Genre
+          _buildMoreFromGenreSection(context, ref, displayBook),
+
           const SliverToBoxAdapter(child: SizedBox(height: 100)), // padding for bottom bar
         ],
       ),
@@ -1280,7 +1323,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                       color: isCurrent
                           ? Theme.of(context).colorScheme.primaryContainer
                           : (isCompleted
-                              ? Theme.of(context).colorScheme.primary.withOpacity(0.15)
+                              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
                               : Theme.of(context).colorScheme.secondaryContainer),
                       shape: BoxShape.circle,
                     ),
@@ -1315,7 +1358,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                         value: percent,
                         strokeWidth: 2.5,
                         backgroundColor: Colors.transparent,
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
                       ),
                     ),
                 ],
@@ -1520,7 +1563,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                   minHeight: 2,
                   borderRadius: BorderRadius.circular(1),
                   backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
                 ),
               ),
           ],
@@ -1548,10 +1591,10 @@ class AudiobookDetailScreen extends ConsumerWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -1562,7 +1605,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
               margin: const EdgeInsets.only(bottom: 16),
               height: 36,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -1956,6 +1999,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
     } else {
       return CachedNetworkImage(
         imageUrl: url,
+        memCacheWidth: 400,
         fit: BoxFit.cover,
         placeholder: (_, __) => Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
         errorWidget: (_, __, ___) => Container(
@@ -1970,6 +2014,330 @@ class AudiobookDetailScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Widget _buildMoreFromAuthorSection(BuildContext context, WidgetRef ref, AudiobookResult book) {
+    const placeholderAuthors = {
+      'torrent result', 'torrent source', 'local library', 'unknown author',
+      'torbox library', 'unknown',
+    };
+    final author = book.author.trim().toLowerCase();
+    if (author.isEmpty || placeholderAuthors.contains(author)) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    final async = ref.watch(authorAudiobooksProvider(book.author));
+    return async.when(
+      data: (books) {
+        // Filter out the current book by similar title
+        final filtered = books.where((b) {
+          final t1 = b.title.toLowerCase().trim();
+          final t2 = book.title.toLowerCase().trim();
+          return t1 != t2 && !t1.contains(t2) && !t2.contains(t1);
+        }).toList();
+        if (filtered.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        final theme = Theme.of(context);
+        return SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_rounded, size: 20, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'More from ${book.author}',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AuthorCatalogScreen(author: book.author),
+                            ),
+                          );
+                        },
+                        child: const Text('See More'),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final b = filtered[index];
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AudiobookDetailScreen(book: b),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 140,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ClipRect(
+                            child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: b.artworkUrl != null && b.artworkUrl!.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: b.artworkUrl!,
+                                          memCacheWidth: 140,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                          ),
+                                          errorWidget: (_, __, ___) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                            child: const Icon(Icons.book, size: 40),
+                                          ),
+                                        )
+                                      : Container(
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          child: const Icon(Icons.book, size: 40),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                b.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  if (b.rating != null) ...[
+                                    Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                                    const SizedBox(width: 2),
+                                    Flexible(
+                                      child: Text(
+                                        b.rating!.toStringAsFixed(1),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  if (b.durationMillis != null && b.durationMillis! > 0) ...[
+                                    const Spacer(),
+                                    Icon(Icons.timer_outlined, size: 11, color: theme.colorScheme.onSurfaceVariant),
+                                    const SizedBox(width: 2),
+                                    Flexible(
+                                      child: Text(
+                                        _formatDuration(b.durationMillis!),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ],
+                          ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              ),
+            ),
+          );
+        },
+        loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+        error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      );
+  }
+
+
+  Widget _buildMoreFromGenreSection(BuildContext context, WidgetRef ref, AudiobookResult book) {
+    final cached = ref.watch(bookDetailsProvider(book.id)).value;
+    final genre = cached?.genre ?? book.genre?.split(',').first.trim();
+    if (genre == null || genre.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    return ref.watch(genreAudiobooksProvider(genre)).when(
+      data: (books) {
+        final filtered = books.where((b) {
+          final t1 = b.title.toLowerCase().trim();
+          final t2 = book.title.toLowerCase().trim();
+          return b.id != book.id && t1 != t2 && !t1.contains(t2) && !t2.contains(t1);
+        }).toList();
+        if (filtered.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        final theme = Theme.of(context);
+        return SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.category_rounded, size: 20, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'More $genre',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => GenreCatalogScreen(genre: genre),
+                            ),
+                          );
+                        },
+                        child: const Text('See More'),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: filtered.length,
+                    itemBuilder: (context, index) {
+                      final b = filtered[index];
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AudiobookDetailScreen(book: b),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 140,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ClipRect(
+                            child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: b.artworkUrl != null && b.artworkUrl!.isNotEmpty
+                                      ? CachedNetworkImage(
+                                          imageUrl: b.artworkUrl!,
+                                          memCacheWidth: 140,
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                          placeholder: (_, __) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                          ),
+                                          errorWidget: (_, __, ___) => Container(
+                                            color: theme.colorScheme.surfaceContainerHighest,
+                                            child: const Icon(Icons.book, size: 40),
+                                          ),
+                                        )
+                                      : Container(
+                                          color: theme.colorScheme.surfaceContainerHighest,
+                                          child: const Icon(Icons.book, size: 40),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                b.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                b.author ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+    );
+  }
+
+  static String _sanitizeTorrentQuery(String title, String author) {
+    String cleanTitle = title.replaceAll(RegExp(r'\([^)]*\)'), '');
+    cleanTitle = cleanTitle.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    if (cleanTitle.contains(':')) {
+      cleanTitle = cleanTitle.split(':').first;
+    }
+    if (cleanTitle.contains(' - ')) {
+      cleanTitle = cleanTitle.split(' - ').first;
+    }
+    cleanTitle = cleanTitle
+        .replaceAll(RegExp(r'\b(unabridged|abridged|novel|audiobook|book \d+)\b', caseSensitive: false), '')
+        .trim();
+    return '$cleanTitle $author'.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   void _showMetadataSearchSheet(BuildContext context, WidgetRef ref, AudiobookResult currentBook) {
@@ -2129,7 +2497,7 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
               height: 4,
               margin: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4),
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -2181,6 +2549,8 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
                                   child: item.artworkUrl != null
                                       ? CachedNetworkImage(
                                           imageUrl: item.artworkUrl!,
+                                          memCacheWidth: 45,
+                                          memCacheHeight: 45,
                                           width: 45,
                                           height: 45,
                                           fit: BoxFit.cover,
@@ -2199,8 +2569,8 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
                                       final isItunes = item.id.startsWith('itunes_meta:');
                                       final sourceName = isItunes ? 'iTunes' : 'Open Library';
                                       final sourceBgColor = isItunes 
-                                          ? Colors.pink.withOpacity(0.15) 
-                                          : Colors.teal.withOpacity(0.15);
+                                          ? Colors.pink.withValues(alpha: 0.15) 
+                                          : Colors.teal.withValues(alpha: 0.15);
                                       final sourceTextColor = isItunes 
                                           ? Colors.pink.shade700 
                                           : Colors.teal.shade700;
@@ -2210,7 +2580,7 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
                                         decoration: BoxDecoration(
                                           color: sourceBgColor,
                                           borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(color: sourceTextColor.withOpacity(0.3), width: 0.5),
+                                          border: Border.all(color: sourceTextColor.withValues(alpha: 0.3), width: 0.5),
                                         ),
                                         child: Text(
                                           sourceName,
@@ -2462,6 +2832,481 @@ class _AudiobookPreviewWidgetState extends State<AudiobookPreviewWidget> {
         side: BorderSide(color: Theme.of(context).colorScheme.primary),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
+    );
+  }
+}
+
+class AuthorCatalogScreen extends ConsumerStatefulWidget {
+  final String author;
+
+  const AuthorCatalogScreen({super.key, required this.author});
+
+  @override
+  ConsumerState<AuthorCatalogScreen> createState() => _AuthorCatalogScreenState();
+}
+
+class _AuthorCatalogScreenState extends ConsumerState<AuthorCatalogScreen> {
+  bool _isGridView = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final async = ref.watch(authorAudiobooksProvider(widget.author));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.author),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(_isGridView ? Icons.list_rounded : Icons.grid_view_rounded),
+            tooltip: _isGridView ? 'Switch to list view' : 'Switch to grid view',
+            onPressed: () => setState(() => _isGridView = !_isGridView),
+          ),
+        ],
+      ),
+      body: async.when(
+        data: (books) {
+          if (books.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.person_off_rounded, size: 48, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No audiobooks found for ${widget.author}',
+                    style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final trending = books.where((b) => b.rating != null && b.rating! > 0).toList();
+
+          return CustomScrollView(
+            slivers: [
+              if (trending.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.trending_up_rounded, size: 20, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Trending',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_isGridView)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverGrid(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 0.7,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildGridCard(context, trending[index], theme),
+                        childCount: trending.length,
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildListTile(context, trending[index], theme),
+                        childCount: trending.length,
+                      ),
+                    ),
+                  ),
+              ],
+
+              // All Books section
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.library_books_rounded, size: 20, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'All Books by ${widget.author}',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${books.length} books',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_isGridView)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.7,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildGridCard(context, books[index], theme),
+                      childCount: books.length,
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildListTile(context, books[index], theme),
+                      childCount: books.length,
+                    ),
+                  ),
+                ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline_rounded, size: 48, color: theme.colorScheme.error),
+                const SizedBox(height: 12),
+                Text(
+                  'Failed to load books by ${widget.author}',
+                  style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$e',
+                  style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGridCard(BuildContext context, AudiobookResult book, ThemeData theme) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book)),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: book.artworkUrl!,
+                      memCacheWidth: 200,
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.book, size: 40),
+                      ),
+                    )
+                  : Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.book, size: 40),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            book.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              if (book.rating != null) ...[
+                Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                const SizedBox(width: 2),
+                Text(
+                  book.rating!.toStringAsFixed(1),
+                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                ),
+                if (book.ratingCount != null) ...[
+                  const SizedBox(width: 2),
+                  Text(
+                    '(${book.ratingCount})',
+                    style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListTile(BuildContext context, AudiobookResult book, ThemeData theme) {
+    final durationStr = book.durationMillis != null && book.durationMillis! > 0
+        ? _formatDurationStatic(book.durationMillis!)
+        : '';
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(8),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: book.artworkUrl!,
+                    memCacheWidth: 56,
+                    memCacheHeight: 56,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: theme.colorScheme.surfaceContainerHighest),
+                    errorWidget: (_, __, ___) => Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.book, size: 28),
+                    ),
+                  )
+                : Container(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.book, size: 28),
+                  ),
+          ),
+        ),
+        title: Text(
+          book.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                if (book.rating != null) ...[
+                  Icon(Icons.star_rounded, size: 12, color: Colors.amber),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${book.rating!.toStringAsFixed(1)} (${book.ratingCount ?? 0})',
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (durationStr.isNotEmpty) ...[
+                  Icon(Icons.timer_outlined, size: 11, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 2),
+                  Text(
+                    durationStr,
+                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book)),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _formatDurationStatic(int millis) {
+    final duration = Duration(milliseconds: millis);
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    if (hours > 0) {
+      return '${hours}h ${minutes}m';
+    } else {
+      return '${minutes}m';
+    }
+  }
+}
+
+class GenreCatalogScreen extends ConsumerStatefulWidget {
+  final String genre;
+  const GenreCatalogScreen({super.key, required this.genre});
+
+  @override
+  ConsumerState<GenreCatalogScreen> createState() => _GenreCatalogScreenState();
+}
+
+class _GenreCatalogScreenState extends ConsumerState<GenreCatalogScreen> {
+  bool _isGridView = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final async = ref.watch(genreAudiobooksProvider(widget.genre));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.genre),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(_isGridView ? Icons.list_rounded : Icons.grid_view_rounded),
+            tooltip: _isGridView ? 'Switch to list view' : 'Switch to grid view',
+            onPressed: () => setState(() => _isGridView = !_isGridView),
+          ),
+        ],
+      ),
+      body: async.when(
+        data: (books) {
+          if (books.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.category_rounded, size: 48, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No audiobooks found in ${widget.genre}',
+                    style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return CustomScrollView(
+            slivers: [
+              if (_isGridView)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  sliver: SliverGrid(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.7,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildGridCard(context, books[index], theme),
+                      childCount: books.length,
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildListTile(context, books[index], theme),
+                      childCount: books.length,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => const Center(child: Text('Failed to load books')),
+      ),
+    );
+  }
+
+  Widget _buildGridCard(BuildContext context, AudiobookResult book, ThemeData theme) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: book.artworkUrl!, memCacheWidth: 200, width: double.infinity, height: double.infinity, fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: theme.colorScheme.surfaceContainerHighest),
+                      errorWidget: (_, __, ___) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest, child: const Icon(Icons.book, size: 40),
+                      ),
+                    )
+                  : Container(color: theme.colorScheme.surfaceContainerHighest, child: const Icon(Icons.book, size: 40)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          if (book.author != null && book.author!.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(book.author!, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListTile(BuildContext context, AudiobookResult book, ThemeData theme) {
+    return ListTile(
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 48, height: 48,
+          child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
+              ? CachedNetworkImage(imageUrl: book.artworkUrl!, memCacheWidth: 48, memCacheHeight: 48, fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => Icon(Icons.book, color: theme.colorScheme.onSurfaceVariant))
+              : Icon(Icons.book, color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+      title: Text(book.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: book.author != null && book.author!.isNotEmpty
+          ? Text(book.author!, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : null,
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book))),
     );
   }
 }
