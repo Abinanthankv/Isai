@@ -316,7 +316,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
       // Build manifest id->href map
       final manifest = <String, String>{};
-      for (final item in opfDoc.findAllElements('item')) {
+      for (final item in _findLocalElements(opfDoc, 'item')) {
         final id = item.getAttribute('id');
         final href = item.getAttribute('href');
         final mediaType = item.getAttribute('media-type') ?? '';
@@ -326,7 +326,10 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       }
 
       // Get spine order
-      final spineItems = opfDoc.findAllElements('itemref').map((e) => e.getAttribute('idref')).whereType<String>().toList();
+      final spineItems = _findLocalElements(opfDoc, 'itemref')
+          .map((e) => e.getAttribute('idref'))
+          .whereType<String>()
+          .toList();
 
       // Get titles from NCX or navigation doc (optional — we'll use chapter numbers if not available)
       final ncxTitles = _extractNcxTitles(archive, baseDir, opfDoc);
@@ -350,7 +353,12 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
             ? ncxTitles[i]
             : 'Chapter ${chapters.length + 1}';
 
-        chapters.add(_EpubChapter(title: title, content: text));
+        final richContent = _htmlToRichContent(rawHtml);
+        chapters.add(_EpubChapter(
+          title: title,
+          content: text,
+          richContent: richContent,
+        ));
       }
 
       if (chapters.isEmpty) {
@@ -375,11 +383,20 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
     }
   }
 
+  /// Find elements by local name, ignoring XML namespace.
+  /// EPUB3 uses namespaces (e.g. {http://www.idpf.org/2007/opf}item,
+  /// {http://www.w3.org/1999/xhtml}li) while EPUB2 does not.
+  List<xml.XmlElement> _findLocalElements(xml.XmlNode parent, String localName) {
+    return parent.findAllElements(localName).toList()
+      ..addAll(parent.findAllElements('{http://www.idpf.org/2007/opf}$localName'))
+      ..addAll(parent.findAllElements('{http://www.w3.org/1999/xhtml}$localName'));
+  }
+
   List<String> _extractNcxTitles(Archive archive, String baseDir, xml.XmlDocument opfDoc) {
     final titles = <String>[];
     try {
-      // Try NCX navigation
-      for (final item in opfDoc.findAllElements('item')) {
+      // Try NCX navigation (EPUB2)
+      for (final item in _findLocalElements(opfDoc, 'item')) {
         final mediaType = item.getAttribute('media-type') ?? '';
         if (mediaType.contains('ncx') || (item.getAttribute('href') ?? '').endsWith('.ncx')) {
           final href = item.getAttribute('href');
@@ -400,7 +417,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
       // Try nav.xhtml (EPUB3)
       if (titles.isEmpty) {
-        for (final item in opfDoc.findAllElements('item')) {
+        for (final item in _findLocalElements(opfDoc, 'item')) {
           final props = item.getAttribute('properties') ?? '';
           if (props.contains('nav')) {
             final href = item.getAttribute('href');
@@ -409,7 +426,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
               final navEntry = archive.findFile(navPath);
               if (navEntry != null) {
                 final navDoc = xml.XmlDocument.parse(utf8.decode(navEntry.content as List<int>, allowMalformed: true));
-                for (final li in navDoc.findAllElements('li')) {
+                for (final li in _findLocalElements(navDoc, 'li')) {
                   final a = li.findElements('a').firstOrNull;
                   if (a != null) titles.add(a.innerText.trim());
                 }
@@ -421,6 +438,104 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       }
     } catch (_) {}
     return titles;
+  }
+
+  /// Converts HTML content to rich TextSpan preserving basic formatting.
+  TextSpan _htmlToRichContent(String html) {
+    // Strip style/script blocks
+    var cleaned = html
+        .replaceAll(RegExp(r'<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true), '')
+        .replaceAll(RegExp(r'<script[^>]*>.*?</script>', caseSensitive: false, dotAll: true), '');
+
+    // Add newlines after block tags
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'</?(p|div|h[1-6]|blockquote|tr|li|br)[^>]*>', caseSensitive: false, dotAll: true),
+      (m) => '\n',
+    );
+
+    // Parse inline formatting
+    final spans = <InlineSpan>[];
+    final buffer = StringBuffer();
+    int i = 0;
+    bool bold = false;
+    bool italic = false;
+
+    void flushText() {
+      if (buffer.isNotEmpty) {
+        spans.add(TextSpan(
+          text: buffer.toString(),
+          style: TextStyle(fontWeight: bold ? FontWeight.bold : null, fontStyle: italic ? FontStyle.italic : null),
+        ));
+        buffer.clear();
+      }
+    }
+
+    while (i < cleaned.length) {
+      if (cleaned[i] == '<') {
+        final closeIdx = cleaned.indexOf('>', i);
+        if (closeIdx == -1) {
+          buffer.write(cleaned.substring(i));
+          break;
+        }
+        final tag = cleaned.substring(i + 1, closeIdx).trim().toLowerCase();
+
+        if (tag == 'b' || tag == 'strong' || tag == '/b' || tag == '/strong') {
+          flushText();
+          bold = !tag.startsWith('/');
+        } else if (tag == 'i' || tag == 'em' || tag == '/i' || tag == '/em') {
+          flushText();
+          italic = !tag.startsWith('/');
+        }
+
+        i = closeIdx + 1;
+      } else {
+        if (cleaned[i] == '&') {
+          final semi = cleaned.indexOf(';', i);
+          if (semi != -1 && semi - i < 10) {
+            final entity = cleaned.substring(i, semi + 1);
+            final decoded = _decodeHtmlEntity(entity);
+            buffer.write(decoded);
+            i = semi + 1;
+            continue;
+          }
+        }
+        buffer.write(cleaned[i]);
+        i++;
+      }
+    }
+    flushText();
+
+    // Collapse excessive whitespace in each span
+    for (int j = 0; j < spans.length; j++) {
+      final span = spans[j] as TextSpan;
+      final text = span.text?.replaceAll(RegExp(r'[ \t]+'), ' ').replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+      if (text != null && text.isNotEmpty) {
+        spans[j] = TextSpan(text: text, style: span.style);
+      }
+    }
+
+    spans.removeWhere((s) => (s as TextSpan).text?.isEmpty ?? true);
+
+    if (spans.isEmpty) return TextSpan(text: _htmlToText(html));
+    return TextSpan(children: spans);
+  }
+
+  String _decodeHtmlEntity(String entity) {
+    return switch (entity) {
+      '&amp;' => '&',
+      '&lt;' => '<',
+      '&gt;' => '>',
+      '&quot;' => '"',
+      '&apos;' => "'",
+      '&nbsp;' => ' ',
+      '&#8216;' => '\u2018',
+      '&#8217;' => '\u2019',
+      '&#8220;' => '\u201C',
+      '&#8221;' => '\u201D',
+      '&#8212;' => '\u2014',
+      '&#8211;' => '\u2013',
+      _ => entity,
+    };
   }
 
   /// Converts HTML content to plain text by stripping all tags.
@@ -913,7 +1028,9 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                         const SizedBox(height: 24),
                         // Chapter content
                         SelectableText.rich(
-                          _buildHighlightedText(chapter.content, textColor),
+                          _isSearching
+                              ? _buildHighlightedText(chapter.content, textColor)
+                              : chapter.richContent,
                           style: TextStyle(
                             fontSize: _fontSize,
                             color: textColor,
@@ -1257,9 +1374,14 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
 
 class _EpubChapter {
   final String title;
-  final String content;
+  final String content; // plain text (for search)
+  final TextSpan richContent; // rich text (for display)
 
-  const _EpubChapter({required this.title, required this.content});
+  const _EpubChapter({
+    required this.title,
+    required this.content,
+    required this.richContent,
+  });
 }
 
 /// Utility to find an epub file in a given directory path.
@@ -1274,14 +1396,6 @@ Future<String?> findEpubInFolder(String folderPath) async {
         if (lower.endsWith('.epub')) {
           return entity.path;
         }
-      } else if (entity is Directory) {
-        try {
-          await for (final subEntity in entity.list()) {
-            if (subEntity is File && subEntity.path.toLowerCase().endsWith('.epub')) {
-              return subEntity.path;
-            }
-          }
-        } catch (_) {}
       }
     }
   } catch (_) {}

@@ -286,3 +286,21 @@ class AudiobookSearchState {
     );
   }
 }
+
+class AudiobookBookmark {
+  final int id;
+  final String bookId;
+  final int chapterIndex;
+  final int positionMillis;
+  final String? label;
+  final DateTime createdAt;
+
+  const AudiobookBookmark({
+    required this.id,
+    required this.bookId,
+    required this.chapterIndex,
+    required this.positionMillis,
+    this.label,
+    required this.createdAt,
+  });
+}

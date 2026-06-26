@@ -354,6 +354,68 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 8),
+                              Consumer(builder: (context, ref, child) {
+                                final bookmarksAsync = ref.watch(audiobookBookmarksProvider(normalBook.id));
+                                final bookmarks = bookmarksAsync.asData?.value ?? [];
+                                return OutlinedButton.icon(
+                                  onPressed: bookmarks.isEmpty
+                                      ? null
+                                      : () => showModalBottomSheet(
+                                        context: context,
+                                        builder: (ctx) => Padding(
+                                          padding: const EdgeInsets.only(top: 8, bottom: 32),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(width: 40, height: 4, decoration: BoxDecoration(
+                                                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.3),
+                                                borderRadius: BorderRadius.circular(2),
+                                              )),
+                                              const SizedBox(height: 16),
+                                              Padding(
+                                                padding: const EdgeInsets.only(left: 16),
+                                                child: Align(
+                                                  alignment: Alignment.centerLeft,
+                                                  child: Text('Bookmarks', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                                ),
+                                              ),
+                                              const Divider(),
+                                              ListView.builder(
+                                                shrinkWrap: true,
+                                                itemCount: bookmarks.length,
+                                                itemBuilder: (ctx2, i) {
+                                                  final bm = bookmarks[i];
+                                                  final ts = Duration(milliseconds: bm.positionMillis);
+                                                  return ListTile(
+                                                    title: Text(bm.label ?? 'Bookmark ${i + 1}'),
+                                                    subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${ts.inMinutes}:${(ts.inSeconds % 60).toString().padLeft(2, '0')}'),
+                                                    trailing: IconButton(
+                                                      icon: const Icon(Icons.delete_outline, size: 18),
+                                                      onPressed: () async {
+                                                        await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
+                                                        ref.invalidate(audiobookBookmarksProvider(normalBook.id));
+                                                      },
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  icon: Icon(
+                                    bookmarks.isNotEmpty ? Icons.bookmarks_rounded : Icons.bookmarks_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text(bookmarks.isNotEmpty ? '${bookmarks.length}' : 'Bookmarks'),
+                                  style: OutlinedButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                );
+                              }),
                             ],
                           ),
                           loading: () => const SizedBox.shrink(),
@@ -571,7 +633,24 @@ class AudiobookDetailScreen extends ConsumerWidget {
                             label: const Text('Download Torrent to TorBox'),
 
                             onPressed: () async {
-                              final parts = book.id.split(':');
+                              String bookId = book.id;
+                              if (bookId.startsWith('audiobookbay:')) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
+                                );
+                                final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
+                                if (resolved != null && resolved.id.startsWith('torrent:')) {
+                                  bookId = resolved.id;
+                                } else {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
+                                    );
+                                  }
+                                  return;
+                                }
+                              }
+                              final parts = bookId.split(':');
                               final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
                               if (magnet.isNotEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(

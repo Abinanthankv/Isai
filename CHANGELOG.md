@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.5] - June 2026
+
+> ⚠️ **Audiobooks are in Beta** — Some features may be rough around the edges. Feedback is welcome!
+
+### Added
+- **Bookmarks for Audiobooks**: You can now bookmark your favorite moments in any audiobook. Tap the bookmark icon in the Now Playing screen to save your exact spot — chapter and time position. Each bookmark can be named, and you can tap any bookmark to jump right back to that moment.
+- **Bookmarks Tab**: The chapters and bookmarks sections are now organized into tabs, making it easier to switch between browsing chapters and managing your saved bookmarks.
+- **Notification Bookmark Button**: When listening to an audiobook, a bookmark button appears in the system notification. You can save a bookmark without even opening the app.
+- **Bookmarks Backed Up**: Bookmarks are automatically saved to your audiobook's backup folder, so they're included in your backups and restored when you re-scan your library.
+- **Android Auto Support**: Audiobooks now work with Android Auto for a safer in-car listening experience.
+- **Download Progress in Notification**: The download notification now shows exactly how many MB have been downloaded out of the total size, not just the percentage.
+
+### Fixed & Improved
+- **EPUB Reader Improvements**: Better support for EPUB3 files — chapters, bold and italic text, and special characters now display correctly.
+- **Library Scan Fix**: EPUB files now show up properly in your local library, and loose files in your audiobook folder are automatically organized into subfolders.
+- **AudiobookBay Torrents Fixed**: Downloading from AudiobookBay search results to TorBox now works correctly.
+- **Download Button Reliable**: The download button in the book detail screen now handles AudiobookBay links properly, so you can save books to listen offline.
+- **Bookmark Count Stays Updated**: The bookmark badge reliably updates when bookmarks are added or cleared.
+
 ## [1.0.4] - June 2026
 
 > ⚠️ **Audiobooks are in Beta** — Some features may be rough around the edges. Feedback is welcome!
@@ -39,6 +58,19 @@
 - **Stream Reliability**: Improved backend retrying when streaming tracks so songs load more reliably on slower networks.
 - **UI Spacing Polish**: Cleaned up alignments, margins, and layouts on settings, album, and discovery screens for a cleaner appearance.
 
+## [1.0.2] - June 2026
+
+### Added
+- **Link Sharing**: You can now share Spotify and YouTube links from other apps directly into Isai. The song starts playing automatically with high-quality source resolution.
+- **Playlist Importing**: Sharing a Spotify or YouTube playlist link automatically detects and imports the full playlist into your local library.
+- **Haptic Feedback**: Added subtle vibration feedback when tapping songs, pressing buttons, or using filter chips throughout the app.
+- **Lyrics Fine-Tuning**: Synced lyrics can now be adjusted forward or backward by half a second to match the audio perfectly.
+- **Linux AppImage Support**: Added portable Linux builds (.AppImage) alongside .tar.gz in GitHub releases.
+
+### Fixed & Improved
+- **Cleaner Layouts**: Redesigned spacing and alignment on the Discovery, Album, and Settings screens for a more polished look.
+- **Download Warnings**: The Now Playing screen now shows clear warnings when no download folder is set, with a direct link to settings.
+- **Smarter Recommendations**: Fixed the "For You" page from unnecessarily re-fetching recommendations on every visit by loading your listening history directly from the database.
 ## [1.0.0] - June 2026
 
 ### Added

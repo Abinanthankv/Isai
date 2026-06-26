@@ -1578,6 +1578,20 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       return;
     }
 
+    if (name == 'bookmark') {
+      final item = mediaItem.value;
+      if (item != null && item.extras?['mediaType'] == 'audiobook') {
+        final bookId = item.extras?['bookId'] as String?;
+        if (bookId != null) {
+          final chapterIndex = item.extras?['chapterIndex'] as int? ?? 0;
+          final position = _player.position.inMilliseconds;
+          final repo = getIt<AudiobookRepository>();
+          await repo.addBookmark(bookId, chapterIndex, position);
+        }
+      }
+      return;
+    }
+
     if (name == 'refresh_metadata') {
       final torrentId = (extras?['torrentId'] as num?)?.toInt() ?? 0;
       final fileId = (extras?['fileId'] as num?)?.toInt() ?? 0;
@@ -1890,24 +1904,34 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {
+    final currentItem = mediaItem.value;
+    final isAudiobook = currentItem?.extras?['mediaType'] == 'audiobook';
     return PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
         if (_player.playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
-        _isCurrentTrackLiked
-            ? const MediaControl(
-                androidIcon: 'drawable/ic_heart_filled',
-                label: 'Unlike',
-                action: MediaAction.setRating,
-                customAction: CustomMediaAction(name: 'unlike'),
-              )
-            : const MediaControl(
-                androidIcon: 'drawable/ic_heart_border',
-                label: 'Like',
-                action: MediaAction.setRating,
-                customAction: CustomMediaAction(name: 'like'),
-              ),
+        if (isAudiobook)
+          const MediaControl(
+            androidIcon: 'drawable/ic_bookmark_border',
+            label: 'Bookmark',
+            action: MediaAction.setRating,
+            customAction: CustomMediaAction(name: 'bookmark'),
+          )
+        else
+          _isCurrentTrackLiked
+              ? const MediaControl(
+                  androidIcon: 'drawable/ic_heart_filled',
+                  label: 'Unlike',
+                  action: MediaAction.setRating,
+                  customAction: CustomMediaAction(name: 'unlike'),
+                )
+              : const MediaControl(
+                  androidIcon: 'drawable/ic_heart_border',
+                  label: 'Like',
+                  action: MediaAction.setRating,
+                  customAction: CustomMediaAction(name: 'like'),
+                ),
         MediaControl.stop,
       ],
       systemActions: const {

@@ -263,6 +263,7 @@ final bookChapterProgressProvider = FutureProvider.autoDispose.family<List<DbAud
       final dirPath = await repo.getLocalBookDirectoryForBackup(bookId);
       if (dirPath != null) {
         await repo.restoreProgressFromLocalFolder(bookId, dirPath);
+        await repo.restoreBookmarksFromLocalFolder(bookId, dirPath);
       }
     } catch (e) {
       print('[bookChapterProgressProvider] Error restoring progress from local folder: $e');
@@ -284,13 +285,13 @@ const Set<String> _audioExtensions = {
   '.flac',
 };
 
-/// Helper: count audio files directly inside a directory (non-recursive).
+/// Helper: count audio/epub files directly inside a directory (non-recursive).
 Future<int> _countAudioFiles(Directory dir) async {
   int count = 0;
   await for (final entity in dir.list()) {
     if (entity is File) {
       final ext = _getExt(entity.path);
-      if (_audioExtensions.contains(ext)) count++;
+      if (_audioExtensions.contains(ext) || ext == '.epub') count++;
     }
   }
   return count;
@@ -523,15 +524,47 @@ final localAudiobooksProvider = FutureProvider<List<AudiobookResult>>((ref) asyn
               final book = await _getAudiobookMetadata(entity, bookId, folderName);
               results.add(book);
               repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
+              repo.restoreBookmarksFromLocalFolder(book.id, entity.path).catchError((_) {});
             }
           } else if (entity is File) {
             final ext = _getExt(entity.path);
-            if (_audioExtensions.contains(ext)) {
+            final isAudio = _audioExtensions.contains(ext);
+            final isEpub = ext == '.epub';
+            if (isAudio || isEpub) {
               final fileName = entity.path.split('/').last;
               final defaultTitle = fileName.contains('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+              // Organize loose files into their own subfolder
+              if (entity.parent.path == folderPath) {
+                final folderName = defaultTitle.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+                if (folderName.isNotEmpty) {
+                  final bookDir = Directory(p.join(folderPath, folderName));
+                  if (!await bookDir.exists()) await bookDir.create();
+                  final destPath = p.join(bookDir.path, fileName);
+                  if (!await File(destPath).exists()) {
+                    await entity.rename(destPath);
+                    // Process as a directory-based book
+                    final bookId = 'local:${bookDir.path}';
+                    final book = await _getAudiobookMetadata(bookDir, bookId, defaultTitle);
+                    results.add(book);
+                    repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
+                  }
+                  continue;
+                }
+              }
+              // If not organizing (not in root or no valid name), fall back to loose file handling
               final bookId = 'local:${entity.path}';
-
-              final book = await _getBookMetadataFromAudioFile(entity, bookId, defaultTitle);
+              AudiobookResult book;
+              if (isEpub) {
+                book = AudiobookResult(
+                  id: bookId,
+                  title: defaultTitle,
+                  author: 'Local Library',
+                  artworkUrl: null,
+                  totalChapters: 1,
+                );
+              } else {
+                book = await _getBookMetadataFromAudioFile(entity, bookId, defaultTitle);
+              }
               results.add(book);
               repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
             }
@@ -617,8 +650,17 @@ class AudiobookDownloadState {
     );
   }
 }
-
 /// Tracks downloading states of audiobook IDs to their progress details
+
+/// Increment to trigger bookmark list refresh (e.g. from notification action).
+final bookmarkRefreshTrigger = StateProvider<int>((ref) => 0);
+
+final audiobookBookmarksProvider = FutureProvider.family<List<AudiobookBookmark>, String>((ref, bookId) async {
+  ref.watch(bookmarkRefreshTrigger);
+  final repo = ref.read(audiobookRepositoryProvider);
+  return repo.getBookmarks(bookId);
+});
+
 final audiobookDownloadProvider = StateNotifierProvider<AudiobookDownloadNotifier, Map<String, AudiobookDownloadState>>((ref) {
   final repo = ref.read(audiobookRepositoryProvider);
   return AudiobookDownloadNotifier(repo, ref);
@@ -641,7 +683,14 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
     _notificationsInitialized = true;
   }
 
-  Future<void> _showProgressNotification(String bookId, String title, double progress) async {
+  String _formatBytes(int bytes) {
+    if (bytes < 0) return '?';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Future<void> _showProgressNotification(String bookId, String title, double progress, {int downloadedBytes = 0, int totalBytes = -1}) async {
     try {
       await _initNotifications();
       final isDone = progress >= 1.0;
@@ -651,6 +700,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
       final notificationId = bookId.hashCode.abs();
 
       if (isDone) {
+        final body = totalBytes > 0 ? '${_formatBytes(totalBytes)} — Complete' : title;
         final androidDetails = AndroidNotificationDetails(
           'audiobook_downloads',
           'Audiobook Downloads',
@@ -663,10 +713,11 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         await _notificationsPlugin.show(
           notificationId,
           'Download Complete',
-          title,
+          body,
           NotificationDetails(android: androidDetails),
         );
       } else if (isPaused) {
+        final body = totalBytes > 0 ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)} — Paused' : title;
         final androidDetails = AndroidNotificationDetails(
           'audiobook_downloads',
           'Audiobook Downloads',
@@ -678,10 +729,11 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         await _notificationsPlugin.show(
           notificationId,
           'Download Paused',
-          title,
+          body,
           NotificationDetails(android: androidDetails),
         );
       } else if (isFailed) {
+        final body = totalBytes > 0 ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)} — Failed' : title;
         final androidDetails = AndroidNotificationDetails(
           'audiobook_downloads',
           'Audiobook Downloads',
@@ -693,11 +745,14 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         await _notificationsPlugin.show(
           notificationId,
           'Download Failed',
-          title,
+          body,
           NotificationDetails(android: androidDetails),
         );
       } else {
         final percent = (progress * 100).round();
+        final body = totalBytes > 0
+            ? '${_formatBytes(downloadedBytes)} / ${_formatBytes(totalBytes)} ($percent%)'
+            : '$percent%';
         final androidDetails = AndroidNotificationDetails(
           'audiobook_downloads',
           'Audiobook Downloads',
@@ -712,7 +767,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         );
         await _notificationsPlugin.show(
           notificationId,
-          'Downloading... $percent%',
+          body,
           title,
           NotificationDetails(android: androidDetails),
         );
@@ -815,7 +870,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         status: 'downloading',
       ),
     };
-    _showProgressNotification(book.id, book.title, 0.0);
+    _showProgressNotification(book.id, book.title, 0.0, downloadedBytes: 0, totalBytes: -1);
     
     try {
       final sanitizedTitle = book.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
@@ -978,7 +1033,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
                     totalBytes: totalBytes,
                   ),
                 };
-                _showProgressNotification(book.id, book.title, overallProgress);
+                _showProgressNotification(book.id, book.title, overallProgress, downloadedBytes: downloadedBytes, totalBytes: totalBytes);
               }
             }
             await sink.flush();
@@ -986,7 +1041,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
 
             if (_pausedBooks.contains(book.id)) {
               print('[AudiobookDownloadNotifier] Download paused for ${book.title}');
-              _showProgressNotification(book.id, book.title, -4.0);
+              _showProgressNotification(book.id, book.title, -4.0, downloadedBytes: downloadedBytes, totalBytes: totalBytes);
               return;
             }
             
@@ -1043,7 +1098,8 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
       }
 
       if (_pausedBooks.contains(book.id)) {
-        _showProgressNotification(book.id, book.title, -4.0);
+        final cur = state[book.id];
+        _showProgressNotification(book.id, book.title, -4.0, downloadedBytes: cur?.downloadedBytes ?? 0, totalBytes: cur?.totalBytes ?? -1);
         return;
       }
 
@@ -1109,7 +1165,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
           status: 'completed',
         ),
       };
-      _showProgressNotification(book.id, book.title, 1.0);
+      _showProgressNotification(book.id, book.title, 1.0, downloadedBytes: finalCurrent.downloadedBytes, totalBytes: finalCurrent.totalBytes);
       
       _ref.invalidate(localAudiobooksProvider);
       _ref.invalidate(inProgressAudiobooksProvider);
@@ -1124,7 +1180,7 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
           status: 'failed',
         ),
       };
-      _showProgressNotification(book.id, book.title, -3.0);
+      _showProgressNotification(book.id, book.title, -3.0, downloadedBytes: current?.downloadedBytes ?? 0, totalBytes: current?.totalBytes ?? -1);
     }
   }
   void pauseBook(String bookId) {

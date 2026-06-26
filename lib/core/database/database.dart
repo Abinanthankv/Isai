@@ -161,16 +161,29 @@ class AudiobookMetadataCache extends Table {
   Set<Column> get primaryKey => {bookId};
 }
 
-@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists, AudiobookProgress, AudiobookMetadataCache])
+@DataClassName('DbAudiobookBookmark')
+class AudiobookBookmarks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get bookId => text()();
+  IntColumn get chapterIndex => integer()();
+  IntColumn get positionMillis => integer()();
+  TextColumn get label => text().nullable()();
+  IntColumn get createdAt => integer()(); // unix timestamp
+}
+
+@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists, AudiobookProgress, AudiobookMetadataCache, AudiobookBookmarks])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
+          if (from < 15) {
+            await m.createTable(audiobookBookmarks);
+          }
           if (from < 14) {
             await m.createTable(audiobookProgress);
             await m.createTable(audiobookMetadataCache);

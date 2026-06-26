@@ -1540,6 +1540,7 @@ class AudiobookRepository {
             if (bookId == null || jsonProgress == null || jsonProgress.isEmpty) continue;
 
             await restoreProgressFromLocalFolder(bookId, entity.path);
+            await restoreBookmarksFromLocalFolder(bookId, entity.path);
             print('[AudiobookRepository] Restored legacy progress from ${progressFile.path}');
           } catch (e) {
             print('[AudiobookRepository] Error restoring legacy progress from ${progressFile.path}: $e');
@@ -2268,6 +2269,37 @@ class AudiobookRepository {
       print('[AudiobookRepository] Error reading book progress summary: $e');
     }
     return null;
+  }
+
+  /// Move a loose local audio file into its own subfolder.
+  /// Creates a subfolder named after the book title and moves the file there.
+  Future<void> _organizeLocalFile(AudiobookResult book, String filePath, String title) async {
+    final settings = getIt<TorBoxSettingsRepository>();
+    final rootFolder = settings.audiobookFolder;
+    if (rootFolder == null || rootFolder.isEmpty) return;
+
+    final srcFile = io.File(filePath);
+    if (!await srcFile.exists()) return;
+
+    // Only organize files that are directly in the root folder
+    if (srcFile.parent.path != rootFolder) return;
+
+    // Create subfolder named after the book title
+    final folderName = title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    if (folderName.isEmpty) return;
+
+    final bookDir = io.Directory(p.join(rootFolder, folderName));
+    if (await bookDir.exists()) {
+      // Folder already exists — just move the file in
+      final destPath = p.join(bookDir.path, srcFile.path.split('/').last);
+      if (await io.File(destPath).exists()) return;
+      await srcFile.rename(destPath);
+    } else {
+      await bookDir.create();
+      await srcFile.rename(p.join(bookDir.path, srcFile.path.split('/').last));
+    }
+
+    print('[AudiobookRepository] Organized loose file into: ${bookDir.path}');
   }
 
   // ─── Metadata Cache ────────────────────────────────────────────
@@ -3326,5 +3358,99 @@ class AudiobookRepository {
       }
     }
     return partialBook;
+  }
+
+  Future<List<AudiobookBookmark>> getBookmarks(String bookId) async {
+    final rows = await (_db.select(_db.audiobookBookmarks)
+      ..where((b) => b.bookId.equals(bookId))
+      ..orderBy([(b) => OrderingTerm(expression: b.createdAt, mode: OrderingMode.desc)])
+    ).get();
+    return rows.map((r) => AudiobookBookmark(
+      id: r.id,
+      bookId: r.bookId,
+      chapterIndex: r.chapterIndex,
+      positionMillis: r.positionMillis,
+      label: r.label,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(r.createdAt),
+    )).toList();
+  }
+
+  Future<int> getBookmarkCount(String bookId) async {
+    final count = await (_db.select(_db.audiobookBookmarks)
+      ..where((b) => b.bookId.equals(bookId))
+    ).get();
+    return count.length;
+  }
+
+  Future<int> addBookmark(String bookId, int chapterIndex, int positionMillis, {String? label}) async {
+    final id = await _db.into(_db.audiobookBookmarks).insert(AudiobookBookmarksCompanion(
+      bookId: Value(bookId),
+      chapterIndex: Value(chapterIndex),
+      positionMillis: Value(positionMillis),
+      label: Value(label),
+      createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+    ));
+    await _backupBookmarks(bookId);
+    return id;
+  }
+
+  Future<void> deleteBookmark(int id) async {
+    final bm = await (_db.select(_db.audiobookBookmarks)..where((b) => b.id.equals(id))).getSingleOrNull();
+    await (_db.delete(_db.audiobookBookmarks)..where((b) => b.id.equals(id))).go();
+    if (bm != null) await _backupBookmarks(bm.bookId);
+  }
+
+  Future<void> updateBookmarkLabel(int id, String label) async {
+    await (_db.update(_db.audiobookBookmarks)..where((b) => b.id.equals(id))).write(
+      AudiobookBookmarksCompanion(label: Value(label)),
+    );
+    final bm = await (_db.select(_db.audiobookBookmarks)..where((b) => b.id.equals(id))).getSingleOrNull();
+    if (bm != null) await _backupBookmarks(bm.bookId);
+  }
+
+  Future<void> deleteAllBookmarks(String bookId) async {
+    await (_db.delete(_db.audiobookBookmarks)..where((b) => b.bookId.equals(bookId))).go();
+    await _backupBookmarks(bookId);
+  }
+
+  Future<void> _backupBookmarks(String bookId) async {
+    try {
+      final localDir = await getLocalBookDirectoryForBackup(bookId);
+      if (localDir == null) return;
+      final bookmarks = await getBookmarks(bookId);
+      final data = bookmarks.map((b) => {
+        'chapterIndex': b.chapterIndex,
+        'positionMillis': b.positionMillis,
+        'label': b.label,
+        'createdAt': b.createdAt.millisecondsSinceEpoch,
+      }).toList();
+      final file = io.File(p.join(localDir, 'bookmarks.json'));
+      await file.writeAsString(jsonEncode(data));
+    } catch (e) {
+      print('[AudiobookRepository] Error backing up bookmarks: $e');
+    }
+  }
+
+  Future<void> restoreBookmarksFromLocalFolder(String bookId, String folderPath) async {
+    try {
+      final existing = await getBookmarks(bookId);
+      if (existing.isNotEmpty) return;
+      final file = io.File(p.join(folderPath, 'bookmarks.json'));
+      if (!await file.exists()) return;
+      final content = await file.readAsString();
+      final data = jsonDecode(content) as List<dynamic>;
+      for (final item in data) {
+        final map = item as Map<String, dynamic>;
+        await _db.into(_db.audiobookBookmarks).insert(AudiobookBookmarksCompanion(
+          bookId: Value(bookId),
+          chapterIndex: Value(map['chapterIndex'] as int),
+          positionMillis: Value(map['positionMillis'] as int),
+          label: Value(map['label'] as String?),
+          createdAt: Value(map['createdAt'] as int),
+        ));
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Error restoring bookmarks: $e');
+    }
   }
 }

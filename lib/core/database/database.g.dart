@@ -5609,6 +5609,414 @@ class AudiobookMetadataCacheCompanion
   }
 }
 
+class $AudiobookBookmarksTable extends AudiobookBookmarks
+    with TableInfo<$AudiobookBookmarksTable, DbAudiobookBookmark> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AudiobookBookmarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chapterIndexMeta = const VerificationMeta(
+    'chapterIndex',
+  );
+  @override
+  late final GeneratedColumn<int> chapterIndex = GeneratedColumn<int>(
+    'chapter_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _positionMillisMeta = const VerificationMeta(
+    'positionMillis',
+  );
+  @override
+  late final GeneratedColumn<int> positionMillis = GeneratedColumn<int>(
+    'position_millis',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    bookId,
+    chapterIndex,
+    positionMillis,
+    label,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'audiobook_bookmarks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DbAudiobookBookmark> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('chapter_index')) {
+      context.handle(
+        _chapterIndexMeta,
+        chapterIndex.isAcceptableOrUnknown(
+          data['chapter_index']!,
+          _chapterIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_chapterIndexMeta);
+    }
+    if (data.containsKey('position_millis')) {
+      context.handle(
+        _positionMillisMeta,
+        positionMillis.isAcceptableOrUnknown(
+          data['position_millis']!,
+          _positionMillisMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMillisMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DbAudiobookBookmark map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DbAudiobookBookmark(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      chapterIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chapter_index'],
+      )!,
+      positionMillis: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_millis'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $AudiobookBookmarksTable createAlias(String alias) {
+    return $AudiobookBookmarksTable(attachedDatabase, alias);
+  }
+}
+
+class DbAudiobookBookmark extends DataClass
+    implements Insertable<DbAudiobookBookmark> {
+  final int id;
+  final String bookId;
+  final int chapterIndex;
+  final int positionMillis;
+  final String? label;
+  final int createdAt;
+  const DbAudiobookBookmark({
+    required this.id,
+    required this.bookId,
+    required this.chapterIndex,
+    required this.positionMillis,
+    this.label,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['book_id'] = Variable<String>(bookId);
+    map['chapter_index'] = Variable<int>(chapterIndex);
+    map['position_millis'] = Variable<int>(positionMillis);
+    if (!nullToAbsent || label != null) {
+      map['label'] = Variable<String>(label);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  AudiobookBookmarksCompanion toCompanion(bool nullToAbsent) {
+    return AudiobookBookmarksCompanion(
+      id: Value(id),
+      bookId: Value(bookId),
+      chapterIndex: Value(chapterIndex),
+      positionMillis: Value(positionMillis),
+      label: label == null && nullToAbsent
+          ? const Value.absent()
+          : Value(label),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DbAudiobookBookmark.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DbAudiobookBookmark(
+      id: serializer.fromJson<int>(json['id']),
+      bookId: serializer.fromJson<String>(json['bookId']),
+      chapterIndex: serializer.fromJson<int>(json['chapterIndex']),
+      positionMillis: serializer.fromJson<int>(json['positionMillis']),
+      label: serializer.fromJson<String?>(json['label']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bookId': serializer.toJson<String>(bookId),
+      'chapterIndex': serializer.toJson<int>(chapterIndex),
+      'positionMillis': serializer.toJson<int>(positionMillis),
+      'label': serializer.toJson<String?>(label),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  DbAudiobookBookmark copyWith({
+    int? id,
+    String? bookId,
+    int? chapterIndex,
+    int? positionMillis,
+    Value<String?> label = const Value.absent(),
+    int? createdAt,
+  }) => DbAudiobookBookmark(
+    id: id ?? this.id,
+    bookId: bookId ?? this.bookId,
+    chapterIndex: chapterIndex ?? this.chapterIndex,
+    positionMillis: positionMillis ?? this.positionMillis,
+    label: label.present ? label.value : this.label,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DbAudiobookBookmark copyWithCompanion(AudiobookBookmarksCompanion data) {
+    return DbAudiobookBookmark(
+      id: data.id.present ? data.id.value : this.id,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      chapterIndex: data.chapterIndex.present
+          ? data.chapterIndex.value
+          : this.chapterIndex,
+      positionMillis: data.positionMillis.present
+          ? data.positionMillis.value
+          : this.positionMillis,
+      label: data.label.present ? data.label.value : this.label,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DbAudiobookBookmark(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('positionMillis: $positionMillis, ')
+          ..write('label: $label, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, bookId, chapterIndex, positionMillis, label, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DbAudiobookBookmark &&
+          other.id == this.id &&
+          other.bookId == this.bookId &&
+          other.chapterIndex == this.chapterIndex &&
+          other.positionMillis == this.positionMillis &&
+          other.label == this.label &&
+          other.createdAt == this.createdAt);
+}
+
+class AudiobookBookmarksCompanion extends UpdateCompanion<DbAudiobookBookmark> {
+  final Value<int> id;
+  final Value<String> bookId;
+  final Value<int> chapterIndex;
+  final Value<int> positionMillis;
+  final Value<String?> label;
+  final Value<int> createdAt;
+  const AudiobookBookmarksCompanion({
+    this.id = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.chapterIndex = const Value.absent(),
+    this.positionMillis = const Value.absent(),
+    this.label = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  AudiobookBookmarksCompanion.insert({
+    this.id = const Value.absent(),
+    required String bookId,
+    required int chapterIndex,
+    required int positionMillis,
+    this.label = const Value.absent(),
+    required int createdAt,
+  }) : bookId = Value(bookId),
+       chapterIndex = Value(chapterIndex),
+       positionMillis = Value(positionMillis),
+       createdAt = Value(createdAt);
+  static Insertable<DbAudiobookBookmark> custom({
+    Expression<int>? id,
+    Expression<String>? bookId,
+    Expression<int>? chapterIndex,
+    Expression<int>? positionMillis,
+    Expression<String>? label,
+    Expression<int>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bookId != null) 'book_id': bookId,
+      if (chapterIndex != null) 'chapter_index': chapterIndex,
+      if (positionMillis != null) 'position_millis': positionMillis,
+      if (label != null) 'label': label,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  AudiobookBookmarksCompanion copyWith({
+    Value<int>? id,
+    Value<String>? bookId,
+    Value<int>? chapterIndex,
+    Value<int>? positionMillis,
+    Value<String?>? label,
+    Value<int>? createdAt,
+  }) {
+    return AudiobookBookmarksCompanion(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      chapterIndex: chapterIndex ?? this.chapterIndex,
+      positionMillis: positionMillis ?? this.positionMillis,
+      label: label ?? this.label,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (chapterIndex.present) {
+      map['chapter_index'] = Variable<int>(chapterIndex.value);
+    }
+    if (positionMillis.present) {
+      map['position_millis'] = Variable<int>(positionMillis.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AudiobookBookmarksCompanion(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('positionMillis: $positionMillis, ')
+          ..write('label: $label, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5630,6 +6038,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $AudiobookProgressTable(this);
   late final $AudiobookMetadataCacheTable audiobookMetadataCache =
       $AudiobookMetadataCacheTable(this);
+  late final $AudiobookBookmarksTable audiobookBookmarks =
+      $AudiobookBookmarksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5646,6 +6056,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     followedArtists,
     audiobookProgress,
     audiobookMetadataCache,
+    audiobookBookmarks,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -8750,6 +9161,236 @@ typedef $$AudiobookMetadataCacheTableProcessedTableManager =
       DbAudiobookMetadataCache,
       PrefetchHooks Function()
     >;
+typedef $$AudiobookBookmarksTableCreateCompanionBuilder =
+    AudiobookBookmarksCompanion Function({
+      Value<int> id,
+      required String bookId,
+      required int chapterIndex,
+      required int positionMillis,
+      Value<String?> label,
+      required int createdAt,
+    });
+typedef $$AudiobookBookmarksTableUpdateCompanionBuilder =
+    AudiobookBookmarksCompanion Function({
+      Value<int> id,
+      Value<String> bookId,
+      Value<int> chapterIndex,
+      Value<int> positionMillis,
+      Value<String?> label,
+      Value<int> createdAt,
+    });
+
+class $$AudiobookBookmarksTableFilterComposer
+    extends Composer<_$AppDatabase, $AudiobookBookmarksTable> {
+  $$AudiobookBookmarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AudiobookBookmarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $AudiobookBookmarksTable> {
+  $$AudiobookBookmarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AudiobookBookmarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AudiobookBookmarksTable> {
+  $$AudiobookBookmarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bookId =>
+      $composableBuilder(column: $table.bookId, builder: (column) => column);
+
+  GeneratedColumn<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get positionMillis => $composableBuilder(
+    column: $table.positionMillis,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$AudiobookBookmarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AudiobookBookmarksTable,
+          DbAudiobookBookmark,
+          $$AudiobookBookmarksTableFilterComposer,
+          $$AudiobookBookmarksTableOrderingComposer,
+          $$AudiobookBookmarksTableAnnotationComposer,
+          $$AudiobookBookmarksTableCreateCompanionBuilder,
+          $$AudiobookBookmarksTableUpdateCompanionBuilder,
+          (
+            DbAudiobookBookmark,
+            BaseReferences<
+              _$AppDatabase,
+              $AudiobookBookmarksTable,
+              DbAudiobookBookmark
+            >,
+          ),
+          DbAudiobookBookmark,
+          PrefetchHooks Function()
+        > {
+  $$AudiobookBookmarksTableTableManager(
+    _$AppDatabase db,
+    $AudiobookBookmarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AudiobookBookmarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AudiobookBookmarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AudiobookBookmarksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> bookId = const Value.absent(),
+                Value<int> chapterIndex = const Value.absent(),
+                Value<int> positionMillis = const Value.absent(),
+                Value<String?> label = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+              }) => AudiobookBookmarksCompanion(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                positionMillis: positionMillis,
+                label: label,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String bookId,
+                required int chapterIndex,
+                required int positionMillis,
+                Value<String?> label = const Value.absent(),
+                required int createdAt,
+              }) => AudiobookBookmarksCompanion.insert(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                positionMillis: positionMillis,
+                label: label,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AudiobookBookmarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AudiobookBookmarksTable,
+      DbAudiobookBookmark,
+      $$AudiobookBookmarksTableFilterComposer,
+      $$AudiobookBookmarksTableOrderingComposer,
+      $$AudiobookBookmarksTableAnnotationComposer,
+      $$AudiobookBookmarksTableCreateCompanionBuilder,
+      $$AudiobookBookmarksTableUpdateCompanionBuilder,
+      (
+        DbAudiobookBookmark,
+        BaseReferences<
+          _$AppDatabase,
+          $AudiobookBookmarksTable,
+          DbAudiobookBookmark
+        >,
+      ),
+      DbAudiobookBookmark,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8779,4 +9420,6 @@ class $AppDatabaseManager {
         _db,
         _db.audiobookMetadataCache,
       );
+  $$AudiobookBookmarksTableTableManager get audiobookBookmarks =>
+      $$AudiobookBookmarksTableTableManager(_db, _db.audiobookBookmarks);
 }
