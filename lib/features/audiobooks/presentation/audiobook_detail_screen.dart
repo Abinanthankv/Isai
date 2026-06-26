@@ -322,7 +322,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
                        ],
                      ),
                    ],
-                   const SizedBox(height: 12),
+                    const SizedBox(height: 12),
+                    // Plan to Read button — hidden if book is already in library
                     inLibraryAsync.when(
                       data: (inLibrary) {
                         if (inLibrary) return const SizedBox.shrink();
@@ -354,68 +355,6 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Consumer(builder: (context, ref, child) {
-                                final bookmarksAsync = ref.watch(audiobookBookmarksProvider(normalBook.id));
-                                final bookmarks = bookmarksAsync.asData?.value ?? [];
-                                return OutlinedButton.icon(
-                                  onPressed: bookmarks.isEmpty
-                                      ? null
-                                      : () => showModalBottomSheet(
-                                        context: context,
-                                        builder: (ctx) => Padding(
-                                          padding: const EdgeInsets.only(top: 8, bottom: 32),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(width: 40, height: 4, decoration: BoxDecoration(
-                                                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.3),
-                                                borderRadius: BorderRadius.circular(2),
-                                              )),
-                                              const SizedBox(height: 16),
-                                              Padding(
-                                                padding: const EdgeInsets.only(left: 16),
-                                                child: Align(
-                                                  alignment: Alignment.centerLeft,
-                                                  child: Text('Bookmarks', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                                                ),
-                                              ),
-                                              const Divider(),
-                                              ListView.builder(
-                                                shrinkWrap: true,
-                                                itemCount: bookmarks.length,
-                                                itemBuilder: (ctx2, i) {
-                                                  final bm = bookmarks[i];
-                                                  final ts = Duration(milliseconds: bm.positionMillis);
-                                                  return ListTile(
-                                                    title: Text(bm.label ?? 'Bookmark ${i + 1}'),
-                                                    subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${ts.inMinutes}:${(ts.inSeconds % 60).toString().padLeft(2, '0')}'),
-                                                    trailing: IconButton(
-                                                      icon: const Icon(Icons.delete_outline, size: 18),
-                                                      onPressed: () async {
-                                                        await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
-                                                        ref.invalidate(audiobookBookmarksProvider(normalBook.id));
-                                                      },
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                  icon: Icon(
-                                    bookmarks.isNotEmpty ? Icons.bookmarks_rounded : Icons.bookmarks_outlined,
-                                    size: 18,
-                                  ),
-                                  label: Text(bookmarks.isNotEmpty ? '${bookmarks.length}' : 'Bookmarks'),
-                                  style: OutlinedButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                );
-                              }),
                             ],
                           ),
                           loading: () => const SizedBox.shrink(),
@@ -425,6 +364,69 @@ class AudiobookDetailScreen extends ConsumerWidget {
                       loading: () => const SizedBox.shrink(),
                       error: (_, __) => const SizedBox.shrink(),
                     ),
+                    const SizedBox(height: 8),
+                    // Bookmarks button — always shown even for local audiobooks
+                    Consumer(builder: (context, ref, child) {
+                      final bookmarksAsync = ref.watch(audiobookBookmarksProvider(normalBook.id));
+                      final bookmarks = bookmarksAsync.asData?.value ?? [];
+                      return OutlinedButton.icon(
+                        onPressed: bookmarks.isEmpty
+                            ? null
+                            : () => showModalBottomSheet(
+                              context: context,
+                              builder: (ctx) => Padding(
+                                padding: const EdgeInsets.only(top: 8, bottom: 32),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(width: 40, height: 4, decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.3),
+                                      borderRadius: BorderRadius.circular(2),
+                                    )),
+                                    const SizedBox(height: 16),
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 16),
+                                      child: Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text('Bookmarks', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                      ),
+                                    ),
+                                    const Divider(),
+                                    ListView.builder(
+                                      shrinkWrap: true,
+                                      itemCount: bookmarks.length,
+                                      itemBuilder: (ctx2, i) {
+                                        final bm = bookmarks[i];
+                                        final ts = Duration(milliseconds: bm.positionMillis);
+                                        return ListTile(
+                                          title: Text(bm.label ?? 'Bookmark ${i + 1}'),
+                                          subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${ts.inMinutes}:${(ts.inSeconds % 60).toString().padLeft(2, '0')}'),
+                                          trailing: IconButton(
+                                            icon: const Icon(Icons.delete_outline, size: 18),
+                                            onPressed: () async {
+                                              await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
+                                              ref.invalidate(audiobookBookmarksProvider(normalBook.id));
+                                            },
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        icon: Icon(
+                          bookmarks.isNotEmpty ? Icons.bookmarks_rounded : Icons.bookmarks_outlined,
+                          size: 18,
+                        ),
+                        label: Text(bookmarks.isNotEmpty ? '${bookmarks.length}' : 'Bookmarks'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      );
+                    }),
                     if (torrentStatusAsync != null) ...[
                     const SizedBox(height: 12),
                     torrentStatusAsync.when(

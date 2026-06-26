@@ -53,7 +53,10 @@ void main() async {
   }
 
   if (!Platform.isLinux) {
-    Permission.notification.request();
+    final notifStatus = await Permission.notification.request();
+    if (notifStatus.isDenied) {
+      await Permission.notification.request();
+    }
   }
   
   if (Platform.isLinux) {

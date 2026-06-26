@@ -230,470 +230,250 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     final inProgressAsync = ref.watch(inProgressAudiobooksProvider);
     final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
 
-    return CustomScrollView(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      slivers: [
-        // Search Bar
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SearchBar(
-              controller: _searchController,
-              hintText: 'Search audiobooks...',
-              leading: const Icon(Icons.search),
-              trailing: [
-                if (_searchController.text.isNotEmpty)
-                  IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                      ref.read(audiobookSearchProvider.notifier).clear();
-                    },
-                  )
-              ],
-              onChanged: _onSearchChanged,
-            ),
+    final content = <Widget>[
+      Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SearchBar(
+          controller: _searchController,
+          hintText: 'Search audiobooks...',
+          leading: const Icon(Icons.search),
+          trailing: [
+            if (_searchController.text.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  ref.read(audiobookSearchProvider.notifier).clear();
+                },
+              )
+          ],
+          onChanged: _onSearchChanged,
+        ),
+      ),
+    ];
+
+    if (searchState.isLoading) {
+      content.add(const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(child: CircularProgressIndicator()),
+      ));
+    } else if (searchState.results.isNotEmpty) {
+      content.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: searchState.results.length,
+            itemBuilder: (context, index) {
+              final book = searchState.results[index];
+              return _buildListTile(context, book);
+            },
           ),
         ),
-
-        // Content
-        if (searchState.isLoading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          )
-        else if (searchState.results.isNotEmpty)
-          // Search Results
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final book = searchState.results[index];
-                  return _buildListTile(context, book);
-                },
-                childCount: searchState.results.length,
-              ),
-            ),
-          )
-        else if (searchState.query.isNotEmpty && !searchState.isLoading)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(child: Text('No results found.')),
-            ),
-          )
-        else ...[
-          // Default Content
-          
-          // Continue Listening (if any)
-          inProgressAsync.when(
-            data: (progressList) {
-              if (progressList.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
-
-              final filteredList = _continueSearchController.text.isEmpty
-                  ? progressList
-                  : progressList.where((p) =>
-                      p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
-                      p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
-                    ).toList();
-
-              return SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Continue Listening',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                          ),
-                          if (progressList.length > 3)
-                            SizedBox(
-                              width: 140,
-                              height: 32,
-                              child: TextField(
-                                controller: _continueSearchController,
-                                onChanged: (_) => setState(() {}),
-                                style: const TextStyle(fontSize: 12),
-                                decoration: InputDecoration(
-                                  hintText: 'Search...',
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                  suffixIcon: _continueSearchController.text.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear, size: 14),
-                                          onPressed: () {
-                                            _continueSearchController.clear();
-                                            setState(() {});
-                                          },
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (filteredList.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                      )
-                    else
-                      SizedBox(
-                        height: 180,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: filteredList.length,
-                          itemBuilder: (context, index) {
-                            final progress = filteredList[index];
-                            return _buildProgressCard(context, progress);
-                          },
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              );
-            },
-            loading: () => const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                child: Row(
-                  children: [
-                    SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                    SizedBox(width: 12),
-                    Text('Loading continue listening...', style: TextStyle(fontSize: 14)),
-                  ],
-                ),
-              ),
-            ),
-            error: (e, _) {
-              print('[AudiobooksSubScreen] Continue Listening error: $e');
-              return const SliverToBoxAdapter(child: SizedBox.shrink());
-            },
-          ),
-
-          // Wishlist section
-          ref.watch(audiobookWishlistProvider).when(
-            data: (wishlist) {
-              if (wishlist.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
-              return SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text(
-                        'Plan to Read (${wishlist.length})',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    SizedBox(
-                      height: 180,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: wishlist.length,
-                        itemBuilder: (context, index) {
-                          final item = wishlist[index];
-                          final book = AudiobookResult(
-                            id: item.bookId,
-                            title: item.title,
-                            author: item.author,
-                            artworkUrl: item.artworkUrl,
-                          );
-                          return _buildLocalBookCard(context, book);
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              );
-            },
-            loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-            error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-          ),
-
-          // In Library (local audiobooks)
-          localAudiobooksAsync.when(
-            data: (allBooks) {
-              if (allBooks.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
-
-              final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
-              final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
-
-              List<AudiobookResult> displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
-              switch (_librarySort) {
-                case 'author':
-                  displayBooks = List.from(displayBooks)..sort((a, b) => a.author.compareTo(b.author));
-                  break;
-                case 'title':
-                  displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
-                  break;
-                case 'recent':
-                default:
-                  break;
-              }
-
-              return SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'In Library',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Sort dropdown
-                              PopupMenuButton<String>(
-                                icon: const Icon(Icons.sort_rounded, size: 20),
-                                tooltip: 'Sort by',
-                                onSelected: (value) => setState(() => _librarySort = value),
-                                itemBuilder: (_) => [
-                                  PopupMenuItem(value: 'recent', child: Row(
-                                    children: [
-                                      Icon(Icons.access_time_rounded, size: 18, color: _librarySort == 'recent' ? Theme.of(context).colorScheme.primary : null),
-                                      const SizedBox(width: 8),
-                                      Text('Recently Added', style: TextStyle(fontWeight: _librarySort == 'recent' ? FontWeight.bold : FontWeight.normal)),
-                                    ],
-                                  )),
-                                  PopupMenuItem(value: 'author', child: Row(
-                                    children: [
-                                      Icon(Icons.person_rounded, size: 18, color: _librarySort == 'author' ? Theme.of(context).colorScheme.primary : null),
-                                      const SizedBox(width: 8),
-                                      Text('Author', style: TextStyle(fontWeight: _librarySort == 'author' ? FontWeight.bold : FontWeight.normal)),
-                                    ],
-                                  )),
-                                  PopupMenuItem(value: 'title', child: Row(
-                                    children: [
-                                      Icon(Icons.sort_by_alpha_rounded, size: 18, color: _librarySort == 'title' ? Theme.of(context).colorScheme.primary : null),
-                                      const SizedBox(width: 8),
-                                      Text('Title', style: TextStyle(fontWeight: _librarySort == 'title' ? FontWeight.bold : FontWeight.normal)),
-                                    ],
-                                  )),
-                                ],
-                              ),
-                              const SizedBox(width: 4),
-                              SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment<String>(
-                                value: 'local',
-                                label: Text('Local'),
-                                icon: Icon(Icons.phone_android_rounded, size: 16),
-                              ),
-                              ButtonSegment<String>(
-                                value: 'torbox',
-                                label: Text('TorBox'),
-                                icon: Icon(Icons.cloud_queue_rounded, size: 16),
-                              ),
-                            ],
-                            selected: {_libraryTab},
-                            onSelectionChanged: (newSelection) {
-                              setState(() {
-                                _libraryTab = newSelection.first;
-                              });
-                            },
-                            showSelectedIcon: false,
-                            style: const ButtonStyle(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (displayBooks.isEmpty)
-                      Container(
-                        height: 100,
-                        alignment: Alignment.center,
-                        child: Text(
-                          _libraryTab == 'local'
-                              ? 'No downloaded or local books.'
-                              : 'No books in TorBox cloud library.',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                            fontSize: 14,
-                          ),
-                        ),
-                      )
-                    else
-                      SizedBox(
-                        height: 180,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          itemCount: displayBooks.length,
-                          itemBuilder: (context, index) {
-                            final book = displayBooks[index];
-                            return _buildLocalBookCard(context, book);
-                          },
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              );
-            },
-            loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-            error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-          ),
-
-          // ── Discovery Sections ──
-          _buildDiscoverySection(
-            context,
-            title: 'Trending',
-            icon: Icons.trending_up_rounded,
-            async: ref.watch(trendingAudiobooksProvider),
-            onSeeMore: () => _openCatalogScreen(context, 'Trending', ref.read(trendingAudiobooksProvider)),
-          ),
-          _buildDiscoverySection(
-            context,
-            title: 'New Releases',
-            icon: Icons.fiber_new_rounded,
-            async: ref.watch(newReleasesAudiobooksProvider),
-            onSeeMore: () => _openCatalogScreen(context, 'New Releases', ref.read(newReleasesAudiobooksProvider)),
-          ),
-          _buildDiscoverySection(
-            context,
-            title: 'Top Rated',
-            icon: Icons.star_rounded,
-            async: ref.watch(topRatedAudiobooksProvider),
-            onSeeMore: () => _openCatalogScreen(context, 'Top Rated', ref.read(topRatedAudiobooksProvider)),
-          ),
-          _buildDiscoverySection(
-            context,
-            title: 'Free Classics',
-            icon: Icons.auto_stories_rounded,
-            async: ref.watch(freeClassicsProvider),
-            onSeeMore: () => _openCatalogScreen(context, 'Free Classics', ref.read(freeClassicsProvider)),
-          ),
-
-          // Browse Catalog Title
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Browse Audiobooks',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  catalogAsync.when(
-                    data: (catalog) {
-                      if (catalog.length <= 10) return const SizedBox.shrink();
-                      return TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AudiobookCatalogAllScreen(title: 'Browse Audiobooks', catalog: catalog),
-                            ),
-                          );
-                        },
-                        child: const Text('See More'),
-                      );
+      );
+    } else if (searchState.query.isNotEmpty && !searchState.isLoading) {
+      content.add(const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(child: Text('No results found.')),
+      ));
+    } else {
+      // Continue Listening
+      content.add(inProgressAsync.when(
+        data: (progressList) {
+          if (progressList.isEmpty) return const SizedBox.shrink();
+          final filteredList = _continueSearchController.text.isEmpty
+              ? progressList
+              : progressList.where((p) =>
+                  p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
+                  p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
+                ).toList();
+          return _buildSection(
+            title: 'Continue Listening',
+            searchController: progressList.length > 3 ? _continueSearchController : null,
+            onSearchChanged: progressList.length > 3 ? (_) => setState(() {}) : null,
+            child: filteredList.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  )
+                : _buildHorizontalList(
+                    height: 180,
+                    itemCount: filteredList.length,
+                    itemBuilder: (context, index) {
+                      return _buildProgressCard(context, filteredList[index]);
                     },
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
                   ),
-                ],
-              ),
-            ),
-          ),
+          );
+        },
+        loading: () => const SizedBox.shrink(),
+        error: (e, _) {
+          print('[AudiobooksSubScreen] Continue Listening error: $e');
+          return const SizedBox.shrink();
+        },
+      ));
 
-          // Genre Filter Chips
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 48,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                itemCount: _genres.length,
-                itemBuilder: (context, index) {
-                  final genre = _genres[index];
-                  final selectedGenre = ref.watch(selectedGenreProvider);
-                  final isSelected = selectedGenre == genre;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(genre),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        print('[AudiobooksSubScreen] Genre selected: $genre, status: $selected');
-                        if (selected) {
-                          ref.read(selectedGenreProvider.notifier).state = genre;
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+      // Wishlist
+      content.add(ref.watch(audiobookWishlistProvider).when(
+        data: (wishlist) {
+          if (wishlist.isEmpty) return const SizedBox.shrink();
+          return _buildSection(
+            title: 'Plan to Read (${wishlist.length})',
+            child: _buildHorizontalList(
+              height: 180,
+              itemCount: wishlist.length,
+              itemBuilder: (context, index) {
+                final item = wishlist[index];
+                return _buildLocalBookCard(context, AudiobookResult(
+                  id: item.bookId,
+                  title: item.title,
+                  author: item.author,
+                  artworkUrl: item.artworkUrl,
+                ));
+              },
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          
-          catalogAsync.when(
-            skipLoadingOnReload: true,
-            data: (catalog) {
-              if (catalog.isEmpty) {
-                return const SliverToBoxAdapter(
-                  child: Center(child: Text('Catalog empty or failed to load.')),
-                );
-              }
-              final displayCount = catalog.length > 10 ? 10 : catalog.length;
-              return SliverPadding(
-                padding: const EdgeInsets.all(16),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.7,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final book = catalog[index];
-                      return _buildGridCard(context, book);
-                    },
-                    childCount: displayCount,
-                  ),
+          );
+        },
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const SizedBox.shrink(),
+      ));
+
+      // In Library
+      content.add(localAudiobooksAsync.when(
+        data: (allBooks) {
+          if (allBooks.isEmpty) return const SizedBox.shrink();
+          final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
+          final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
+          List<AudiobookResult> displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
+          switch (_librarySort) {
+            case 'author':
+              displayBooks = List.from(displayBooks)..sort((a, b) => a.author.compareTo(b.author));
+              break;
+            case 'title':
+              displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
+              break;
+          }
+          return _buildLibrarySection(displayBooks);
+        },
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const SizedBox.shrink(),
+      ));
+
+      // Discovery sections
+      content.addAll([
+        _buildDiscoverySection(
+          context, title: 'Trending', icon: Icons.trending_up_rounded,
+          async: ref.watch(trendingAudiobooksProvider),
+          onSeeMore: () => _openCatalogScreen(context, 'Trending', ref.read(trendingAudiobooksProvider)),
+        ),
+        _buildDiscoverySection(
+          context, title: 'New Releases', icon: Icons.fiber_new_rounded,
+          async: ref.watch(newReleasesAudiobooksProvider),
+          onSeeMore: () => _openCatalogScreen(context, 'New Releases', ref.read(newReleasesAudiobooksProvider)),
+        ),
+        _buildDiscoverySection(
+          context, title: 'Top Rated', icon: Icons.star_rounded,
+          async: ref.watch(topRatedAudiobooksProvider),
+          onSeeMore: () => _openCatalogScreen(context, 'Top Rated', ref.read(topRatedAudiobooksProvider)),
+        ),
+        _buildDiscoverySection(
+          context, title: 'Free Classics', icon: Icons.auto_stories_rounded,
+          async: ref.watch(freeClassicsProvider),
+          onSeeMore: () => _openCatalogScreen(context, 'Free Classics', ref.read(freeClassicsProvider)),
+        ),
+      ]);
+
+      // Browse Catalog Header
+      content.add(Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Browse Audiobooks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            catalogAsync.when(
+              data: (catalog) => catalog.length > 10
+                  ? TextButton(
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => AudiobookCatalogAllScreen(title: 'Browse Audiobooks', catalog: catalog),
+                      )),
+                      child: const Text('See More'),
+                    )
+                  : const SizedBox.shrink(),
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ));
+
+      // Genre Filter Chips
+      content.add(Consumer(builder: (context, ref, _) {
+        final selectedGenre = ref.watch(selectedGenreProvider);
+        return SizedBox(
+          height: 48,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _genres.length,
+            itemBuilder: (context, index) {
+              final genre = _genres[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: ChoiceChip(
+                  label: Text(genre),
+                  selected: selectedGenre == genre,
+                  onSelected: (selected) {
+                    if (selected) ref.read(selectedGenreProvider.notifier).state = genre;
+                  },
                 ),
               );
             },
-            loading: () => const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            ),
-            error: (e, st) => SliverToBoxAdapter(
-              child: Center(child: Text('Error: $e')),
-            ),
           ),
-        ],
-      ],
+        );
+      }));
+      content.add(const SizedBox(height: 8));
+
+      // Catalog Grid
+      content.add(catalogAsync.when(
+        skipLoadingOnReload: true,
+        data: (catalog) {
+          if (catalog.isEmpty) return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: Text('Catalog empty or failed to load.')),
+          );
+          final displayCount = catalog.length > 10 ? 10 : catalog.length;
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.7,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: displayCount,
+              itemBuilder: (context, index) => _buildGridCard(context, catalog[index]),
+            ),
+          );
+        },
+        loading: () => const Padding(
+          padding: EdgeInsets.all(40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (e, _) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: Center(child: Text('Error: $e')),
+        ),
+      ));
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: content,
+      ),
     );
   }
 
@@ -1067,55 +847,188 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   }) {
     return async.when(
       data: (books) {
-        if (books.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        if (books.isEmpty) return const SizedBox.shrink();
         final theme = Theme.of(context);
-        return SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(icon, size: 20, color: theme.colorScheme.primary),
-                          const SizedBox(width: 8),
-                          Text(
-                            title,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: onSeeMore,
-                        child: const Text('See More'),
-                      ),
-                    ],
-                  ),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(icon, size: 20, color: theme.colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Text(
+                          title,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: onSeeMore,
+                      child: const Text('See More'),
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  height: 180,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: books.length,
-                    itemBuilder: (context, index) {
-                      final book = books[index];
-                      return _buildLocalBookCard(context, book);
-                    },
-                  ),
+              ),
+              SizedBox(
+                height: 180,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: books.length,
+                  itemBuilder: (context, index) {
+                    final book = books[index];
+                    return _buildLocalBookCard(context, book);
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
-      loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildSection({required String title, TextEditingController? searchController, void Function(String)? onSearchChanged, required Widget child}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              if (searchController != null && onSearchChanged != null)
+                SizedBox(
+                  width: 140,
+                  height: 32,
+                  child: TextField(
+                    controller: searchController,
+                    onChanged: onSearchChanged,
+                    style: const TextStyle(fontSize: 12),
+                    decoration: InputDecoration(
+                      hintText: 'Search...',
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      suffixIcon: searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 14),
+                              onPressed: () {
+                                searchController.clear();
+                                onSearchChanged('');
+                              },
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        child,
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalList({required double height, required int itemCount, required Widget Function(BuildContext, int) itemBuilder}) {
+    return SizedBox(
+      height: height,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: itemCount,
+        itemBuilder: itemBuilder,
+      ),
+    );
+  }
+
+  Widget _buildLibrarySection(List<AudiobookResult> displayBooks) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('In Library', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.sort_rounded, size: 20),
+                    tooltip: 'Sort by',
+                    onSelected: (value) => setState(() => _librarySort = value),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(value: 'recent', child: Row(
+                        children: [
+                          Icon(Icons.access_time_rounded, size: 18, color: _librarySort == 'recent' ? Theme.of(context).colorScheme.primary : null),
+                          const SizedBox(width: 8),
+                          Text('Recently Added', style: TextStyle(fontWeight: _librarySort == 'recent' ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      )),
+                      PopupMenuItem(value: 'author', child: Row(
+                        children: [
+                          Icon(Icons.person_rounded, size: 18, color: _librarySort == 'author' ? Theme.of(context).colorScheme.primary : null),
+                          const SizedBox(width: 8),
+                          Text('Author', style: TextStyle(fontWeight: _librarySort == 'author' ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      )),
+                      PopupMenuItem(value: 'title', child: Row(
+                        children: [
+                          Icon(Icons.sort_by_alpha_rounded, size: 18, color: _librarySort == 'title' ? Theme.of(context).colorScheme.primary : null),
+                          const SizedBox(width: 8),
+                          Text('Title', style: TextStyle(fontWeight: _librarySort == 'title' ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      )),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'local', label: Text('Local'), icon: Icon(Icons.phone_android_rounded, size: 16)),
+                      ButtonSegment(value: 'torbox', label: Text('TorBox'), icon: Icon(Icons.cloud_queue_rounded, size: 16)),
+                    ],
+                    selected: {_libraryTab},
+                    onSelectionChanged: (newSelection) => setState(() => _libraryTab = newSelection.first),
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        if (displayBooks.isEmpty)
+          Container(
+            height: 100,
+            alignment: Alignment.center,
+            child: Text(
+              _libraryTab == 'local' ? 'No downloaded or local books.' : 'No books in TorBox cloud library.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontSize: 14),
+            ),
+          )
+        else
+          _buildHorizontalList(
+            height: 180,
+            itemCount: displayBooks.length,
+            itemBuilder: (context, index) => _buildLocalBookCard(context, displayBooks[index]),
+          ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 }

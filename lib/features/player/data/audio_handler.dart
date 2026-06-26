@@ -1913,7 +1913,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         MediaControl.skipToNext,
         if (isAudiobook)
           const MediaControl(
-            androidIcon: 'drawable/ic_bookmark_border',
+            androidIcon: 'drawable/ic_heart_border',
             label: 'Bookmark',
             action: MediaAction.setRating,
             customAction: CustomMediaAction(name: 'bookmark'),
