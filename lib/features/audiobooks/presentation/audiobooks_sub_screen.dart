@@ -226,9 +226,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   @override
   Widget build(BuildContext context) {
     final searchState = ref.watch(audiobookSearchProvider);
-    final catalogAsync = ref.watch(audiobookCatalogProvider);
     final inProgressAsync = ref.watch(inProgressAudiobooksProvider);
-    final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
 
     final content = <Widget>[
       Padding(
@@ -314,159 +312,159 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
       ));
 
       // Wishlist
-      content.add(ref.watch(audiobookWishlistProvider).when(
-        data: (wishlist) {
-          if (wishlist.isEmpty) return const SizedBox.shrink();
-          return _buildSection(
-            title: 'Plan to Read (${wishlist.length})',
-            child: _buildHorizontalList(
-              height: 180,
-              itemCount: wishlist.length,
-              itemBuilder: (context, index) {
-                final item = wishlist[index];
-                return _buildLocalBookCard(context, AudiobookResult(
-                  id: item.bookId,
-                  title: item.title,
-                  author: item.author,
-                  artworkUrl: item.artworkUrl,
-                ));
-              },
-            ),
-          );
-        },
-        loading: () => const SizedBox.shrink(),
-        error: (_, __) => const SizedBox.shrink(),
-      ));
-
-      // In Library
-      content.add(localAudiobooksAsync.when(
-        data: (allBooks) {
-          if (allBooks.isEmpty) return const SizedBox.shrink();
-          final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
-          final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
-          List<AudiobookResult> displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
-          switch (_librarySort) {
-            case 'author':
-              displayBooks = List.from(displayBooks)..sort((a, b) => a.author.compareTo(b.author));
-              break;
-            case 'title':
-              displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
-              break;
-          }
-          return _buildLibrarySection(displayBooks);
-        },
-        loading: () => const SizedBox.shrink(),
-        error: (_, __) => const SizedBox.shrink(),
-      ));
-
-      // Discovery sections
-      content.addAll([
-        _buildDiscoverySection(
-          context, title: 'Trending', icon: Icons.trending_up_rounded,
-          async: ref.watch(trendingAudiobooksProvider),
-          onSeeMore: () => _openCatalogScreen(context, 'Trending', ref.read(trendingAudiobooksProvider)),
-        ),
-        _buildDiscoverySection(
-          context, title: 'New Releases', icon: Icons.fiber_new_rounded,
-          async: ref.watch(newReleasesAudiobooksProvider),
-          onSeeMore: () => _openCatalogScreen(context, 'New Releases', ref.read(newReleasesAudiobooksProvider)),
-        ),
-        _buildDiscoverySection(
-          context, title: 'Top Rated', icon: Icons.star_rounded,
-          async: ref.watch(topRatedAudiobooksProvider),
-          onSeeMore: () => _openCatalogScreen(context, 'Top Rated', ref.read(topRatedAudiobooksProvider)),
-        ),
-        _buildDiscoverySection(
-          context, title: 'Free Classics', icon: Icons.auto_stories_rounded,
-          async: ref.watch(freeClassicsProvider),
-          onSeeMore: () => _openCatalogScreen(context, 'Free Classics', ref.read(freeClassicsProvider)),
-        ),
-      ]);
-
-      // Browse Catalog Header
-      content.add(Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Browse Audiobooks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            catalogAsync.when(
-              data: (catalog) => catalog.length > 10
-                  ? TextButton(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => AudiobookCatalogAllScreen(title: 'Browse Audiobooks', catalog: catalog),
-                      )),
-                      child: const Text('See More'),
-                    )
-                  : const SizedBox.shrink(),
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      ));
-
-      // Genre Filter Chips
       content.add(Consumer(builder: (context, ref, _) {
-        final selectedGenre = ref.watch(selectedGenreProvider);
-        return SizedBox(
-          height: 48,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: _genres.length,
-            itemBuilder: (context, index) {
-              final genre = _genres[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: ChoiceChip(
-                  label: Text(genre),
-                  selected: selectedGenre == genre,
-                  onSelected: (selected) {
-                    if (selected) ref.read(selectedGenreProvider.notifier).state = genre;
-                  },
-                ),
-              );
-            },
-          ),
+        return ref.watch(audiobookWishlistProvider).when(
+          data: (wishlist) {
+            if (wishlist.isEmpty) return const SizedBox.shrink();
+            return _buildSection(
+              title: 'Plan to Read (${wishlist.length})',
+              child: _buildHorizontalList(
+                height: 180,
+                itemCount: wishlist.length,
+                itemBuilder: (context, index) {
+                  final item = wishlist[index];
+                  return _buildLocalBookCard(context, AudiobookResult(
+                    id: item.bookId,
+                    title: item.title,
+                    author: item.author,
+                    artworkUrl: item.artworkUrl,
+                  ));
+                },
+              ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
         );
       }));
-      content.add(const SizedBox(height: 8));
 
-      // Catalog Grid
-      content.add(catalogAsync.when(
-        skipLoadingOnReload: true,
-        data: (catalog) {
-          if (catalog.isEmpty) return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: Text('Catalog empty or failed to load.')),
-          );
-          final displayCount = catalog.length > 10 ? 10 : catalog.length;
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.7,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              itemCount: displayCount,
-              itemBuilder: (context, index) => _buildGridCard(context, catalog[index]),
+      // In Library
+      content.add(Consumer(builder: (context, ref, _) {
+        final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
+        return localAudiobooksAsync.when(
+          data: (allBooks) {
+            if (allBooks.isEmpty) return const SizedBox.shrink();
+            final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
+            final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
+            List<AudiobookResult> displayBooks = _libraryTab == 'local' ? localBooksList : torBoxBooksList;
+            switch (_librarySort) {
+              case 'author':
+                displayBooks = List.from(displayBooks)..sort((a, b) => a.author.compareTo(b.author));
+                break;
+              case 'title':
+                displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
+                break;
+            }
+            return _buildLibrarySection(displayBooks);
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        );
+      }));
+
+      // Discovery sections
+      content.add(Consumer(builder: (context, ref, _) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDiscoverySection(context, title: 'Trending', icon: Icons.trending_up_rounded,
+              async: ref.watch(trendingAudiobooksProvider),
+              onSeeMore: () => _openCatalogScreen(context, 'Trending', ref.read(trendingAudiobooksProvider)),
             ),
-          );
-        },
-        loading: () => const Padding(
-          padding: EdgeInsets.all(40),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-        error: (e, _) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: Center(child: Text('Error: $e')),
-        ),
-      ));
+            _buildDiscoverySection(context, title: 'Top Rated', icon: Icons.star_rounded,
+              async: ref.watch(topRatedAudiobooksProvider),
+              onSeeMore: () => _openCatalogScreen(context, 'Top Rated', ref.read(topRatedAudiobooksProvider)),
+            ),
+          ],
+        );
+      }));
+
+      // Browse Catalog Header + Genre Chips + Grid
+      content.add(Consumer(builder: (context, ref, _) {
+        final catalogAsync = ref.watch(audiobookCatalogProvider);
+        final selectedGenre = ref.watch(selectedGenreProvider);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Browse Audiobooks', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  catalogAsync.when(
+                    data: (catalog) => catalog.length > 10
+                        ? TextButton(
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => AudiobookCatalogAllScreen(title: 'Browse Audiobooks', catalog: catalog),
+                            )),
+                            child: const Text('See More'),
+                          )
+                        : const SizedBox.shrink(),
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 48,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: _genres.length,
+                itemBuilder: (context, index) {
+                  final genre = _genres[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: ChoiceChip(
+                      label: Text(genre),
+                      selected: selectedGenre == genre,
+                      onSelected: (selected) {
+                        if (selected) ref.read(selectedGenreProvider.notifier).state = genre;
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            catalogAsync.when(
+              skipLoadingOnReload: true,
+              data: (catalog) {
+                if (catalog.isEmpty) return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: Text('Catalog empty or failed to load.')),
+                );
+                final displayCount = catalog.length > 10 ? 10 : catalog.length;
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.7,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: displayCount,
+                    itemBuilder: (context, index) => _buildGridCard(context, catalog[index]),
+                  ),
+                );
+              },
+              loading: () => const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(child: Text('Error: $e')),
+              ),
+            ),
+          ],
+        );
+      }));
     }
 
     return SingleChildScrollView(
@@ -624,44 +622,54 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: isLocal
-          ? Image.file(
-              File(cleanPath),
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  isTorrent ? Icons.download_for_offline_rounded : Icons.book,
-                  size: (width != null && width.isFinite) ? width * 0.5 : 28,
-                ),
-              ),
-            )
-          : CachedNetworkImage(
-              imageUrl: url,
-              width: width,
-              height: height,
-              memCacheWidth: (width != null && width.isFinite) ? width.round() : null,
-              memCacheHeight: (height != null && height.isFinite) ? height.round() : null,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: Icon(
-                  isTorrent ? Icons.download_for_offline_rounded : Icons.book,
-                  size: (width != null && width.isFinite) ? width * 0.5 : 28,
-                ),
-              ),
-            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final effectiveWidth = (width != null && width.isFinite) ? width : constraints.maxWidth;
+          final effectiveHeight = (height != null && height.isFinite) ? height : constraints.maxHeight;
+          final cacheW = (effectiveWidth.isFinite && effectiveWidth > 0) ? effectiveWidth.round() * 2 : null;
+          final cacheH = (effectiveHeight.isFinite && effectiveHeight > 0) ? effectiveHeight.round() * 2 : null;
+          return isLocal
+              ? Image.file(
+                  File(cleanPath),
+                  width: effectiveWidth > 0 ? effectiveWidth : null,
+                  height: effectiveHeight > 0 ? effectiveHeight : null,
+                  cacheWidth: cacheW,
+                  cacheHeight: cacheH,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      isTorrent ? Icons.download_for_offline_rounded : Icons.book,
+                      size: (effectiveWidth.isFinite && effectiveWidth > 0) ? effectiveWidth * 0.5 : 28,
+                    ),
+                  ),
+                )
+              : CachedNetworkImage(
+                  imageUrl: url,
+                  width: effectiveWidth > 0 ? effectiveWidth : null,
+                  height: effectiveHeight > 0 ? effectiveHeight : null,
+                  memCacheWidth: cacheW,
+                  memCacheHeight: cacheH,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      isTorrent ? Icons.download_for_offline_rounded : Icons.book,
+                      size: (effectiveWidth.isFinite && effectiveWidth > 0) ? effectiveWidth * 0.5 : 28,
+                    ),
+                  ),
+                );
+        },
+      ),
     );
   }
 
@@ -1291,18 +1299,28 @@ class _AudiobookCatalogAllScreenState extends ConsumerState<AudiobookCatalogAllS
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: book.artworkUrl != null && book.artworkUrl!.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: book.artworkUrl!,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        child: const Icon(Icons.book, size: 40),
-                      ),
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cw = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                            ? constraints.maxWidth.round() * 2 : null;
+                        final ch = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+                            ? constraints.maxHeight.round() * 2 : null;
+                        return CachedNetworkImage(
+                          imageUrl: book.artworkUrl!,
+                          width: double.infinity,
+                          height: double.infinity,
+                          memCacheWidth: cw,
+                          memCacheHeight: ch,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          ),
+                          errorWidget: (_, __, ___) => Container(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            child: const Icon(Icons.book, size: 40),
+                          ),
+                        );
+                      },
                     )
                   : Container(
                       width: double.infinity,

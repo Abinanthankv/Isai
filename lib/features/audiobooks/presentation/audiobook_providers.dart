@@ -100,18 +100,6 @@ final topRatedAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResu
   return repo.fetchTopRated();
 });
 
-/// Newly released audiobooks.
-final newReleasesAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>>((ref) async {
-  final repo = ref.read(audiobookRepositoryProvider);
-  return repo.fetchNewReleases();
-});
-
-/// Free classic audiobooks (LibriVox + Open Library).
-final freeClassicsProvider = FutureProvider.autoDispose<List<AudiobookResult>>((ref) async {
-  final repo = ref.read(audiobookRepositoryProvider);
-  return repo.fetchFreeClassics();
-});
-
 /// Audiobooks by a specific author (for "More from Author" section).
 final authorAudiobooksProvider = FutureProvider.family.autoDispose<List<AudiobookResult>, String>((ref, author) async {
   final repo = ref.read(audiobookRepositoryProvider);
