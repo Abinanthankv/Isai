@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -111,82 +112,6 @@ final genreAudiobooksProvider = FutureProvider.family.autoDispose<List<Audiobook
   return repo.searchItunesCatalog(genre, limit: 20);
 });
 
-/// Listens to the repository's progressChanged stream so that any
-/// provider watching this will re-evaluate after each progress save.
-final _audiobookProgressInvalidator = StreamProvider<void>((ref) {
-  final repo = ref.watch(audiobookRepositoryProvider);
-  return repo.progressChanged;
-});
-
-/// Get all in-progress audiobooks for "Continue Listening" section.
-final inProgressAudiobooksProvider = FutureProvider<List<AudiobookWithProgress>>((ref) async {
-  // Re-evaluate whenever progress is saved
-  ref.watch(_audiobookProgressInvalidator);
-  try {
-    final repo = ref.read(audiobookRepositoryProvider);
-
-    final allProgress = await repo.getAllInProgressBooks();
-    final dismissedBooks = await repo.getDismissedBooksFromContinueListening();
-
-    // Resolve metadata for each progress entry
-    final List<_ResolvedProgress> resolved = [];
-    for (final p in allProgress) {
-      if (dismissedBooks.contains(p.bookId)) continue;
-      final cached = await repo.getCachedMetadata(p.bookId);
-      final summary = await repo.getBookProgressSummary(p.bookId);
-      resolved.add(_ResolvedProgress(
-        progress: p,
-        title: cached?.title ?? 'Audiobook',
-        author: cached?.author ?? 'Unknown Author',
-        artworkUrl: cached?.artworkUrl,
-        totalCh: cached?.totalChapters,
-        progressPercent: (summary?['progressPercent'] as num?)?.toDouble() ?? 0.0,
-      ));
-    }
-
-    // Deduplicate by normalized bookId first, then by title+author
-    final Map<String, _ResolvedProgress> byNormId = {};
-    for (final r in resolved) {
-      final normId = AudiobookRepository.normalizeBookId(r.progress.bookId);
-      final existing = byNormId[normId];
-      if (existing == null || r.progress.lastListenedAt.isAfter(existing.progress.lastListenedAt)) {
-        byNormId[normId] = r;
-      }
-    }
-
-    // If still duplicates by title+author (different normalized IDs for same book),
-    // keep only the most recent
-    final List<_ResolvedProgress> deduped = [];
-    final Set<String> seenTitleAuthor = {};
-    final sorted = byNormId.values.toList()
-      ..sort((a, b) => b.progress.lastListenedAt.compareTo(a.progress.lastListenedAt));
-    for (final r in sorted) {
-      final key = '${r.title}|${r.author}';
-      if (seenTitleAuthor.add(key)) {
-        deduped.add(r);
-      }
-    }
-
-    return deduped.map((r) => AudiobookWithProgress(
-      book: AudiobookResult(
-        id: r.progress.bookId,
-        title: r.title,
-        author: r.author,
-        artworkUrl: r.artworkUrl,
-        totalChapters: r.totalCh,
-      ),
-      currentChapter: r.progress.chapterIndex,
-      positionMillis: r.progress.positionMillis,
-      totalChapters: r.totalCh ?? 0,
-      lastListenedAt: r.progress.lastListenedAt,
-      progressPercent: r.progressPercent,
-    )).toList();
-  } catch (e, stack) {
-    print('[inProgressAudiobooksProvider] Error: $e\n$stack');
-    return [];
-  }
-});
-
 /// Get book details (fetches from addon and caches, enriched with ratings).
 final bookDetailsProvider = FutureProvider.family<AudiobookResult?, String>((ref, bookId) async {
   final repo = ref.read(audiobookRepositoryProvider);
@@ -272,18 +197,6 @@ const Set<String> _audioExtensions = {
   '.wav',
   '.flac',
 };
-
-/// Helper: count audio/epub files directly inside a directory (non-recursive).
-Future<int> _countAudioFiles(Directory dir) async {
-  int count = 0;
-  await for (final entity in dir.list()) {
-    if (entity is File) {
-      final ext = _getExt(entity.path);
-      if (_audioExtensions.contains(ext) || ext == '.epub') count++;
-    }
-  }
-  return count;
-}
 
 String _getExt(String path) {
   final dot = path.lastIndexOf('.');
@@ -484,7 +397,7 @@ Future<AudiobookResult> _getBookMetadataFromAudioFile(File file, String id, Stri
 /// Scan the user's local audiobook folder.
 ///
 /// Both subfolders (Layout B) and individual audio files directly in the root are supported.
-final localAudiobooksProvider = FutureProvider<List<AudiobookResult>>((ref) async {
+final localAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookResult>>((ref) async {
   try {
     final repo = ref.read(audiobookRepositoryProvider);
     final List<AudiobookResult> results = [];
@@ -499,20 +412,10 @@ final localAudiobooksProvider = FutureProvider<List<AudiobookResult>>((ref) asyn
             final bookId = 'local:${entity.path}';
             final metaFile = File(p.join(entity.path, 'metadata.json'));
 
-            bool isBook = false;
-            if (await metaFile.exists()) {
-              isBook = true;
-            } else {
-              final audioCount = await _countAudioFiles(entity);
-              isBook = audioCount > 0;
-            }
-
-            if (isBook) {
-              final folderName = entity.path.split('/').last;
-              final book = await _getAudiobookMetadata(entity, bookId, folderName);
+            final folderName = entity.path.split('/').last;
+            final book = await _getAudiobookMetadata(entity, bookId, folderName);
+            if ((book.totalChapters ?? 0) > 0 || await metaFile.exists()) {
               results.add(book);
-              repo.cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
-              repo.restoreBookmarksFromLocalFolder(book.id, entity.path).catchError((_) {});
             }
           } else if (entity is File) {
             final ext = _getExt(entity.path);
@@ -585,6 +488,72 @@ final bookTorrentSearchProvider = FutureProvider.autoDispose.family<List<Audiobo
   if (query.trim().isEmpty) return [];
   final results = await repo.searchBooks(query);
   return results.where((b) => b.id.startsWith('torrent:') || b.id.startsWith('audiobookbay:')).toList();
+});
+
+final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWithProgress>>((ref) async {
+  final repo = ref.read(audiobookRepositoryProvider);
+  final prefs = await SharedPreferences.getInstance();
+  final dismissed = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
+
+  final allProgress = await repo.getAllProgress();
+  if (allProgress.isEmpty) return [];
+
+  final Map<String, List<DbAudiobookProgress>> grouped = {};
+  for (final p in allProgress) {
+    grouped.putIfAbsent(p.bookId, () => []).add(p);
+  }
+
+  final result = <AudiobookWithProgress>[];
+  for (final entry in grouped.entries) {
+    if (dismissed.contains(entry.key)) continue;
+
+    final progressList = entry.value;
+    final latest = progressList.reduce((a, b) =>
+        a.lastListenedAt.isAfter(b.lastListenedAt) ? a : b);
+    final completed = progressList.where((p) => p.isCompleted).length;
+    final total = progressList.length;
+
+    final cached = await repo.getCachedMetadata(entry.key);
+    final totalChapters = cached?.totalChapters ?? total;
+    if (totalChapters > 0 && completed >= totalChapters) continue;
+
+    result.add(AudiobookWithProgress(
+      book: AudiobookResult(
+        id: entry.key,
+        title: cached?.title ?? entry.key,
+        author: cached?.author ?? 'Unknown Author',
+        artworkUrl: cached?.artworkUrl,
+      ),
+      currentChapter: latest.chapterIndex,
+      positionMillis: latest.positionMillis,
+      totalChapters: totalChapters,
+      lastListenedAt: latest.lastListenedAt,
+      progressPercent: totalChapters > 0 ? completed / totalChapters : 0.0,
+    ));
+  }
+
+  result.sort((a, b) => b.lastListenedAt.compareTo(a.lastListenedAt));
+  return result;
+});
+
+final completedAudiobookIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) async {
+  final repo = ref.read(audiobookRepositoryProvider);
+  final allProgress = await repo.getAllProgress();
+  if (allProgress.isEmpty) return {};
+
+  final Map<String, List<DbAudiobookProgress>> grouped = {};
+  for (final p in allProgress) {
+    grouped.putIfAbsent(p.bookId, () => []).add(p);
+  }
+
+  final completed = <String>{};
+  for (final entry in grouped.entries) {
+    final done = entry.value.where((p) => p.isCompleted).length;
+    final cached = await repo.getCachedMetadata(entry.key);
+    final totalChapters = cached?.totalChapters ?? entry.value.length;
+    if (totalChapters > 0 && done >= totalChapters) completed.add(entry.key);
+  }
+  return completed;
 });
 
 class AudiobookDownloadState {
@@ -964,9 +933,12 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
           }
 
           try {
-            final client = HttpClient();
-            client.connectionTimeout = const Duration(seconds: 15);
+            final client = HttpClient()
+              ..connectionTimeout = const Duration(seconds: 15)
+              ..idleTimeout = const Duration(seconds: 30);
+            client.autoUncompress = false;
             final request = await client.getUrl(Uri.parse(streamUrl));
+            request.headers.set('Connection', 'keep-alive');
             
             if (downloadedBytes > 0) {
               request.headers.add('Range', 'bytes=$downloadedBytes-');
@@ -997,13 +969,20 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
             }
 
             final sink = fileToSave.openWrite(mode: FileMode.writeOnlyAppend);
+            final writeBuffer = <int>[];
+            const writeBatchSize = 64 * 1024; // 64KB batch writes
             
             await for (final data in response) {
               if (_pausedBooks.contains(book.id)) {
                 break;
               }
-              sink.add(data);
+              writeBuffer.addAll(data);
               downloadedBytes += data.length;
+              
+              if (writeBuffer.length >= writeBatchSize) {
+                sink.add(Uint8List.fromList(writeBuffer));
+                writeBuffer.clear();
+              }
               
               final double taskProgress = totalBytes > 0 ? downloadedBytes / totalBytes : 0.0;
               final overallProgress = (completedTasks + taskProgress) / totalTasks;
@@ -1023,6 +1002,11 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
                 };
                 _showProgressNotification(book.id, book.title, overallProgress, downloadedBytes: downloadedBytes, totalBytes: totalBytes);
               }
+            }
+            // Flush remaining buffered data
+            if (writeBuffer.isNotEmpty) {
+              sink.add(Uint8List.fromList(writeBuffer));
+              writeBuffer.clear();
             }
             await sink.flush();
             await sink.close();
@@ -1156,7 +1140,6 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
       _showProgressNotification(book.id, book.title, 1.0, downloadedBytes: finalCurrent.downloadedBytes, totalBytes: finalCurrent.totalBytes);
       
       _ref.invalidate(localAudiobooksProvider);
-      _ref.invalidate(inProgressAudiobooksProvider);
       
     } catch (e) {
       print('[AudiobookDownloadNotifier] Download failed: $e');
@@ -1204,6 +1187,9 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
         progress: -5.0,
       ),
     };
+
+    // Wait for the download loop to detect pause and close file handles
+    await Future.delayed(const Duration(milliseconds: 800));
     
     final settings = _ref.read(settingsProvider);
     final downloadDirPath = settings.audiobookFolder;
@@ -1211,10 +1197,16 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
       final sanitizedTitle = book.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
       final bookDir = Directory(p.join(downloadDirPath, sanitizedTitle));
       if (await bookDir.exists()) {
-        try {
-          await bookDir.delete(recursive: true);
-        } catch (e) {
-          print('[AudiobookDownloadNotifier] Error deleting directory: $e');
+        for (int attempt = 0; attempt < 3; attempt++) {
+          try {
+            await bookDir.delete(recursive: true);
+            break;
+          } catch (e) {
+            print('[AudiobookDownloadNotifier] Error deleting directory (attempt $attempt): $e');
+            if (attempt < 2) {
+              await Future.delayed(const Duration(milliseconds: 500));
+            }
+          }
         }
       }
     }
@@ -1237,7 +1229,6 @@ class AudiobookDownloadNotifier extends StateNotifier<Map<String, AudiobookDownl
 
     state = Map.from(state)..remove(book.id);
     _ref.invalidate(localAudiobooksProvider);
-    _ref.invalidate(inProgressAudiobooksProvider);
   }
 
   void clearStatus(String bookId) {
@@ -1422,19 +1413,3 @@ Future<void> toggleWishlist(AudiobookResult book) async {
   await prefs.setStringList('audiobook_wishlist', list);
 }
 
-class _ResolvedProgress {
-  final DbAudiobookProgress progress;
-  final String title;
-  final String author;
-  final String? artworkUrl;
-  final int? totalCh;
-  final double progressPercent;
-  _ResolvedProgress({
-    required this.progress,
-    required this.title,
-    required this.author,
-    this.artworkUrl,
-    this.totalCh,
-    this.progressPercent = 0.0,
-  });
-}

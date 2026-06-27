@@ -68,13 +68,11 @@ class DiscoveryScreen extends ConsumerWidget {
         onRefresh: () async {
           if (selectedTab == 'audiobooks') {
             ref.invalidate(audiobookCatalogProvider);
-            ref.invalidate(inProgressAudiobooksProvider);
             ref.invalidate(localAudiobooksProvider);
             await Future.wait([
-              ref.read(audiobookCatalogProvider.future).catchError((_) => <AudiobookResult>[]),
-              ref.read(inProgressAudiobooksProvider.future).catchError((_) => <AudiobookWithProgress>[]),
-              ref.read(localAudiobooksProvider.future).catchError((_) => <AudiobookResult>[]),
-            ]);
+              ref.read(audiobookCatalogProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
+              ref.read(localAudiobooksProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
+            ]).catchError((_) => []);
           } else {
             ref.invalidate(cachedTrendingSongsProvider);
             ref.invalidate(newReleasesProvider(selectedRegion));

@@ -46,8 +46,6 @@ class AudiobookDetailScreen extends ConsumerWidget {
         : null;
     final epubPathAsync = ref.watch(bookEpubPathProvider(normalBook.id));
     final epubProgressAsync = ref.watch(epubProgressProvider(normalBook.id));
-    final wishlistAsync = ref.watch(isBookInWishlistProvider(normalBook.id));
-    final inLibraryAsync = ref.watch(isBookInLibraryProvider(normalBook.id));
 
     // Build a map of chapterIndex -> DbAudiobookProgress for quick lookup
     final Map<int, DbAudiobookProgress> chapterProgressMap = {};
@@ -302,10 +300,11 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                     metaMap['title'] = displayBook.title;
                                     metaMap['author'] = displayBook.author;
                                     if (displayBook.totalChapters != null) metaMap['totalChapters'] = displayBook.totalChapters;
-                                    await metaFile.writeAsString(jsonEncode(metaMap));
-                                  }
-                                  ref.invalidate(bookChaptersProvider(displayBook.id));
-                                  print('[RefreshChapters] Successfully regenerated metadata.json and invalidated provider');
+                                   await metaFile.writeAsString(jsonEncode(metaMap));
+                                   }
+                                   if (!context.mounted) return;
+                                   ref.invalidate(bookChaptersProvider(displayBook.id));
+                                   print('[RefreshChapters] Successfully regenerated metadata.json and invalidated provider');
                                 } catch (e) {
                                   print('[RefreshChapters] Error rebuilding chapters: $e');
                                 }
@@ -324,16 +323,17 @@ class AudiobookDetailScreen extends ConsumerWidget {
                    ],
                     const SizedBox(height: 12),
                     // Plan to Read button — hidden if book is already in library
-                    inLibraryAsync.when(
-                      data: (inLibrary) {
-                        if (inLibrary) return const SizedBox.shrink();
-                        return wishlistAsync.when(
-                          data: (inWishlist) => Row(
+                    Consumer(builder: (context, ref, _) {
+                      final inLibrary = ref.watch(isBookInLibraryProvider(normalBook.id)).asData?.value ?? false;
+                      if (inLibrary) return const SizedBox.shrink();
+                      return ref.watch(isBookInWishlistProvider(normalBook.id)).when(
+                        data: (inWishlist) => Row(
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: () async {
                                     await toggleWishlist(displayBook);
+                                    if (!context.mounted) return;
                                     ref.invalidate(isBookInWishlistProvider(normalBook.id));
                                     ref.invalidate(audiobookWishlistProvider);
                                     if (context.mounted) {
@@ -357,13 +357,10 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               ),
                             ],
                           ),
-                          loading: () => const SizedBox.shrink(),
-                          error: (_, __) => const SizedBox.shrink(),
-                        );
-                      },
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ),
+                        loading: () => const SizedBox.shrink(),
+                        error: (_, __) => const SizedBox.shrink(),
+                      );
+                    }),
                     const SizedBox(height: 8),
                     // Bookmarks button — always shown even for local audiobooks
                     Consumer(builder: (context, ref, child) {
@@ -959,8 +956,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               );
                             }
                           }
+                          if (!context.mounted) return;
                           ref.invalidate(bookChapterProgressProvider(displayBook.id));
-                          ref.invalidate(inProgressAudiobooksProvider);
                         },
                         itemBuilder: (context) => [
                           const PopupMenuItem(
@@ -1352,7 +1349,6 @@ class AudiobookDetailScreen extends ConsumerWidget {
                             leading: Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary),
                             title: const Text('Mark as Completed'),
                             onTap: () async {
-                              Navigator.pop(context);
                               final repo = ref.read(audiobookRepositoryProvider);
                               final durationToUse = chapter.durationMillis > 0 
                                   ? chapter.durationMillis 
@@ -1368,14 +1364,13 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                 isCompleted: true,
                               );
                               ref.invalidate(bookChapterProgressProvider(normalizedId));
-                              ref.invalidate(inProgressAudiobooksProvider);
+                              if (context.mounted) Navigator.pop(context);
                             },
                           ),
                           ListTile(
                             leading: Icon(Icons.cleaning_services_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             title: const Text('Clear Progress (Mark as Incomplete)'),
                             onTap: () async {
-                              Navigator.pop(context);
                               final repo = ref.read(audiobookRepositoryProvider);
                               await repo.saveProgress(
                                 bookId: normalizedId,
@@ -1385,7 +1380,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                 isCompleted: false,
                               );
                               ref.invalidate(bookChapterProgressProvider(normalizedId));
-                              ref.invalidate(inProgressAudiobooksProvider);
+                              if (context.mounted) Navigator.pop(context);
                             },
                           ),
                         ],
@@ -1535,8 +1530,8 @@ class AudiobookDetailScreen extends ConsumerWidget {
                           isCompleted: true,
                         );
                       }
-                      ref.invalidate(bookChapterProgressProvider(normalizedId));
-                      ref.invalidate(inProgressAudiobooksProvider);
+                       if (!context.mounted) return;
+                       ref.invalidate(bookChapterProgressProvider(normalizedId));
                     },
                   ),
                   IconButton(
@@ -1556,7 +1551,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                         return;
                       }
 
-                  // Cache metadata and save initial progress immediately to DB so it shows in Continue Listening
+                  // Cache metadata and save initial progress immediately to DB
                   final repo = ref.read(audiobookRepositoryProvider);
                   
                   // Show loading feedback while resolving
@@ -1897,6 +1892,22 @@ class AudiobookDetailScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => _resumeListeningPlayback(
+                        context, ref, displayBook, progressMap, chapters,
+                      ),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text(listenedChapters > 0 ? 'Resume' : 'Start Listening'),
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               );
             }),
@@ -2092,6 +2103,78 @@ class AudiobookDetailScreen extends ConsumerWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _resumeListeningPlayback(
+    BuildContext context,
+    WidgetRef ref,
+    AudiobookResult displayBook,
+    Map<int, DbAudiobookProgress> progressMap,
+    List<AudiobookChapter> chapters,
+  ) async {
+    int? lastChapterIndex;
+    for (final entry in progressMap.entries) {
+      if (entry.value.isCompleted) continue;
+      if (lastChapterIndex == null || entry.key > lastChapterIndex) {
+        lastChapterIndex = entry.key;
+      }
+    }
+    if (lastChapterIndex == null || chapters.isEmpty) {
+      lastChapterIndex = 0;
+    }
+
+    final chapterIndex = lastChapterIndex.clamp(0, chapters.length - 1);
+    final chapter = chapters[chapterIndex];
+    final progress = progressMap[chapterIndex];
+
+    final repo = ref.read(audiobookRepositoryProvider);
+    final normalizedId = AudiobookRepository.normalizeBookId(displayBook.id);
+
+    final resolvedUrl = await repo.resolveChapterStream(chapter);
+    if (resolvedUrl == null || resolvedUrl.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to resolve stream URL.')),
+        );
+      }
+      return;
+    }
+
+    final initialPos = (progress?.positionMillis != null && progress!.positionMillis > 0)
+        ? progress.positionMillis
+        : chapter.startTimeMillis;
+    final totalDur = progress?.durationMillis ?? chapter.durationMillis;
+
+    await repo.saveProgress(
+      bookId: normalizedId,
+      chapterIndex: chapterIndex,
+      positionMillis: initialPos,
+      durationMillis: totalDur,
+    );
+
+    await audioHandler.customAction('play', {
+      'url': resolvedUrl,
+      'title': chapter.title,
+      'artist': displayBook.author,
+      'artworkUrl': displayBook.artworkUrl ?? '',
+      'duration': '${chapter.durationMillis}',
+      'forceReplace': true,
+      'mediaType': 'audiobook',
+      'extras': {
+        'bookId': normalizedId,
+        'chapterIndex': chapterIndex,
+        'initialPositionMillis': initialPos,
+      },
+    });
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AudiobookNowPlayingScreen(book: displayBook.copyWith(id: normalizedId)),
         ),
       );
     }
@@ -2548,10 +2631,9 @@ class _MetadataSearchWidgetState extends ConsumerState<MetadataSearchWidget> {
 
       await repo.cacheBookMetadata(mergedBook);
 
-      ref.invalidate(bookDetailsProvider(widget.currentBook.id));
-      ref.invalidate(localAudiobooksProvider);
-
       if (mounted) {
+        ref.invalidate(bookDetailsProvider(widget.currentBook.id));
+        ref.invalidate(localAudiobooksProvider);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Metadata updated successfully!')),

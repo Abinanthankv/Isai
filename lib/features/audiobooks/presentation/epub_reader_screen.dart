@@ -49,6 +49,8 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   List<int> _searchMatchPositions = [];
   int _currentMatchIndex = -1;
   String _readingTheme = 'original';
+  bool _isPageMode = false;
+  PageController? _pageController;
 
   void _toggleAutoScroll() {
     setState(() {
@@ -130,6 +132,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       await prefs.setDouble('${_prefKeyScroll}${widget.bookId}', _currentScrollOffset);
       await prefs.setDouble('${_prefKeyFontSize}${widget.bookId}', _fontSize);
       await prefs.setString('${_prefKeyTheme}${widget.bookId}', _readingTheme);
+      await prefs.setBool('epub_pagemode_${widget.bookId}', _isPageMode);
       
       if (_chapters.isNotEmpty) {
         await prefs.setInt('epub_total_chapters_${widget.bookId}', _chapters.length);
@@ -218,6 +221,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       final savedFontSize = prefs.getDouble('${_prefKeyFontSize}${widget.bookId}') ?? 16.0;
       final savedScroll = prefs.getDouble('${_prefKeyScroll}${widget.bookId}') ?? 0.0;
       final savedTheme = prefs.getString('${_prefKeyTheme}${widget.bookId}') ?? 'original';
+      final savedPageMode = prefs.getBool('epub_pagemode_${widget.bookId}') ?? false;
       // Migrate legacy theme names
       final migrated = {'light': 'original', 'sepia': 'focus', 'dark': 'quiet'};
       final finalTheme = migrated[savedTheme] ?? savedTheme;
@@ -225,6 +229,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       setState(() {
         _fontSize = savedFontSize;
         _readingTheme = finalTheme;
+        _isPageMode = savedPageMode;
         _currentChapterIndex = savedChapter.clamp(0, _chapters.length - 1);
         _pendingScrollRestore = savedScroll;
       });
@@ -647,7 +652,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
   void _showThemeSettings() {
     final themeData = [
       {'key': 'original', 'name': 'Original', 'bg': 0xFFFFFFFF, 'text': 0xFF1A1A1A},
-      {'key': 'quiet', 'name': 'Quiet', 'bg': 0xFF3A3A3A, 'text': 0xFFC8C8C8},
+      {'key': 'quiet', 'name': 'Quiet', 'bg': 0xFF5A5A5C, 'text': 0xFFE5E5EA},
       {'key': 'paper', 'name': 'Paper', 'bg': 0xFFE8E4F0, 'text': 0xFF6B6380},
       {'key': 'calm', 'name': 'Calm', 'bg': 0xFFF5E4E4, 'text': 0xFF3D2C2C},
       {'key': 'focus', 'name': 'Focus', 'bg': 0xFFF5ECD7, 'text': 0xFF6B6050},
@@ -661,187 +666,267 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       builder: (ctx) {
         return Container(
           decoration: const BoxDecoration(
-            color: Color(0xFFF8F7F4),
+            color: Color(0xFFF2F1F6),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
+            child: StatefulBuilder(
+              builder: (context, setSheetState) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Themes & Settings',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A1A1A),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
+                      // Header
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Focus Options',
+                                const Text(
+                                  'Themes & Settings',
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    color: const Color(0xFF1A1A1A).withOpacity(0.5),
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1C1C1E),
                                   ),
                                 ),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 16,
-                                  color: const Color(0xFF1A1A1A).withOpacity(0.3),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Focus Options',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color: const Color(0xFF1C1C1E).withOpacity(0.5),
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 16,
+                                      color: const Color(0xFF1C1C1E).withOpacity(0.3),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: Icon(Icons.close_rounded, size: 18, color: const Color(0xFF1A1A1A).withOpacity(0.5)),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // Font size & page layout controls
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEEEDEA),
-                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: InkWell(
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE3E2E6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF8E8E93)),
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      // Font size & page layout controls
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE5E4EA),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                                      onTap: () {
+                                        setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0));
+                                        _saveProgress();
+                                        setSheetState(() {});
+                                      },
+                                      child: const Center(
+                                        child: Text(
+                                          'A',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w400,
+                                            color: Color(0xFF1C1C1E),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 22,
+                                    color: const Color(0xFFC7C7CC),
+                                  ),
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                      onTap: () {
+                                        setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0));
+                                        _saveProgress();
+                                        setSheetState(() {});
+                                      },
+                                      child: const Center(
+                                        child: Text(
+                                          'A',
+                                          style: TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF1C1C1E),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE5E4EA),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                InkWell(
+                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
                                   onTap: () {
-                                    setState(() => _fontSize = (_fontSize - 1).clamp(12.0, 28.0));
+                                    setState(() {
+                                      _isPageMode = false;
+                                    });
                                     _saveProgress();
+                                    setSheetState(() {});
                                   },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    child: Center(
-                                      child: Text('A', style: TextStyle(fontSize: 14, color: const Color(0xFF1A1A1A).withOpacity(0.7))),
+                                  child: Container(
+                                    width: 48,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: !_isPageMode ? const Color(0xFF1C1C1E) : Colors.transparent,
+                                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                                    ),
+                                    child: Icon(
+                                      Icons.article_rounded,
+                                      size: 20,
+                                      color: !_isPageMode ? Colors.white : const Color(0xFF8E8E93),
                                     ),
                                   ),
                                 ),
-                              ),
-                              Container(width: 1, height: 20, color: const Color(0xFF1A1A1A).withOpacity(0.1)),
-                              Expanded(
-                                child: InkWell(
+                                Container(
+                                  width: 1,
+                                  height: 22,
+                                  color: const Color(0xFFC7C7CC),
+                                ),
+                                InkWell(
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
                                   onTap: () {
-                                    setState(() => _fontSize = (_fontSize + 1).clamp(12.0, 28.0));
+                                    setState(() {
+                                      _isPageMode = true;
+                                      _pageController = PageController(initialPage: _currentChapterIndex);
+                                    });
                                     _saveProgress();
+                                    setSheetState(() {});
                                   },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    child: Center(
-                                      child: Text('A', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1A1A1A).withOpacity(0.9))),
+                                  child: Container(
+                                    width: 48,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: _isPageMode ? const Color(0xFF1C1C1E) : Colors.transparent,
+                                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                                    ),
+                                    child: Icon(
+                                      Icons.auto_stories_rounded,
+                                      size: 20,
+                                      color: _isPageMode ? Colors.white : const Color(0xFF8E8E93),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEEEDEA),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Icon(Icons.chrome_reader_mode_rounded, size: 20, color: const Color(0xFF1A1A1A).withOpacity(0.7)),
+                      const SizedBox(height: 20),
+                      // Theme grid
+                      GridView.count(
+                        crossAxisCount: 3,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 1.35,
+                        children: themeData.map((t) {
+                          final key = t['key'] as String;
+                          final isActive = _readingTheme == key;
+                          final bg = Color(t['bg'] as int);
+                          final text = Color(t['text'] as int);
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() => _readingTheme = key);
+                              _saveProgress();
+                              setSheetState(() {});
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: bg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isActive ? const Color(0xFF007AFF) : const Color(0xFFC7C7CC).withOpacity(0.4),
+                                  width: isActive ? 2 : 1,
+                                ),
+                                boxShadow: isActive
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.05),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Aa',
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: key == 'bold' ? FontWeight.w900 : FontWeight.w400,
+                                      color: text,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    t['name'] as String,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: text.withOpacity(0.8),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            Container(width: 1, height: 20, color: const Color(0xFF1A1A1A).withOpacity(0.1)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Icon(Icons.view_column_rounded, size: 20, color: const Color(0xFF1A1A1A).withOpacity(0.4)),
-                            ),
-                          ],
-                        ),
+                          );
+                        }).toList(),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  // Theme grid
-                  GridView.count(
-                    crossAxisCount: 3,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.85,
-                    children: themeData.map((t) {
-                      final key = t['key'] as String;
-                      final isActive = _readingTheme == key;
-                      final bg = Color(t['bg'] as int);
-                      final text = Color(t['text'] as int);
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() => _readingTheme = key);
-                          _saveProgress();
-                          Navigator.pop(ctx);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: bg,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isActive ? const Color(0xFF5B7FFF) : const Color(0xFF1A1A1A).withOpacity(0.08),
-                              width: isActive ? 2 : 1,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Aa',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: key == 'bold' ? FontWeight.w900 : FontWeight.w400,
-                                  color: text,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                t['name'] as String,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: text.withOpacity(0.7),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         );
@@ -909,7 +994,13 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       _currentChapterIndex = index;
       _currentScrollOffset = 0.0;
     });
-    _scrollController.jumpTo(0);
+    if (_isPageMode) {
+      _pageController?.jumpToPage(index);
+    } else {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(0);
+      }
+    }
     if (_isSearching) _updateSearch();
   }
 
@@ -1004,71 +1095,119 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       child: Stack(
         children: [
           // Main reading area
-          CustomScrollView(
-            controller: _scrollController,
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.only(top: 80, bottom: 100),
-                sliver: SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Chapter title
-                        Text(
-                          chapter.title,
-                          style: TextStyle(
-                            fontSize: _fontSize + 6,
-                            fontWeight: FontWeight.bold,
-                            color: textColor,
-                            height: 1.3,
+          _isPageMode
+              ? PageView.builder(
+                  controller: _pageController ??= PageController(initialPage: _currentChapterIndex),
+                  onPageChanged: (index) {
+                    _saveProgress();
+                    setState(() {
+                      _currentChapterIndex = index;
+                      _currentScrollOffset = 0.0;
+                    });
+                    if (_isSearching) _updateSearch();
+                  },
+                  itemCount: _chapters.length,
+                  itemBuilder: (context, index) {
+                    final ch = _chapters[index];
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.only(top: 90, bottom: 100, left: 24, right: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Chapter title
+                          Text(
+                            ch.title,
+                            style: TextStyle(
+                              fontSize: _fontSize + 6,
+                              fontWeight: FontWeight.bold,
+                              color: textColor,
+                              height: 1.3,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        // Chapter content
-                        SelectableText.rich(
-                          _isSearching
-                              ? _buildHighlightedText(chapter.content, textColor)
-                              : chapter.richContent,
-                          style: TextStyle(
-                            fontSize: _fontSize,
-                            color: textColor,
-                            height: 1.75,
-                            letterSpacing: 0.2,
+                          const SizedBox(height: 24),
+                          // Chapter content
+                          SelectableText.rich(
+                            _isSearching
+                                ? _buildHighlightedText(ch.content, textColor)
+                                : ch.richContent,
+                            style: TextStyle(
+                              fontSize: _fontSize,
+                              color: textColor,
+                              height: 1.75,
+                              letterSpacing: 0.2,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 48),
-                        // Navigation at bottom
-                        Row(
-                          children: [
-                            if (_currentChapterIndex > 0)
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  icon: const Icon(Icons.chevron_left_rounded),
-                                  label: const Text('Previous'),
-                                  onPressed: () => _goToChapter(_currentChapterIndex - 1),
+                          const SizedBox(height: 48),
+                        ],
+                      ),
+                    );
+                  },
+                )
+              : CustomScrollView(
+                  controller: _scrollController,
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.only(top: 90, bottom: 100),
+                      sliver: SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Chapter title
+                              Text(
+                                chapter.title,
+                                style: TextStyle(
+                                  fontSize: _fontSize + 6,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor,
+                                  height: 1.3,
                                 ),
                               ),
-                            if (_currentChapterIndex > 0 && _currentChapterIndex < _chapters.length - 1)
-                              const SizedBox(width: 12),
-                            if (_currentChapterIndex < _chapters.length - 1)
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  icon: const Icon(Icons.chevron_right_rounded),
-                                  label: const Text('Next'),
-                                  onPressed: () => _goToChapter(_currentChapterIndex + 1),
+                              const SizedBox(height: 24),
+                              // Chapter content
+                              SelectableText.rich(
+                                _isSearching
+                                    ? _buildHighlightedText(chapter.content, textColor)
+                                    : chapter.richContent,
+                                style: TextStyle(
+                                  fontSize: _fontSize,
+                                  color: textColor,
+                                  height: 1.75,
+                                  letterSpacing: 0.2,
                                 ),
                               ),
-                          ],
+                              const SizedBox(height: 48),
+                              // Navigation at bottom
+                              Row(
+                                children: [
+                                  if (_currentChapterIndex > 0)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.chevron_left_rounded),
+                                        label: const Text('Previous'),
+                                        onPressed: () => _goToChapter(_currentChapterIndex - 1),
+                                      ),
+                                    ),
+                                  if (_currentChapterIndex > 0 && _currentChapterIndex < _chapters.length - 1)
+                                    const SizedBox(width: 12),
+                                  if (_currentChapterIndex < _chapters.length - 1)
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.chevron_right_rounded),
+                                        label: const Text('Next'),
+                                        onPressed: () => _goToChapter(_currentChapterIndex + 1),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ),
-            ],
-          ),
 
           // Top controls bar
           AnimatedSlide(

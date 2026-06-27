@@ -186,7 +186,7 @@ class AudiobookChapter {
   String toString() => 'AudiobookChapter(ch$chapterNumber: $title)';
 }
 
-/// An audiobook paired with its listening progress.
+/// An audiobook paired with its listening progress (for Continue Listening shelf).
 class AudiobookWithProgress {
   final AudiobookResult book;
   final int currentChapter;

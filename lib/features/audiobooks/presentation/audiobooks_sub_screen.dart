@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../music/presentation/music_providers.dart';
 import 'audiobook_providers.dart';
 import '../data/audiobook_models.dart';
+import '../data/audiobook_repository.dart';
 import 'audiobook_detail_screen.dart';
 import 'audiobook_now_playing_screen.dart';
 import 'package:isai/main.dart'; // For audioHandler
@@ -139,15 +141,19 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                title: const Text('Remove from Continue Listening', style: TextStyle(color: Colors.red)),
+                title: const Text('Dismiss', style: TextStyle(color: Colors.red)),
                 onTap: () async {
                   Navigator.pop(context);
-                  final repo = ref.read(audiobookRepositoryProvider);
-                  await repo.dismissBookFromContinueListening(progress.book.id);
-                  ref.invalidate(inProgressAudiobooksProvider);
+                  final prefs = await SharedPreferences.getInstance();
+                  final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
+                  if (!list.contains(progress.book.id)) {
+                    list.add(progress.book.id);
+                    await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
+                  }
                   if (context.mounted) {
+                    ref.invalidate(inProgressAudiobooksProvider);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Removed from Continue Listening.')),
+                      const SnackBar(content: Text('Dismissed from Continue Listening.')),
                     );
                   }
                 },
@@ -226,7 +232,6 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   @override
   Widget build(BuildContext context) {
     final searchState = ref.watch(audiobookSearchProvider);
-    final inProgressAsync = ref.watch(inProgressAudiobooksProvider);
 
     final content = <Widget>[
       Padding(
@@ -277,39 +282,41 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
       ));
     } else {
       // Continue Listening
-      content.add(inProgressAsync.when(
-        data: (progressList) {
-          if (progressList.isEmpty) return const SizedBox.shrink();
-          final filteredList = _continueSearchController.text.isEmpty
-              ? progressList
-              : progressList.where((p) =>
-                  p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
-                  p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
-                ).toList();
-          return _buildSection(
-            title: 'Continue Listening',
-            searchController: progressList.length > 3 ? _continueSearchController : null,
-            onSearchChanged: progressList.length > 3 ? (_) => setState(() {}) : null,
-            child: filteredList.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  )
-                : _buildHorizontalList(
-                    height: 180,
-                    itemCount: filteredList.length,
-                    itemBuilder: (context, index) {
-                      return _buildProgressCard(context, filteredList[index]);
-                    },
-                  ),
-          );
-        },
-        loading: () => const SizedBox.shrink(),
-        error: (e, _) {
-          print('[AudiobooksSubScreen] Continue Listening error: $e');
-          return const SizedBox.shrink();
-        },
-      ));
+      content.add(Consumer(builder: (context, ref, _) {
+        return ref.watch(inProgressAudiobooksProvider).when(
+          data: (progressList) {
+            if (progressList.isEmpty) return const SizedBox.shrink();
+            final filteredList = _continueSearchController.text.isEmpty
+                ? progressList
+                : progressList.where((p) =>
+                    p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
+                    p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
+                  ).toList();
+            return _buildSection(
+              title: 'Continue Listening',
+              searchController: progressList.length > 3 ? _continueSearchController : null,
+              onSearchChanged: progressList.length > 3 ? (_) => setState(() {}) : null,
+              child: filteredList.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                    )
+                  : _buildHorizontalList(
+                      height: 180,
+                      itemCount: filteredList.length,
+                      itemBuilder: (context, index) {
+                        return _buildProgressCard(context, filteredList[index]);
+                      },
+                    ),
+            );
+          },
+          loading: () => const SizedBox.shrink(),
+          error: (e, _) {
+            print('[AudiobooksSubScreen] Continue Listening error: $e');
+            return const SizedBox.shrink();
+          },
+        );
+      }));
 
       // Wishlist
       content.add(Consumer(builder: (context, ref, _) {
@@ -341,6 +348,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
       // In Library
       content.add(Consumer(builder: (context, ref, _) {
         final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
+        final completedIdsAsync = ref.watch(completedAudiobookIdsProvider);
+        final completedIds = completedIdsAsync.asData?.value ?? {};
         return localAudiobooksAsync.when(
           data: (allBooks) {
             if (allBooks.isEmpty) return const SizedBox.shrink();
@@ -355,7 +364,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 displayBooks = List.from(displayBooks)..sort((a, b) => a.title.compareTo(b.title));
                 break;
             }
-            return _buildLibrarySection(displayBooks);
+            return _buildLibrarySection(displayBooks, completedIds: completedIds);
           },
           loading: () => const SizedBox.shrink(),
           error: (_, __) => const SizedBox.shrink(),
@@ -715,7 +724,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     );
   }
 
-  Widget _buildLocalBookCard(BuildContext context, AudiobookResult book) {
+  Widget _buildLocalBookCard(BuildContext context, AudiobookResult book, {bool isCompleted = false}) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -731,38 +740,64 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: book.artworkUrl != null
-                  ? _buildArtworkWidget(
-                      book.artworkUrl,
-                      width: double.infinity,
-                      height: double.infinity,
-                      borderRadius: 12,
-                    )
-                  : Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.tertiaryContainer,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.library_music_rounded,
-                            size: 40,
-                            color: Theme.of(context).colorScheme.onTertiaryContainer,
+              child: Stack(
+                children: [
+                  book.artworkUrl != null
+                      ? _buildArtworkWidget(
+                          book.artworkUrl,
+                          width: double.infinity,
+                          height: double.infinity,
+                          borderRadius: 12,
+                        )
+                      : Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '${book.totalChapters ?? 0} files',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context).colorScheme.onTertiaryContainer,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.library_music_rounded,
+                                size: 40,
+                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${book.totalChapters ?? 0} files',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                  if (isCompleted)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle, size: 12, color: Theme.of(context).colorScheme.onPrimary),
+                            const SizedBox(width: 2),
+                            Text('Completed',
+                              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.bold),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -853,7 +888,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     required AsyncValue<List<AudiobookResult>> async,
     required VoidCallback onSeeMore,
   }) {
-    return async.when(
+    return RepaintBoundary(
+      child: async.when(
       data: (books) {
         if (books.isEmpty) return const SizedBox.shrink();
         final theme = Theme.of(context);
@@ -902,11 +938,13 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
       },
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
+    ),
     );
   }
 
   Widget _buildSection({required String title, TextEditingController? searchController, void Function(String)? onSearchChanged, required Widget child}) {
-    return Column(
+    return RepaintBoundary(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -948,6 +986,7 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
         child,
         const SizedBox(height: 16),
       ],
+    ),
     );
   }
 
@@ -958,13 +997,16 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         itemCount: itemCount,
+        addAutomaticKeepAlives: false,
+        addRepaintBoundaries: true,
         itemBuilder: itemBuilder,
       ),
     );
   }
 
-  Widget _buildLibrarySection(List<AudiobookResult> displayBooks) {
-    return Column(
+  Widget _buildLibrarySection(List<AudiobookResult> displayBooks, {Set<String> completedIds = const {}}) {
+    return RepaintBoundary(
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -1033,10 +1075,15 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
           _buildHorizontalList(
             height: 180,
             itemCount: displayBooks.length,
-            itemBuilder: (context, index) => _buildLocalBookCard(context, displayBooks[index]),
+            itemBuilder: (context, index) {
+              final book = displayBooks[index];
+              final isCompleted = completedIds.contains(book.id);
+              return _buildLocalBookCard(context, book, isCompleted: isCompleted);
+            },
           ),
         const SizedBox(height: 16),
       ],
+    ),
     );
   }
 }

@@ -243,25 +243,34 @@ class AudiobookRepository {
             continue;
           }
 
+          AudiobookResult book;
           if (torrentMatch != null) {
-            results.add(AudiobookResult(
+            book = AudiobookResult(
               id: bookId,
               title: baseTitle,
               author: torrentMatch.author ?? 'TorBox Library',
               artworkUrl: torrentMatch.artworkUrl,
               description: groupFiles.length > 1 ? '${groupFiles.length} parts' : torrentMatch.description,
               totalChapters: groupFiles.length > 1 ? groupFiles.length : null,
-            ));
-            continue;
+            );
+          } else {
+            book = AudiobookResult(
+              id: bookId,
+              title: baseTitle,
+              author: 'TorBox Library',
+              description: groupFiles.length > 1 ? '${groupFiles.length} parts' : 'From TorBox library',
+              totalChapters: groupFiles.length > 1 ? groupFiles.length : null,
+            );
           }
+          results.add(book);
 
-          results.add(AudiobookResult(
-            id: bookId,
-            title: baseTitle,
-            author: 'TorBox Library',
-            description: groupFiles.length > 1 ? '${groupFiles.length} parts' : 'From TorBox library',
-            totalChapters: groupFiles.length > 1 ? groupFiles.length : null,
-          ));
+          // Cache metadata eagerly so getBookChapters can use it for group matching
+          // (TorBox API file IDs don't match DB auto-increment IDs, so getBookChapters
+          // relies on cached metadata to determine which file group belongs to this book)
+          final hasCachedBookId = cachedMetadataList.any((m) => m.bookId == bookId);
+          if (!hasCachedBookId) {
+            await cacheBookMetadata(book, writeLocalBackup: false).catchError((_) {});
+          }
         }
       }
     } catch (e) {
@@ -860,6 +869,27 @@ class AudiobookRepository {
                   break;
                 }
               }
+            // If ID matching failed (local DB IDs != TorBox API IDs),
+            // fall back to matching by base title from cached metadata
+            if (allowedFileIds.isEmpty) {
+              final cached = await getCachedMetadata(bookId);
+              if (cached != null) {
+                final cachedBase = _extractBaseTitle(cached.title);
+                for (final g in groups.entries) {
+                  if (g.key.toLowerCase() == cachedBase.toLowerCase()) {
+                    allowedFileIds.addAll(g.value.map((f) => f.id));
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Safe fallback: if we still can't determine the group
+            // (no cached metadata or base title mismatch), return ALL audio files
+            // so the book remains playable rather than showing zero chapters
+            if (allowedFileIds.isEmpty) {
+              allowedFileIds.addAll(audioFiles.map((f) => f.id));
+            }
             } else {
               allowedFileIds.addAll(audioFiles.map((f) => f.id));
             }
@@ -1399,10 +1429,8 @@ class AudiobookRepository {
   /// In-memory cache of the unified progress.json data.
   Map<String, dynamic>? _progressData;
   bool _progressMigrated = false;
-
-  /// Fires after each progress save so listeners (e.g. providers) can refresh.
-  final _progressChangedController = StreamController<void>.broadcast();
-  Stream<void> get progressChanged => _progressChangedController.stream;
+  Timer? _debounceFlushTimer;
+  int _flushBacklog = 0;
 
   /// Returns the path to the unified progress.json file.
   Future<io.File> _getProgressFile() async {
@@ -1434,14 +1462,37 @@ class AudiobookRepository {
   }
 
   /// Flushes the in-memory progress data to disk (atomic write via temp file).
-  Future<void> _flushProgressData() async {
+  /// If [debounced] is true, coalesces rapid calls via a 5-second debounce timer.
+  Future<void> _flushProgressData({bool debounced = false}) async {
     if (_progressData == null) return;
     _progressData!['lastUpdated'] = DateTime.now().toIso8601String();
-    final file = await _getProgressFile();
-    final tempFile = io.File('${file.path}.tmp');
-    await tempFile.writeAsString(jsonEncode(_progressData));
-    await tempFile.rename(file.path);
-    _progressChangedController.add(null);
+
+    if (!debounced) {
+      _debounceFlushTimer?.cancel();
+      _debounceFlushTimer = null;
+      _flushBacklog = 0;
+      await _writeProgressToDisk();
+      return;
+    }
+
+    _flushBacklog++;
+    _debounceFlushTimer?.cancel();
+    _debounceFlushTimer = Timer(const Duration(seconds: 5), () async {
+      _flushBacklog = 0;
+      await _writeProgressToDisk();
+    });
+  }
+
+  /// Actually writes the in-memory progress data to disk.
+  Future<void> _writeProgressToDisk() async {
+    try {
+      final file = await _getProgressFile();
+      final tempFile = io.File('${file.path}.tmp');
+      await tempFile.writeAsString(jsonEncode(_progressData));
+      await tempFile.rename(file.path);
+    } catch (e) {
+      print('[AudiobookRepository] Error writing progress to disk: $e');
+    }
   }
 
   /// On first launch after migration, copies existing DB progress entries into
@@ -1792,19 +1843,18 @@ class AudiobookRepository {
       // Restore listening progress
       final jsonProgress = data['progress'] as List<dynamic>?;
       if (jsonProgress != null) {
+        final progressData = await _loadProgressData();
+        final books = progressData['books'] as Map<String, dynamic>;
+        final normId = normalizeBookId(resolvedBookId);
+        final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+        final chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
+
         for (final entry in jsonProgress) {
           try {
             final map = entry as Map<String, dynamic>;
             final chIdx = map['chapterIndex'] as int;
             final lastListenedStr = map['lastListenedAt'] as String? ?? DateTime.now().toIso8601String();
             final localLastListened = DateTime.parse(lastListenedStr);
-
-            // Write to unified progress.json (primary)
-            final progressData = await _loadProgressData();
-            final books = progressData['books'] as Map<String, dynamic>;
-            final normId = normalizeBookId(resolvedBookId);
-            final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
-            final chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
 
             final existingIdx = chapters.indexWhere(
               (c) => (c as Map<String, dynamic>)['chapterIndex'] == chIdx,
@@ -1822,7 +1872,6 @@ class AudiobookRepository {
             } else {
               chapters.add(entryMap);
             }
-            await _flushProgressData();
 
             // Sync to DB (secondary)
             final existing = await _db.getAudiobookProgress(resolvedBookId, chIdx);
@@ -1840,6 +1889,7 @@ class AudiobookRepository {
             print('[AudiobookRepository] Error restoring single chapter progress entry: $e');
           }
         }
+        await _flushProgressData();
         print('[AudiobookRepository] Restored progress from ${progressFile.path}');
       }
     } catch (e) {
@@ -1857,8 +1907,6 @@ class AudiobookRepository {
     required int durationMillis,
     bool isCompleted = false,
   }) async {
-    await undisimissBookFromContinueListening(bookId);
-
     // 1. Write to unified progress.json (primary source)
     int completed = 0;
     int maxPos = 0;
@@ -1931,7 +1979,7 @@ class AudiobookRepository {
         bookObj['artworkUrl'] = cachedMeta.artworkUrl;
       }
 
-      await _flushProgressData();
+      await _flushProgressData(debounced: true);
     } catch (e) {
       print('[AudiobookRepository] Error saving progress to progress.json: $e');
     }
@@ -2043,49 +2091,6 @@ class AudiobookRepository {
     return _db.getLatestAudiobookProgress(bookId);
   }
 
-  /// Get all books with progress (for "Continue Listening" section).
-  /// Reads from progress.json (primary), falls back to DB.
-  Future<List<DbAudiobookProgress>> getAllInProgressBooks() async {
-    try {
-      final data = await _loadProgressData();
-      final books = data['books'] as Map<String, dynamic>;
-      final List<DbAudiobookProgress> result = [];
-
-      for (final entry in books.entries) {
-        final bookObj = entry.value as Map<String, dynamic>;
-        final chaptersJson = bookObj['chapters'] as List<dynamic>?;
-        if (chaptersJson == null || chaptersJson.isEmpty) continue;
-
-        for (final ch in chaptersJson) {
-          final chMap = ch as Map<String, dynamic>;
-          final lastListenedStr = chMap['lastListenedAt'] as String?;
-          // Use originalBookId if stored, otherwise fall back to the normalized key
-          final resolvedBookId = chMap['originalBookId'] as String? ?? entry.key;
-          result.add(DbAudiobookProgress(
-            id: 0,
-            bookId: resolvedBookId,
-            chapterIndex: chMap['chapterIndex'] as int? ?? 0,
-            positionMillis: chMap['positionMillis'] as int? ?? 0,
-            durationMillis: chMap['durationMillis'] as int? ?? 0,
-            lastListenedAt: DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000),
-            isCompleted: chMap['isCompleted'] as bool? ?? false,
-          ));
-        }
-      }
-
-      result.sort((a, b) => b.lastListenedAt.compareTo(a.lastListenedAt));
-      return result;
-    } catch (e) {
-      print('[AudiobookRepository] Error reading all progress from progress.json: $e');
-    }
-    return _db.getAllAudiobookProgress();
-  }
-
-  /// Watch all books with progress (continues reading from DB stream).
-  Stream<List<DbAudiobookProgress>> watchAllInProgressBooks() {
-    return _db.watchAllAudiobookProgress();
-  }
-
   /// Mark a chapter as completed.
   Future<void> markChapterCompleted(String bookId, int chapterIndex) {
     return saveProgress(
@@ -2129,6 +2134,39 @@ class AudiobookRepository {
     return _db.getBookChapterProgress(bookId);
   }
 
+  /// Get all chapter progress entries across all books (used for stats).
+  Future<List<DbAudiobookProgress>> getAllProgress() async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final allProgress = <DbAudiobookProgress>[];
+      for (final entry in books.entries) {
+        final bookId = entry.key;
+        final bookObj = entry.value as Map<String, dynamic>;
+        final chaptersJson = bookObj['chapters'] as List<dynamic>?;
+        if (chaptersJson != null) {
+          for (final ch in chaptersJson) {
+            final chMap = ch as Map<String, dynamic>;
+            final lastListenedStr = chMap['lastListenedAt'] as String?;
+            allProgress.add(DbAudiobookProgress(
+              id: 0,
+              bookId: bookId,
+              chapterIndex: chMap['chapterIndex'] as int? ?? 0,
+              positionMillis: chMap['positionMillis'] as int? ?? 0,
+              durationMillis: chMap['durationMillis'] as int? ?? 0,
+              lastListenedAt: DateTime.tryParse(lastListenedStr ?? '') ?? DateTime(2000),
+              isCompleted: chMap['isCompleted'] as bool? ?? false,
+            ));
+          }
+        }
+      }
+      if (allProgress.isNotEmpty) return allProgress;
+    } catch (e) {
+      print('[AudiobookRepository] Error reading all progress: $e');
+    }
+    return _db.getAllAudiobookProgress();
+  }
+
   /// Clear all progress for a book.
   Future<void> clearBookProgress(String bookId) async {
     // Remove from progress.json (primary)
@@ -2143,7 +2181,6 @@ class AudiobookRepository {
     }
 
     await _db.clearAudiobookProgress(bookId);
-    await undisimissBookFromContinueListening(bookId);
 
     // Also remove legacy per-book progress.json
     try {
@@ -2177,42 +2214,8 @@ class AudiobookRepository {
     await _db.clearAllAudiobookProgress();
     await _db.clearAllAudiobookMetadataCache();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('dismissed_continue_listening_audiobooks');
     await prefs.remove('goal_daily_min');
     await prefs.remove('goal_weekly_min');
-  }
-
-  /// Dismiss a book from Continue Listening shelf.
-  Future<void> dismissBookFromContinueListening(String bookId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
-    if (!list.contains(bookId)) {
-      list.add(bookId);
-      await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
-    }
-  }
-
-  /// Check if a book is dismissed from Continue Listening shelf.
-  Future<bool> isBookDismissedFromContinueListening(String bookId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
-    return list.contains(bookId);
-  }
-
-  /// Remove a book from dismissed list so it can reappear on Continue Listening shelf.
-  Future<void> undisimissBookFromContinueListening(String bookId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
-    if (list.contains(bookId)) {
-      list.remove(bookId);
-      await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
-    }
-  }
-
-  /// Get all dismissed book IDs.
-  Future<List<String>> getDismissedBooksFromContinueListening() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
   }
 
   /// Clear metadata cache for a book.
@@ -2258,12 +2261,31 @@ class AudiobookRepository {
       final normId = normalizeBookId(bookId);
       final bookObj = books[normId] as Map<String, dynamic>?;
       if (bookObj == null) return null;
+
+      final epubProgress = bookObj['epubProgress'] as Map<String, dynamic>?;
+      final epubPercent = (epubProgress?['progress'] as num?)?.toDouble() ?? 0.0;
+      final lastReadStr = epubProgress?['lastReadAt'] as String?;
+      final lastRead = lastReadStr != null ? DateTime.tryParse(lastReadStr) : null;
+
+      final double audioPercent = (bookObj['progressPercent'] as num?)?.toDouble() ?? 0.0;
+      final lastListenedStr = bookObj['lastListenedAt'] as String?;
+      final lastListened = lastListenedStr != null ? DateTime.tryParse(lastListenedStr) : null;
+
+      // Determine which one is more recent
+      bool useEpub = false;
+      if (lastRead != null && lastListened != null) {
+        useEpub = lastRead.isAfter(lastListened);
+      } else if (lastRead != null) {
+        useEpub = true;
+      }
+
       return {
         'completedChapters': bookObj['completedChapters'] ?? 0,
         'totalChapters': bookObj['totalChapters'] ?? 0,
-        'progressPercent': bookObj['progressPercent'] ?? 0.0,
+        'progressPercent': useEpub ? epubPercent : audioPercent,
         'listenedMillis': bookObj['listenedMillis'] ?? 0,
-        'lastListenedAt': bookObj['lastListenedAt'],
+        'lastListenedAt': useEpub ? lastReadStr : lastListenedStr,
+        'isEpub': useEpub,
       };
     } catch (e) {
       print('[AudiobookRepository] Error reading book progress summary: $e');

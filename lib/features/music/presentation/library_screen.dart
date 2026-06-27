@@ -34,13 +34,15 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _audiobookLibraryTab = 'local';
+  bool _audiobookIsGridView = true;
+  final TextEditingController _audiobookSearchController = TextEditingController();
+  Timer? _audiobookSearchDebounce;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(libraryProvider.notifier).loadLibrary(),
-    );
+  void dispose() {
+    _audiobookSearchController.dispose();
+    _audiobookSearchDebounce?.cancel();
+    super.dispose();
   }
 
   @override
@@ -79,9 +81,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               await ref.read(libraryProvider.notifier).loadLibrary(force: true);
             } else {
               ref.invalidate(localAudiobooksProvider);
-              ref.invalidate(inProgressAudiobooksProvider);
-              await ref.read(localAudiobooksProvider.future);
-              await ref.read(inProgressAudiobooksProvider.future);
+              await ref.read(localAudiobooksProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]);
             }
           },
           color: Theme.of(context).colorScheme.primary,
@@ -347,231 +347,191 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   List<Widget> _buildAudiobookSlivers(BuildContext context, bool isDark) {
-    final inProgressAsync = ref.watch(inProgressAudiobooksProvider);
-    final localAudiobooksAsync = ref.watch(localAudiobooksProvider);
-
     return [
-      // 1. Category Grid for Audiobooks
+      // 1. Category Grid (4 cards)
       SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Builder(
-            builder: (context) {
-              final inProgressCount = inProgressAsync.value?.length ?? 0;
-              final allBooks = localAudiobooksAsync.value ?? [];
-              final localCount = allBooks.where((b) => b.id.startsWith('local:')).length;
-              final torBoxCount = allBooks.where((b) => b.id.startsWith('torrent:')).length;
-              final totalCount = allBooks.length;
-
-              return GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                childAspectRatio: 1.1,
-                children: [
-                  _CategoryCard(
-                    title: 'Continue Listening',
-                    count: '$inProgressCount books',
-                    icon: Icons.play_circle_outline_rounded,
-                    onTap: () {},
-                  ),
-                  _CategoryCard(
-                    title: 'Local Downloads',
-                    count: '$localCount books',
-                    icon: Icons.phone_android_rounded,
-                    onTap: () {},
-                  ),
-                  _CategoryCard(
-                    title: 'TorBox Cloud',
-                    count: '$torBoxCount books',
-                    icon: Icons.cloud_queue_rounded,
-                    onTap: () {},
-                  ),
-                  _CategoryCard(
-                    title: 'All Audiobooks',
-                    count: '$totalCount books',
-                    icon: Icons.book_rounded,
-                    onTap: () {},
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-
-      // 2. Continue Listening Section
-      inProgressAsync.when(
-        data: (progressList) {
-          if (progressList.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
-          return SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: RepaintBoundary(
+          child: Consumer(builder: (context, ref, _) {
+            final books = ref.watch(localAudiobooksProvider).value ?? [];
+            final localCount = books.where((b) => b.id.startsWith('local:')).length;
+            final torBoxCount = books.where((b) => b.id.startsWith('torrent:')).length;
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 1.1,
               children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Text(
-                    'Continue Listening',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                SizedBox(
-                  height: 180,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: progressList.length,
-                    itemBuilder: (context, index) {
-                      final progress = progressList[index];
-                      return _buildProgressCard(context, progress);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
+                _CategoryCard(title: 'Local Downloads', count: '$localCount books', icon: Icons.phone_android_rounded, onTap: () {}),
+                _CategoryCard(title: 'TorBox Cloud', count: '$torBoxCount books', icon: Icons.cloud_queue_rounded, onTap: () {}),
+                _CategoryCard(title: 'All Audiobooks', count: '${books.length} books', icon: Icons.book_rounded, onTap: () {}),
               ],
-            ),
-          );
-        },
-        loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-        error: (e, _) {
-          print('[LibraryScreen] Continue Listening error: $e');
-          return const SliverToBoxAdapter(child: SizedBox.shrink());
-        },
+            );
+          }),
+        ),
       ),
 
-      // 3. Books Header
+      // 2. Search Bar
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Books in Library',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment<String>(
-                    value: 'local',
-                    label: Text('Local'),
-                    icon: Icon(Icons.phone_android_rounded, size: 16),
-                  ),
-                  ButtonSegment<String>(
-                    value: 'torbox',
-                    label: Text('TorBox'),
-                    icon: Icon(Icons.cloud_queue_rounded, size: 16),
-                  ),
-                ],
-                selected: {_audiobookLibraryTab},
-                onSelectionChanged: (newSelection) {
-                  setState(() {
-                    _audiobookLibraryTab = newSelection.first;
-                  });
-                },
-                showSelectedIcon: false,
-                style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: SearchBar(
+            controller: _audiobookSearchController,
+            hintText: 'Search your audiobooks...',
+            leading: const Icon(Icons.search),
+            trailing: [
+              if (_audiobookSearchController.text.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _audiobookSearchController.clear();
+                    _audiobookSearchDebounce?.cancel();
+                  },
+                )
             ],
+            onChanged: (q) => setState(() {}),
           ),
         ),
       ),
 
-      // 4. Books Grid
-      localAudiobooksAsync.when(
-        data: (allBooks) {
-          final localBooksList = allBooks.where((book) => book.id.startsWith('local:')).toList();
-          final torBoxBooksList = allBooks.where((book) => book.id.startsWith('torrent:')).toList();
-          final displayBooks = _audiobookLibraryTab == 'local' ? localBooksList : torBoxBooksList;
+      // 3. Content: filtered results or default view
+      Consumer(builder: (context, ref, _) {
+        final allBooksAsync = ref.watch(localAudiobooksProvider);
+        final query = _audiobookSearchController.text.trim().toLowerCase();
+        return allBooksAsync.when(
+          data: (allBooks) {
+            if (query.isNotEmpty) {
+              // Searching — filter locally
+              final filtered = allBooks.where((b) =>
+                b.title.toLowerCase().contains(query) ||
+                b.author.toLowerCase().contains(query)
+              ).toList();
 
-          if (displayBooks.isEmpty) {
+              if (filtered.isEmpty) {
+                return const SliverToBoxAdapter(
+                  child: Center(child: Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Text('No audiobooks match your search.'),
+                  )),
+                );
+              }
+
+              final localFiltered = filtered.where((b) => b.id.startsWith('local:')).toList();
+              final torBoxFiltered = filtered.where((b) => b.id.startsWith('torrent:')).toList();
+              final displayBooks = _audiobookLibraryTab == 'local' ? localFiltered : torBoxFiltered;
+
+              return SliverToBoxAdapter(
+                child: _buildBooksSection(context, displayBooks, showCount: displayBooks.length),
+              );
+            }
+
+            // Not searching — show all books
             return SliverToBoxAdapter(
-              child: Container(
-                height: 150,
-                alignment: Alignment.center,
-                child: Text(
-                  _audiobookLibraryTab == 'local'
-                      ? 'No downloaded or local audiobooks.'
-                      : 'No audiobooks in TorBox cloud library.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                    fontSize: 14,
-                  ),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildBooksSection(context, allBooks),
+                ],
               ),
             );
-          }
+          },
+          loading: () => const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))),
+          error: (e, _) => SliverToBoxAdapter(child: Center(child: Text('Error: $e'))),
+        );
+      }),
 
-          return SliverPadding(
-            padding: const EdgeInsets.all(20),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.7,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final book = displayBooks[index];
-                  return _buildGridCard(context, book);
-                },
-                childCount: displayBooks.length,
-              ),
-            ),
-          );
-        },
-        loading: () => const SliverToBoxAdapter(
-          child: Center(child: Padding(
-            padding: EdgeInsets.all(40),
-            child: CircularProgressIndicator(),
-          )),
-        ),
-        error: (e, _) => SliverToBoxAdapter(
-          child: Center(child: Text('Error: $e')),
-        ),
-      ),
       const SliverToBoxAdapter(child: SizedBox(height: 120)),
     ];
   }
 
-  Widget _buildProgressCard(BuildContext context, AudiobookWithProgress progress) {
-    return GestureDetector(
-      onTap: () => _resumePlayback(context, ref, progress.book),
-      onLongPress: () => _showProgressOptions(context, ref, progress),
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _buildArtworkWidget(
-                progress.book.artworkUrl,
-                width: double.infinity,
-                height: double.infinity,
-                borderRadius: 12,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              progress.book.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: progress.progressPercent,
-              minHeight: 4,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ],
+  Widget _buildBooksSection(BuildContext context, List<AudiobookResult> books, {int? showCount}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildBooksHeader(context, showCount ?? books.length),
+        _buildBooksGridOrList(context, books),
+      ],
+    );
+  }
+
+  Widget _buildBooksHeader(BuildContext context, int count) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(child: Text('$count books', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14))),
+          IconButton(
+            icon: Icon(_audiobookIsGridView ? Icons.grid_view_rounded : Icons.list_rounded),
+            tooltip: _audiobookIsGridView ? 'Switch to list' : 'Switch to grid',
+            onPressed: () => setState(() => _audiobookIsGridView = !_audiobookIsGridView),
+          ),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment<String>(value: 'local', label: Text('Local'), icon: Icon(Icons.phone_android_rounded, size: 16)),
+              ButtonSegment<String>(value: 'torbox', label: Text('TorBox'), icon: Icon(Icons.cloud_queue_rounded, size: 16)),
+            ],
+            selected: {_audiobookLibraryTab},
+            onSelectionChanged: (newSelection) => setState(() => _audiobookLibraryTab = newSelection.first),
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBooksGridOrList(BuildContext context, List<AudiobookResult> allBooks) {
+    final localBooks = allBooks.where((b) => b.id.startsWith('local:')).toList();
+    final torBoxBooks = allBooks.where((b) => b.id.startsWith('torrent:')).toList();
+    final displayBooks = _audiobookLibraryTab == 'local' ? localBooks : torBoxBooks;
+
+    if (displayBooks.isEmpty) return const SizedBox.shrink();
+
+    if (_audiobookIsGridView) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, childAspectRatio: 0.7, crossAxisSpacing: 16, mainAxisSpacing: 16,
+          ),
+          itemCount: displayBooks.length,
+          itemBuilder: (context, index) => _buildGridCard(context, displayBooks[index]),
         ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: displayBooks.length,
+        itemBuilder: (context, index) => _buildAudiobookListTile(context, displayBooks[index]),
+      ),
+    );
+  }
+
+  Widget _buildAudiobookListTile(BuildContext context, AudiobookResult book) {
+    final isTorrent = book.id.startsWith('torrent:');
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(8),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(width: 56, height: 56, child: _buildArtworkWidget(book.artworkUrl, width: 56, height: 56, borderRadius: 8)),
+        ),
+        title: Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        subtitle: Text(isTorrent && book.description != null ? book.description! : book.author, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AudiobookDetailScreen(book: book))),
       ),
     );
   }
@@ -639,42 +599,48 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: isLocal
-          ? Image.file(
-              File(cleanPath),
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Icon(
-                  Icons.book,
-                  size: 28,
-                ),
-              ),
-            )
-          : CachedNetworkImage(
-              imageUrl: url,
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
-              placeholder: (context, url) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              ),
-              errorWidget: (context, url, error) => Container(
-                width: width,
-                height: height,
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Icon(
-                  Icons.book,
-                  size: 28,
-                ),
-              ),
-            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final effectiveWidth = (width != null && width.isFinite) ? width : constraints.maxWidth;
+          final effectiveHeight = (height != null && height.isFinite) ? height : constraints.maxHeight;
+          final cacheW = (effectiveWidth.isFinite && effectiveWidth > 0) ? effectiveWidth.round() * 2 : null;
+          final cacheH = (effectiveHeight.isFinite && effectiveHeight > 0) ? effectiveHeight.round() * 2 : null;
+          return isLocal
+              ? Image.file(
+                  File(cleanPath),
+                  width: effectiveWidth > 0 ? effectiveWidth : null,
+                  height: effectiveHeight > 0 ? effectiveHeight : null,
+                  cacheWidth: cacheW,
+                  cacheHeight: cacheH,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.book, size: 28),
+                  ),
+                )
+              : CachedNetworkImage(
+                  imageUrl: url,
+                  width: effectiveWidth > 0 ? effectiveWidth : null,
+                  height: effectiveHeight > 0 ? effectiveHeight : null,
+                  memCacheWidth: cacheW,
+                  memCacheHeight: cacheH,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    width: effectiveWidth > 0 ? effectiveWidth : null,
+                    height: effectiveHeight > 0 ? effectiveHeight : null,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.book, size: 28),
+                  ),
+                );
+        },
+      ),
     );
   }
 
@@ -705,49 +671,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 onTap: () {
                   Navigator.pop(context);
                   _showMetadataSearchSheet(context, ref, book);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showProgressOptions(BuildContext context, WidgetRef ref, AudiobookWithProgress progress) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.info_outline_rounded),
-                title: const Text('Show Details'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => AudiobookDetailScreen(book: progress.book),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                title: const Text('Remove from Continue Listening', style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final repo = ref.read(audiobookRepositoryProvider);
-                  await repo.dismissBookFromContinueListening(progress.book.id);
-                  ref.invalidate(inProgressAudiobooksProvider);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Removed from Continue Listening.')),
-                    );
-                  }
                 },
               ),
             ],

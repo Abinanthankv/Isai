@@ -536,12 +536,12 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
               // Background Blur Artwork
               if (artworkUrl != null) ...[
                 Positioned.fill(
-                  child: Image(
-                    image: (artworkUrl.startsWith('/') || artworkUrl.startsWith('file://'))
-                        ? FileImage(File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl)) as ImageProvider
-                        : CachedNetworkImageProvider(artworkUrl),
-                    fit: BoxFit.cover,
-                  ),
+                  child: artworkUrl.startsWith('/') || artworkUrl.startsWith('file://')
+                      ? Image.file(
+                          File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
+                          fit: BoxFit.cover,
+                        )
+                      : CachedNetworkImage(imageUrl: artworkUrl, memCacheWidth: 200, fit: BoxFit.cover),
                 ),
                 Positioned.fill(
                   child: BackdropFilter(
@@ -619,7 +619,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                             File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
                                             fit: BoxFit.cover,
                                           )
-                                        : CachedNetworkImage(imageUrl: artworkUrl, fit: BoxFit.cover))
+                                        : CachedNetworkImage(imageUrl: artworkUrl, memCacheWidth: 260, memCacheHeight: 260, fit: BoxFit.cover))
                                     : Container(
                                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                         child: const Icon(Icons.book, size: 100),
@@ -660,34 +660,18 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                             if (chapters.isEmpty) return const SizedBox.shrink();
                             final chaptersList = chapters;
                             return StreamBuilder<Duration>(
-                              stream: AudioService.position,
+                              stream: _throttledPositionStream,
                               builder: (context, posSnapshot) {
                                 final position = posSnapshot.data ?? Duration.zero;
                                 final currentPosMs = position.inMilliseconds;
-                                final hasOffsets = chaptersList.any((ch) => ch.startTimeMillis > 0);
-
-                                int currentIdx = 0;
-                                if (hasOffsets) {
-                                  for (int i = 0; i < chaptersList.length; i++) {
-                                    final start = chaptersList[i].startTimeMillis;
-                                    final end = (i + 1 < chaptersList.length)
-                                        ? chaptersList[i + 1].startTimeMillis
-                                        : double.infinity;
-                                    if (currentPosMs >= start && currentPosMs < end) {
-                                      currentIdx = i;
-                                      break;
-                                    }
-                                  }
-                                } else {
-                                  currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
-                                }
-
-                                final ch = chaptersList[currentIdx];
+                                final currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
+                                final ch = chaptersList[currentIdx.clamp(0, chaptersList.length - 1)];
                                 final chStart = ch.startTimeMillis;
                                 final chEnd = (currentIdx + 1 < chaptersList.length)
                                     ? chaptersList[currentIdx + 1].startTimeMillis
                                     : (mediaItem?.duration?.inMilliseconds ?? chStart);
                                 final chDuration = chEnd - chStart;
+                                final hasOffsets = chaptersList.any((ch) => ch.startTimeMillis > 0);
                                 final chElapsed = hasOffsets ? (currentPosMs - chStart).clamp(0, chDuration) : position.inMilliseconds;
                                 final chRemaining = (chDuration - chElapsed).clamp(0, chDuration);
 
@@ -708,10 +692,9 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                     ),
                                     const SizedBox(height: 8),
                                     // Progress
-                                    StreamBuilder<Duration>(
-                                      stream: AudioService.position,
-                                      builder: (context, posSnapshot2) {
-                                        final pos = posSnapshot2.data ?? Duration.zero;
+                                    Builder(
+                                      builder: (context) {
+                                        final pos = position;
                                         final dur = mediaItem?.duration ?? Duration.zero;
                                         double prog = 0.0;
                                         if (dur.inMilliseconds > 0) {
@@ -922,13 +905,12 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                   child: Text('No chapters found.'),
                                 );
                               }
-                               return StreamBuilder<Duration>(
-                                  stream: AudioService.position,
-                                  initialData: Duration.zero,
-                                  builder: (context, posSnapshot) {
-                                    final currentPos = posSnapshot.data ?? Duration.zero;
-                                    final currentPosMs = currentPos.inMilliseconds;
-                                    final hasOffsets = chapters.any((ch) => ch.startTimeMillis > 0);
+                               return StreamBuilder<MediaItem?>(
+                                  stream: audioHandler.mediaItem,
+                                  initialData: audioHandler.mediaItem.value,
+                                  builder: (context, mediaSnapshot2) {
+                                    final activeChapterIdx = (mediaSnapshot2.data?.extras?['chapterIndex'] as int?) ?? 0;
+                                    final isCurrentBook = mediaItem?.extras?['bookId'] == widget.book.id;
 
                                     return ListView.builder(
                                       shrinkWrap: true,
@@ -936,21 +918,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                                       itemCount: chapters.length,
                                       itemBuilder: (context, index) {
                                         final chapter = chapters[index];
-                                        
-                                        bool isCurrent = false;
-                                        final isCurrentBook = mediaItem?.extras?['bookId'] == widget.book.id;
-                                        if (isCurrentBook) {
-                                          if (hasOffsets) {
-                                            final start = chapter.startTimeMillis;
-                                            final end = (index + 1 < chapters.length)
-                                                ? chapters[index + 1].startTimeMillis
-                                                : double.infinity;
-                                            isCurrent = currentPosMs >= start && currentPosMs < end;
-                                          } else {
-                                            isCurrent = (mediaItem?.extras?['chapterIndex'] == index) || 
-                                                        (mediaItem?.title == chapter.title);
-                                          }
-                                        }
+                                        final isCurrent = isCurrentBook && (activeChapterIdx == index);
                                         
                                         return ListTile(
                                           contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -1246,6 +1214,21 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
       await ref.read(audiobookRepositoryProvider).updateBookmarkLabel(bm.id, newLabel);
       ref.invalidate(audiobookBookmarksProvider(widget.book.id));
     }
+  }
+
+  Duration _lastThrottledPosition = Duration.zero;
+  DateTime? _lastThrottledPositionTime;
+  Stream<Duration> get _throttledPositionStream {
+    return AudioService.position.where((pos) {
+      final now = DateTime.now();
+      if (_lastThrottledPositionTime == null ||
+          now.difference(_lastThrottledPositionTime!) >= const Duration(milliseconds: 300)) {
+        _lastThrottledPosition = pos;
+        _lastThrottledPositionTime = now;
+        return true;
+      }
+      return false;
+    });
   }
 
   String _formatDuration(Duration duration) {

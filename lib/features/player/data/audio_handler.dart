@@ -42,6 +42,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool _currentTrackRecorded = false;
   int _consecutiveFailures = 0; // Safeguard against skipping loops
   DateTime? _lastAudiobookSaveTime;
+  DateTime? _lastAudiobookProcessTime;
+  int _lastSavedPositionMs = 0;
   String? _currentAudiobookId;
   List<AudiobookChapter>? _currentAudiobookChapters;
   
@@ -215,119 +217,135 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
        if (item != null) {
          _lastKnownPosition = position;
          
-         // Save audiobook progress periodically
-         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
-         if (mediaType == 'audiobook') {
-           final bookId = item.extras?['bookId'] as String?;
-           final chapterIndex = item.extras?['chapterIndex'] as int?;
-           
-           int activeIndex = -1;
-           if (bookId != null) {
-             // Load/cache chapters list for real-time tracking if it changes
-             if (_currentAudiobookId != bookId || _currentAudiobookChapters == null) {
-               _currentAudiobookId = bookId;
-               _currentAudiobookChapters = null;
-               getIt<AudiobookRepository>().getBookChapters(bookId).then((chList) {
-                 if (_currentAudiobookId == bookId) {
-                   _currentAudiobookChapters = chList;
-                 }
-               });
-             }
+          // Save audiobook progress — throttled to once per second
+          final mediaType = item.extras?['mediaType'] as String? ?? 'music';
+          if (mediaType == 'audiobook') {
+            final now = DateTime.now();
+            if (_lastAudiobookProcessTime != null &&
+                now.difference(_lastAudiobookProcessTime!) < const Duration(seconds: 1)) {
+              _lastKnownPosition = position;
+              return;
+            }
+            _lastAudiobookProcessTime = now;
 
-             final chapters = _currentAudiobookChapters;
-             if (chapters != null && chapters.isNotEmpty) {
-               final currentPosMs = position.inMilliseconds;
-               for (int i = 0; i < chapters.length; i++) {
-                 final start = chapters[i].startTimeMillis;
-                 final end = (i + 1 < chapters.length)
-                     ? chapters[i + 1].startTimeMillis
-                     : double.infinity;
-                 if (currentPosMs >= start && currentPosMs < end) {
-                   activeIndex = i;
-                   break;
-                 }
-               }
+            final bookId = item.extras?['bookId'] as String?;
+            final chapterIndex = item.extras?['chapterIndex'] as int?;
+            
+            int activeIndex = -1;
+            if (bookId != null) {
+              // Load/cache chapters list for real-time tracking if it changes
+              if (_currentAudiobookId != bookId || _currentAudiobookChapters == null) {
+                _currentAudiobookId = bookId;
+                _currentAudiobookChapters = null;
+                getIt<AudiobookRepository>().getBookChapters(bookId).then((chList) {
+                  if (_currentAudiobookId == bookId) {
+                    _currentAudiobookChapters = chList;
+                  }
+                });
+              }
 
-               if (activeIndex != -1 && activeIndex != chapterIndex) {
-                 final newChapter = chapters[activeIndex];
-                 
-                 // Mark the previous chapter as completed
-                 if (chapterIndex != null) {
-                   try {
-                     final repo = getIt<AudiobookRepository>();
-                     final prevChapter = chapters[chapterIndex];
-                     final prevStart = prevChapter.startTimeMillis;
-                     final prevEnd = (chapterIndex + 1 < chapters.length)
-                         ? chapters[chapterIndex + 1].startTimeMillis
-                         : (item.duration?.inMilliseconds ?? prevStart);
-                     final prevDuration = prevEnd - prevStart;
-                     
-                     await repo.saveProgress(
-                       bookId: bookId,
-                       chapterIndex: chapterIndex,
-                       positionMillis: prevEnd.toInt(),
-                       durationMillis: prevDuration.toInt() > 0 ? prevDuration.toInt() : (item.duration?.inMilliseconds ?? 0),
-                       isCompleted: true,
-                     );
-                     print('[AudioHandler] Chapter changed: marked previous chapter $chapterIndex as completed');
-                   } catch (e) {
-                     print('[AudioHandler] Error saving previous chapter completion: $e');
-                   }
-                 }
+              final chapters = _currentAudiobookChapters;
+              if (chapters != null && chapters.isNotEmpty) {
+                final currentPosMs = position.inMilliseconds;
+                // Binary search for current chapter
+                int low = 0, high = chapters.length - 1;
+                while (low <= high) {
+                  final mid = (low + high) >> 1;
+                  final start = chapters[mid].startTimeMillis;
+                  if (currentPosMs < start) {
+                    high = mid - 1;
+                  } else {
+                    final end = (mid + 1 < chapters.length)
+                        ? chapters[mid + 1].startTimeMillis
+                        : double.infinity;
+                    if (currentPosMs < end) {
+                      activeIndex = mid;
+                      break;
+                    }
+                    low = mid + 1;
+                  }
+                }
 
-                 final updatedItem = item.copyWith(
-                   title: newChapter.title,
-                   extras: {
-                     ...item.extras ?? {},
-                     'chapterIndex': activeIndex,
-                   },
-                 );
-                 mediaItem.add(updatedItem);
-                 print('[AudioHandler] Chapter changed automatically to index $activeIndex: "${newChapter.title}"');
-               }
-             }
-           }
+                if (activeIndex != -1 && activeIndex != chapterIndex) {
+                  final newChapter = chapters[activeIndex];
+                  
+                  // Mark the previous chapter as completed — fire and forget
+                  if (chapterIndex != null) {
+                    final repo = getIt<AudiobookRepository>();
+                    final prevChapter = chapters[chapterIndex];
+                    final prevStart = prevChapter.startTimeMillis;
+                    final prevEnd = (chapterIndex + 1 < chapters.length)
+                        ? chapters[chapterIndex + 1].startTimeMillis
+                        : (item.duration?.inMilliseconds ?? prevStart);
+                    final prevDuration = prevEnd - prevStart;
+                    
+                    repo.saveProgress(
+                      bookId: bookId,
+                      chapterIndex: chapterIndex,
+                      positionMillis: prevEnd.toInt(),
+                      durationMillis: prevDuration.toInt() > 0 ? prevDuration.toInt() : (item.duration?.inMilliseconds ?? 0),
+                      isCompleted: true,
+                    ).catchError((_) {});
+                  }
 
-           final targetChapterIndex = (activeIndex != -1) ? activeIndex : chapterIndex;
-           if (bookId != null && targetChapterIndex != null) {
-             final now = DateTime.now();
-             if (_lastAudiobookSaveTime == null || now.difference(_lastAudiobookSaveTime!) > const Duration(seconds: 5)) {
-               _lastAudiobookSaveTime = now;
-               try {
-                 final repo = getIt<AudiobookRepository>();
-                 
-                 bool isCompleted = false;
-                 final chapters = _currentAudiobookChapters;
-                 if (chapters != null && chapters.isNotEmpty && targetChapterIndex < chapters.length) {
-                   final ch = chapters[targetChapterIndex];
-                   final start = ch.startTimeMillis;
-                   final end = (targetChapterIndex + 1 < chapters.length)
-                       ? chapters[targetChapterIndex + 1].startTimeMillis
-                       : (item.duration?.inMilliseconds ?? start);
-                   final chDuration = end - start;
-                   final relativePos = position.inMilliseconds - start;
-                   if (chDuration > 0 && relativePos >= chDuration - 5000) {
-                     isCompleted = true;
-                   }
-                 } else {
-                   final duration = item.duration ?? Duration.zero;
-                   if (duration.inMilliseconds > 0 && position.inMilliseconds >= duration.inMilliseconds - 5000) {
-                     isCompleted = true;
-                   }
-                 }
+                  final updatedItem = item.copyWith(
+                    title: newChapter.title,
+                    extras: {
+                      ...item.extras ?? {},
+                      'chapterIndex': activeIndex,
+                    },
+                  );
+                  mediaItem.add(updatedItem);
+                  print('[AudioHandler] Chapter changed automatically to index $activeIndex: "${newChapter.title}"');
+                }
+              }
+            }
 
-                 await repo.saveProgress(
-                   bookId: bookId,
-                   chapterIndex: targetChapterIndex,
-                   positionMillis: position.inMilliseconds,
-                   durationMillis: item.duration?.inMilliseconds ?? 0,
-                   isCompleted: isCompleted,
-                 );
-               } catch (e) {
-                 print('[AudioHandler] Error saving audiobook progress: $e');
-               }
-             }
-           }
+            final targetChapterIndex = (activeIndex != -1) ? activeIndex : chapterIndex;
+            if (bookId != null && targetChapterIndex != null) {
+              final posMs = position.inMilliseconds;
+              final isFirstSave = _lastAudiobookSaveTime == null;
+              final timeSinceLastSave = isFirstSave ? Duration.zero : now.difference(_lastAudiobookSaveTime!);
+              final posDiff = (posMs - _lastSavedPositionMs).abs();
+              final isManualSeek = posDiff > 10000;
+              
+              if (!isFirstSave && !isManualSeek && timeSinceLastSave < const Duration(minutes: 5)) {
+                // Skip — save periodically every 5 minutes unless a manual seek occurred
+              } else {
+                _lastAudiobookSaveTime = now;
+                _lastSavedPositionMs = posMs;
+                final repo = getIt<AudiobookRepository>();
+                
+                bool isCompleted = false;
+                final chapters = _currentAudiobookChapters;
+                if (chapters != null && chapters.isNotEmpty && targetChapterIndex < chapters.length) {
+                  final ch = chapters[targetChapterIndex];
+                  final start = ch.startTimeMillis;
+                  final end = (targetChapterIndex + 1 < chapters.length)
+                      ? chapters[targetChapterIndex + 1].startTimeMillis
+                      : (item.duration?.inMilliseconds ?? start);
+                  final chDuration = end - start;
+                  final relativePos = posMs - start;
+                  if (chDuration > 0 && relativePos >= chDuration - 5000) {
+                    isCompleted = true;
+                  }
+                } else {
+                  final duration = item.duration ?? Duration.zero;
+                  if (duration.inMilliseconds > 0 && posMs >= duration.inMilliseconds - 5000) {
+                    isCompleted = true;
+                  }
+                }
+
+                // Fire and forget — don't block position stream
+                repo.saveProgress(
+                  bookId: bookId,
+                  chapterIndex: targetChapterIndex,
+                  positionMillis: posMs,
+                  durationMillis: item.duration?.inMilliseconds ?? 0,
+                  isCompleted: isCompleted,
+                ).catchError((_) {});
+              }
+            }
          }
        }
        if (item == null || _currentTrackRecorded || item.duration == null || item.duration! == Duration.zero) return;
@@ -1312,11 +1330,61 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     return false;
   }
 
+  Future<void> _saveAudiobookProgressIfNeeded() async {
+    final current = mediaItem.value;
+    if (current != null && current.extras?['mediaType'] == 'audiobook') {
+      try {
+        final bookId = current.extras?['bookId'] as String?;
+        final chapterIndex = current.extras?['chapterIndex'] as int?;
+        if (bookId != null && chapterIndex != null) {
+          final position = _player.position;
+          final duration = current.duration ?? Duration.zero;
+          if (position > Duration.zero) {
+            final repo = getIt<AudiobookRepository>();
+            
+            bool isCompleted = false;
+            final chapters = _currentAudiobookChapters;
+            if (chapters != null && chapters.isNotEmpty && chapterIndex < chapters.length) {
+              final ch = chapters[chapterIndex];
+              final start = ch.startTimeMillis;
+              final end = (chapterIndex + 1 < chapters.length)
+                  ? chapters[chapterIndex + 1].startTimeMillis
+                  : (duration.inMilliseconds > 0 ? duration.inMilliseconds : start);
+              final chDuration = end - start;
+              final relativePos = position.inMilliseconds - start;
+              if (chDuration > 0 && relativePos >= chDuration - 5000) {
+                isCompleted = true;
+              }
+            } else {
+              if (duration.inMilliseconds > 0 && position.inMilliseconds >= duration.inMilliseconds - 5000) {
+                isCompleted = true;
+              }
+            }
+
+            await repo.saveProgress(
+              bookId: bookId,
+              chapterIndex: chapterIndex,
+              positionMillis: position.inMilliseconds,
+              durationMillis: duration.inMilliseconds,
+              isCompleted: isCompleted,
+            );
+            _lastSavedPositionMs = position.inMilliseconds;
+            _lastAudiobookSaveTime = DateTime.now();
+            print('[AudioHandler] _saveAudiobookProgressIfNeeded: saved progress.');
+          }
+        }
+      } catch (e) {
+        print('[AudioHandler] _saveAudiobookProgressIfNeeded: failed to save progress: $e');
+      }
+    }
+  }
+
   @override
   Future<void> play() => _player.play();
 
   @override
   Future<void> pause() async {
+    await _saveAudiobookProgressIfNeeded();
     await _player.pause();
     playbackState.add(_transformEvent(_player.playbackEvent));
   }
@@ -1347,33 +1415,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> stop() async {
-    // If it's an audiobook, save progress before stopping/clearing
-    final current = mediaItem.value;
-    if (current != null && current.extras?['mediaType'] == 'audiobook') {
-      try {
-        final bookId = current.extras?['bookId'] as String?;
-        final chapterIndex = current.extras?['chapterIndex'] as int?;
-        if (bookId != null && chapterIndex != null) {
-          final position = playbackState.value.position;
-          final duration = current.duration ?? Duration.zero;
-          if (position > Duration.zero) {
-            final repo = getIt<AudiobookRepository>();
-            await repo.saveProgress(
-              bookId: bookId,
-              chapterIndex: chapterIndex,
-              positionMillis: position.inMilliseconds,
-              durationMillis: duration.inMilliseconds,
-              isCompleted: duration.inMilliseconds > 0 &&
-                  position.inMilliseconds >= duration.inMilliseconds - 5000,
-            );
-            print('[AudioHandler] stop: saved audiobook progress before stopping.');
-          }
-        }
-      } catch (e) {
-        print('[AudioHandler] stop: failed to save audiobook progress: $e');
-      }
-    }
-
+    await _saveAudiobookProgressIfNeeded();
     await _player.stop();
     mediaItem.add(null);
     queue.add([]);

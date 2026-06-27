@@ -1044,7 +1044,6 @@ class AudiobookStatsScreen extends ConsumerWidget {
           'This will permanently delete:\n\n'
           '• All listening history and progress\n'
           '• Book metadata cache\n'
-          '• Continue Listening shelf\n'
           '• Daily & weekly goals\n\n'
           'Your audiobook files will NOT be deleted.\n\n'
           'This action cannot be undone.',

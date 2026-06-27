@@ -46,13 +46,12 @@ Future<void> resetAllAudiobookStats(WidgetRef ref) async {
   ref.invalidate(audiobookListeningHabitsProvider);
   ref.invalidate(audiobookGenreBreakdownProvider);
   ref.invalidate(listeningGoalsProvider);
-  ref.invalidate(inProgressAudiobooksProvider);
 }
 
 final audiobookHistoryProvider = FutureProvider<List<DbAudiobookProgress>>((ref) async {
   try {
     final repo = ref.read(audiobookRepositoryProvider);
-    return await repo.getAllInProgressBooks();
+    return await repo.getAllProgress();
   } catch (e) {
     print('[audiobookHistoryProvider] Error: $e');
     return [];
