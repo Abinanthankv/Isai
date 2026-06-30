@@ -281,9 +281,9 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: mediaItem.artUri != null
-                                        ? ((mediaItem.artUri!.scheme == 'file' || mediaItem.artUri!.path.startsWith('/'))
+                                        ? (mediaItem.artUri!.scheme == 'file'
                                             ? Image.file(
-                                                File(mediaItem.artUri!.scheme == 'file' ? mediaItem.artUri!.toFilePath() : mediaItem.artUri!.path),
+                                                File(mediaItem.artUri!.toFilePath()),
                                                 width: 44,
                                                 height: 44,
                                                 fit: BoxFit.cover,
