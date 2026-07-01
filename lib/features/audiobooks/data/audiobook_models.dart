@@ -186,25 +186,6 @@ class AudiobookChapter {
   String toString() => 'AudiobookChapter(ch$chapterNumber: $title)';
 }
 
-/// An audiobook paired with its listening progress (for Continue Listening shelf).
-class AudiobookWithProgress {
-  final AudiobookResult book;
-  final int currentChapter;
-  final int positionMillis;
-  final int totalChapters;
-  final DateTime lastListenedAt;
-  final double progressPercent;
-
-  const AudiobookWithProgress({
-    required this.book,
-    this.currentChapter = 0,
-    this.positionMillis = 0,
-    this.totalChapters = 0,
-    required this.lastListenedAt,
-    this.progressPercent = 0.0,
-  });
-}
-
 /// Pre-computed progress for a book, stored in progress.json and cache.
 class BookProgress {
   final String bookId;

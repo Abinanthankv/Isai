@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/legacy.dart';
 import '../../../core/di/injection.dart';
 import 'package:isai/core/utils/string_utils.dart';
 import '../../settings/data/torbox_settings_repository.dart';
+import '../../settings/data/hardcover_settings_repository.dart';
+import '../../audiobooks/data/hardcover_api_service.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
 import 'downloads_screen.dart';
@@ -102,6 +104,13 @@ class SettingsState {
   final double miniPlayerSwipeSensitivity;
   final bool playerSpotifyCanvasEnabled;
   final String? audiobookFolder;
+  final String hardcoverApiKey;
+  final bool hardcoverIsValid;
+  final bool hardcoverIsValidating;
+  final String? hardcoverError;
+  final String? hardcoverUsername;
+
+  bool get hardcoverHasKey => hardcoverApiKey.isNotEmpty;
 
   SettingsState({
     this.apiKey = '',
@@ -150,6 +159,11 @@ class SettingsState {
     this.miniPlayerSwipeSensitivity = 40.0,
     this.playerSpotifyCanvasEnabled = true,
     this.audiobookFolder,
+    this.hardcoverApiKey = '',
+    this.hardcoverIsValid = false,
+    this.hardcoverIsValidating = false,
+    this.hardcoverError,
+    this.hardcoverUsername,
   });
 
   SettingsState copyWith({
@@ -199,6 +213,11 @@ class SettingsState {
     double? miniPlayerSwipeSensitivity,
     bool? playerSpotifyCanvasEnabled,
     String? audiobookFolder,
+    String? hardcoverApiKey,
+    bool? hardcoverIsValid,
+    bool? hardcoverIsValidating,
+    String? hardcoverError,
+    String? hardcoverUsername,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -247,17 +266,24 @@ class SettingsState {
       miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
       audiobookFolder: audiobookFolder ?? this.audiobookFolder,
+      hardcoverApiKey: hardcoverApiKey ?? this.hardcoverApiKey,
+      hardcoverIsValid: hardcoverIsValid ?? this.hardcoverIsValid,
+      hardcoverIsValidating: hardcoverIsValidating ?? this.hardcoverIsValidating,
+      hardcoverError: hardcoverError ?? this.hardcoverError,
+      hardcoverUsername: hardcoverUsername ?? this.hardcoverUsername,
     );
   }
 }
 
 class SettingsNotifier extends Notifier<SettingsState> {
   late final TorBoxSettingsRepository _settings;
+  late final HardcoverSettingsRepository _hardcoverSettings;
   late final MusicRepository _repo;
 
   @override
   SettingsState build() {
     _settings = getIt<TorBoxSettingsRepository>();
+    _hardcoverSettings = getIt<HardcoverSettingsRepository>();
     _repo = getIt<MusicRepository>();
     return SettingsState(
       apiKey: _settings.apiKey ?? '',
@@ -304,6 +330,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
       miniPlayerSwipeSensitivity: _settings.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: _settings.playerSpotifyCanvasEnabled,
       audiobookFolder: _settings.audiobookFolder,
+      hardcoverApiKey: _hardcoverSettings.apiKey ?? '',
+      hardcoverIsValid: (_hardcoverSettings.apiKey ?? '').isNotEmpty,
+      hardcoverUsername: _hardcoverSettings.username,
     );
   }
 
@@ -362,6 +391,39 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> clearApiKey() async {
     await _settings.setApiKey('');
     state = state.copyWith(apiKey: '', isValid: false, error: null);
+  }
+
+  Future<bool> saveAndValidateHardcoverKey(String key) async {
+    state = state.copyWith(hardcoverIsValidating: true, hardcoverError: null);
+    final service = HardcoverApiService();
+    final username = await service.validateAndGetUsername(key);
+    if (username != null) {
+      await _hardcoverSettings.setApiKey(key);
+      await _hardcoverSettings.setUsername(username);
+      state = state.copyWith(
+        hardcoverApiKey: key,
+        hardcoverIsValid: true,
+        hardcoverIsValidating: false,
+        hardcoverUsername: username,
+      );
+    } else {
+      state = state.copyWith(
+        hardcoverIsValidating: false,
+        hardcoverIsValid: false,
+        hardcoverError: 'Invalid API Key',
+      );
+    }
+    return username != null;
+  }
+
+  Future<void> clearHardcoverKey() async {
+    await _hardcoverSettings.clearApiKey();
+    state = state.copyWith(
+      hardcoverApiKey: '',
+      hardcoverIsValid: false,
+      hardcoverError: null,
+      hardcoverUsername: null,
+    );
   }
 
   Future<void> setArchiveScraperEnabled(bool enabled) async {

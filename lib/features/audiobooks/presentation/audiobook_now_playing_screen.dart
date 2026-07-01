@@ -37,6 +37,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   int? _sleepTimerMinutes; // null = off, otherwise minutes
   Timer? _sleepTimer;
   DateTime? _sleepTimerEnd;
+  int _lastSleepDisplayMinutes = -1;
 
   // Playback speed
   double _playbackSpeed = 1.0;
@@ -220,7 +221,12 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
         setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
         audioHandler.pause();
       } else {
-        setState(() {});
+        final remaining = end.difference(DateTime.now());
+        final displayMinutes = remaining.inMinutes;
+        if (displayMinutes != _lastSleepDisplayMinutes) {
+          _lastSleepDisplayMinutes = displayMinutes;
+          setState(() {});
+        }
       }
     });
   }
@@ -545,7 +551,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                 ),
                 Positioned.fill(
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                     child: Container(
                       color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.65),
                     ),

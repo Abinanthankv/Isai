@@ -12,10 +12,12 @@ import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
 import 'audiobook_addon_service.dart';
 import 'audiobook_models.dart';
+import 'hardcover_api_service.dart';
 import 'm4b_parser.dart';
 import 'mp3_parser.dart';
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
+import '../../settings/data/hardcover_settings_repository.dart';
 import '../../settings/data/torbox_settings_repository.dart';
 import '../../../core/di/injection.dart';
 
@@ -2327,7 +2329,7 @@ class AudiobookRepository {
   // ─── Metadata Cache ────────────────────────────────────────────
 
   /// Save audiobook metadata to local cache.
-  Future<void> cacheBookMetadata(AudiobookResult book, {bool writeLocalBackup = true}) async {
+  Future<void> cacheBookMetadata(AudiobookResult book, {bool writeLocalBackup = true, List<AudiobookChapter>? chapters}) async {
     final normalizedId = normalizeBookId(book.id);
     final existing = await getCachedMetadata(normalizedId);
 
@@ -2456,6 +2458,8 @@ class AudiobookRepository {
           final metaFile = io.File(p.join(localDir, 'metadata.json'));
           
           Map<String, dynamic> metaMap = {};
+          List<Map<String, dynamic>> finalChaptersList = [];
+          
           if (await metaFile.exists()) {
             try {
               final content = await metaFile.readAsString();
@@ -2463,15 +2467,24 @@ class AudiobookRepository {
             } catch (_) {}
           }
 
-          final chapters = await getBookChapters(book.id);
-
           final List<dynamic>? existingChapters = metaMap['chapters'] as List<dynamic>?;
-          List<Map<String, dynamic>> finalChaptersList = [];
           
-          if (existingChapters != null && existingChapters.isNotEmpty && (chapters.length <= 2 && existingChapters.length > 2)) {
+          if (chapters != null && chapters.isNotEmpty) {
+            finalChaptersList = chapters.map((ch) => {
+              'id': ch.id,
+              'title': ch.title,
+              'chapterNumber': ch.chapterNumber,
+              'startTimeMillis': ch.startTimeMillis,
+              'durationMillis': ch.durationMillis,
+              'streamUrl': ch.streamUrl,
+            }).toList();
+          } else if (existingChapters != null && existingChapters.isNotEmpty) {
+            // Chapters already cached on disk — skip re-parsing entirely
             finalChaptersList = existingChapters.map((ch) => Map<String, dynamic>.from(ch as Map)).toList();
           } else {
-            finalChaptersList = chapters.map((ch) => {
+            // No cached chapters — parse and persist
+            final parsed = await getBookChapters(book.id);
+            finalChaptersList = parsed.map((ch) => {
               'id': ch.id,
               'title': ch.title,
               'chapterNumber': ch.chapterNumber,
@@ -2939,11 +2952,21 @@ class AudiobookRepository {
 
   /// Search iTunes catalog with the given query.
   /// Returns up to [limit] results (max 200 per iTunes API).
+  /// Sanitize a query string for iTunes API search by removing problematic characters.
+  String _sanitizeItunesQuery(String query) {
+    return query
+        .replaceAll(':', ' ')
+        .replaceAll('/', ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   Future<List<AudiobookResult>> searchItunesCatalog(String query, {int limit = 50}) async {
     final List<AudiobookResult> results = [];
-    if (query.trim().isEmpty) return results;
+    final sanitized = _sanitizeItunesQuery(query);
+    if (sanitized.isEmpty) return results;
     try {
-      print('[AudiobookRepository] Searching iTunes catalog for "$query"...');
+      print('[AudiobookRepository] Searching iTunes catalog for "$sanitized"...');
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
@@ -2951,7 +2974,7 @@ class AudiobookRepository {
       final res = await dio.get(
         'https://itunes.apple.com/search',
         queryParameters: {
-          'term': query,
+          'term': sanitized,
           'entity': 'audiobook',
           'limit': limit.clamp(1, 200),
           'country': 'us',
@@ -3013,8 +3036,10 @@ class AudiobookRepository {
   /// Helper to search iTunes.
   Future<List<AudiobookResult>> _searchItunes(String query) async {
     final List<AudiobookResult> results = [];
+    final sanitized = _sanitizeItunesQuery(query);
+    if (sanitized.isEmpty) return results;
     try {
-      print('[AudiobookRepository] Searching iTunes for "$query"...');
+      print('[AudiobookRepository] Searching iTunes for "$sanitized"...');
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
@@ -3022,7 +3047,7 @@ class AudiobookRepository {
       final res = await dio.get(
         'https://itunes.apple.com/search',
         queryParameters: {
-          'term': query,
+          'term': sanitized,
           'entity': 'audiobook',
           'limit': 8,
           'country': 'us',
@@ -3306,6 +3331,141 @@ class AudiobookRepository {
       }
     } catch (e) {
       print('[AudiobookRepository] Error restoring bookmarks: $e');
+    }
+  }
+
+  /// Store the Hardcover read/edition mapping for a book so progress can
+  /// be synced back automatically on pause/stop.
+  Future<void> saveHardcoverMapping(String bookId, int userBookId, int? readId, int? editionId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+      bookObj['hardcoverUserBookId'] = userBookId;
+      bookObj['hardcoverReadId'] = readId;
+      bookObj['hardcoverEditionId'] = editionId;
+      await _flushProgressData(); // immediate write
+    } catch (e) {
+      print('[AudiobookRepository] Error saving Hardcover mapping: $e');
+    }
+  }
+
+  /// Look up the saved Hardcover user_book_id for a given book.
+  /// Returns null if no mapping exists.
+  Future<int?> getHardcoverUserBookId(String bookId) async {
+    try {
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final normId = normalizeBookId(bookId);
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      return bookObj?['hardcoverUserBookId'] as int?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sync current audiobook progress back to Hardcover.
+  /// Reads chapter progress from the in-memory cache and pushes total
+  /// seconds to Hardcover via its API.
+  Future<void> syncHardcoverProgress(String bookId) async {
+    try {
+      final normId = normalizeBookId(bookId);
+      final data = await _loadProgressData();
+      final books = data['books'] as Map<String, dynamic>;
+      final bookObj = books[normId] as Map<String, dynamic>?;
+      if (bookObj == null) {
+        print('[AudiobookRepository] syncHardcoverProgress: bookObj not found for normId=$normId');
+        return;
+      }
+
+      final readId = bookObj['hardcoverReadId'] as int?;
+      final editionId = bookObj['hardcoverEditionId'] as int?;
+      if (readId == null || editionId == null) {
+        print('[AudiobookRepository] syncHardcoverProgress: no mapping (readId=$readId editionId=$editionId)');
+        return;
+      }
+
+      // Find the furthest VALID position across all chapters.
+      // Entries where positionMillis exceeds durationMillis indicate
+      // corrupted progress data (e.g. from earlier save bugs) and are skipped.
+      int maxValidPos = 0;
+      int bookTotalMs = 0;
+      final chapters = bookObj['chapters'] as List<dynamic>?;
+      print('[AudiobookRepository] syncHardcoverProgress: chapters count=${chapters?.length ?? 0}');
+      if (chapters != null) {
+        for (final ch in chapters) {
+          final chMap = ch as Map<String, dynamic>;
+          final pos = (chMap['positionMillis'] as int?) ?? 0;
+          final dur = (chMap['durationMillis'] as int?) ?? 0;
+          bookTotalMs += dur;
+          final valid = pos > 0 && (dur <= 0 || pos <= dur);
+          print('[AudiobookRepository] syncHardcoverProgress: ch=${chMap['chapterIndex']} pos=$pos dur=$dur valid=$valid');
+          if (valid) {
+            if (pos > maxValidPos) maxValidPos = pos;
+          }
+        }
+      }
+
+      int totalProgressMs = maxValidPos;
+      print('[AudiobookRepository] syncHardcoverProgress: maxValidPos=$maxValidPos bookTotalMs=$bookTotalMs');
+      if (totalProgressMs <= 0) {
+        print('[AudiobookRepository] syncHardcoverProgress: totalProgressMs <= 0, skipping');
+        return;
+      }
+
+      // Cap at 95% so Hardcover does not auto-mark as "read" (status 3).
+      if (bookTotalMs > 0 && totalProgressMs >= bookTotalMs) {
+        totalProgressMs = (bookTotalMs * 0.95).round();
+        print('[AudiobookRepository] syncHardcoverProgress: capped to 95%: $totalProgressMs');
+      }
+
+      final settingsRepo = getIt<HardcoverSettingsRepository>();
+      final apiKey = settingsRepo.apiKey;
+      if (apiKey == null || apiKey.isEmpty) {
+        print('[AudiobookRepository] syncHardcoverProgress: no apiKey');
+        return;
+      }
+
+      final hcService = HardcoverApiService();
+      final progressSecs = (totalProgressMs / 1000).round();
+      print('[AudiobookRepository] syncHardcoverProgress: sending progressSecs=$progressSecs (readId=$readId editionId=$editionId)');
+      var success = await hcService.updateProgress(apiKey, readId, editionId, progressSecs);
+      if (!success) {
+        // The readId may be stale (e.g. setReadingStatus created a new
+        // user_book_read elsewhere). Try refreshing the mapping and retrying.
+        final userBookId = bookObj['hardcoverUserBookId'] as int?;
+        if (userBookId != null) {
+          final fresh = await hcService.fetchLatestUserBookRead(apiKey, userBookId);
+          if (fresh != null && fresh.readId != readId) {
+            bookObj['hardcoverReadId'] = fresh.readId;
+            bookObj['hardcoverEditionId'] = fresh.editionId;
+            await _flushProgressData(debounced: false);
+            print('[AudiobookRepository] Recovered stale mapping: readId=$readId → ${fresh.readId}');
+            success = await hcService.updateProgress(apiKey, fresh.readId, fresh.editionId ?? editionId, progressSecs);
+            print('[AudiobookRepository] Retry after mapping refresh: success=$success');
+          }
+        }
+      }
+      print('[AudiobookRepository] syncHardcoverProgress: updateProgress success=$success');
+      if (success) {
+        print('[AudiobookRepository] Synced progress to Hardcover: ${progressSecs}s');
+        // Refresh the mapping after every successful update to pick up any
+        // changes that Hardcover may have made (e.g. auto-creating a new
+        // user_book_read when status is set to "Currently Reading").
+        final userBookId = bookObj['hardcoverUserBookId'] as int?;
+        if (userBookId != null) {
+          final fresh = await hcService.fetchLatestUserBookRead(apiKey, userBookId);
+          if (fresh != null && fresh.readId != readId) {
+            bookObj['hardcoverReadId'] = fresh.readId;
+            bookObj['hardcoverEditionId'] = fresh.editionId;
+            await _flushProgressData(debounced: false);
+            print('[AudiobookRepository] Refreshed hardcover mapping: readId=${fresh.readId} editionId=${fresh.editionId}');
+          }
+        }
+      }
+    } catch (e) {
+      print('[AudiobookRepository] Hardcover sync error: $e');
     }
   }
 }

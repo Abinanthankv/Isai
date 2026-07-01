@@ -11,7 +11,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:isai/core/theme/apple_music_theme.dart';
 import 'package:isai/core/theme/glassmorphism.dart';
 import 'package:isai/core/database/database.dart';
+import '../../music/presentation/music_providers.dart';
 import 'audiobook_providers.dart';
+import 'hardcover_section.dart';
+import '../data/hardcover_api_service.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_repository.dart';
 import 'audiobook_now_playing_screen.dart';
@@ -63,14 +66,22 @@ class AudiobookDetailScreen extends ConsumerWidget {
     final displayBook = detailsAsync.value ?? normalBook;
     final downloadState = ref.watch(audiobookDownloadProvider)[displayBook.id];
 
-    // Pre-compute torrent search query so it survives collapse/expand of chapters
-    final torrentSearchQuery = _sanitizeTorrentQuery(displayBook.title, displayBook.author);
-    final torrentSearchAsync = ref.watch(bookTorrentSearchProvider(torrentSearchQuery));
+    // Only search torrents for books not already local or torrent-based
+    final bool needsTorrentSearch = !normalBook.id.startsWith('local:') && !normalBook.id.startsWith('torrent:');
+    final torrentSearchQuery = needsTorrentSearch
+        ? _sanitizeTorrentQuery(displayBook.title, displayBook.author)
+        : '';
+    final torrentSearchAsync = needsTorrentSearch
+        ? ref.watch(bookTorrentSearchProvider(torrentSearchQuery))
+        : null;
 
     // Proactively cache metadata to ensure the DB registers the correct title/author immediately.
     // We cache displayBook which contains enriched details if loaded, rather than normalBook.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(audiobookRepositoryProvider).cacheBookMetadata(displayBook);
+      final repo = ref.read(audiobookRepositoryProvider);
+      final chaptersAsync = ref.read(bookChaptersProvider(normalBook.id));
+      final cachedChapters = chaptersAsync.asData?.value;
+      repo.cacheBookMetadata(displayBook, chapters: cachedChapters);
     });
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -334,13 +345,108 @@ class AudiobookDetailScreen extends ConsumerWidget {
                                   onPressed: () async {
                                     await toggleWishlist(displayBook);
                                     if (!context.mounted) return;
-                                    ref.invalidate(isBookInWishlistProvider(normalBook.id));
-                                    ref.invalidate(audiobookWishlistProvider);
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(content: Text(inWishlist ? 'Removed from Plan to Read' : 'Added to Plan to Read')),
                                       );
                                     }
+                                    // When adding to Plan to Read, also sync to Hardcover as Want to Read
+                                    if (!inWishlist) {
+                                      final settings = ref.read(settingsProvider);
+                                      if (settings.hardcoverHasKey) {
+                                        final service = ref.read(hardcoverApiServiceProvider);
+                                        final repo = ref.read(audiobookRepositoryProvider);
+                                        final normalizedTitle = normalizeBookTitle(displayBook.title);
+                                        print('[PlanToRead] Hardcover sync: title="${displayBook.title}" author="${displayBook.author}" normalized="$normalizedTitle"');
+                                        if (normalizedTitle.isNotEmpty) {
+                                          try {
+                                            final results = await service.searchBooks(settings.hardcoverApiKey, normalizedTitle, perPage: 8);
+                                            print('[PlanToRead] searchBooks returned ${results.length} results');
+                                            HardcoverBook? matched;
+                                            final authorMatch = results.where((b) =>
+                                              titleMatches(normalizedTitle, b.title) &&
+                                              authorMatches(displayBook.author, b.author)
+                                            ).toList();
+                                            if (authorMatch.isNotEmpty) {
+                                              matched = pickBestTitleMatch(authorMatch, normalizedTitle);
+                                              print('[PlanToRead] author+title matched: id=${matched.id} "${matched.title}"');
+                                            } else {
+                                              final titleMatch = results.where((b) => titleMatches(normalizedTitle, b.title)).toList();
+                                              print('[PlanToRead] titleMatch count=${titleMatch.length} (no author match)');
+                                              if (titleMatch.isNotEmpty) matched = pickBestTitleMatch(titleMatch, normalizedTitle);
+                                            }
+                                            if (matched != null) {
+                                              print('[PlanToRead] matched book id=${matched.id} title="${matched.title}"');
+                                              final existing = await service.getProgressForBook(settings.hardcoverApiKey, matched.id);
+                                              print('[PlanToRead] existing entry=$existing');
+                                              if (existing == null) {
+                                                final userBookId = await service.addBookToLibrary(settings.hardcoverApiKey, matched.id);
+                                                print('[PlanToRead] addBookToLibrary userBookId=$userBookId');
+                                                if (userBookId != null) {
+                                                  await repo.saveHardcoverMapping(
+                                                    displayBook.id, userBookId, null, null,
+                                                  );
+                                                  print('[PlanToRead] saved mapping: bookId=${displayBook.id} userBookId=$userBookId');
+                                                }
+                                              } else {
+                                                print('[PlanToRead] book already in library (userBookId=${existing.userBookId}), switching to Want to Read');
+                                                final ok = await service.setWantToRead(settings.hardcoverApiKey, existing.userBookId);
+                                                print('[PlanToRead] setWantToRead ok=$ok');
+                                                if (ok) {
+                                                  await repo.saveHardcoverMapping(
+                                                    displayBook.id, existing.userBookId, null, null,
+                                                  );
+                                                  print('[PlanToRead] saved mapping (switched): bookId=${displayBook.id} userBookId=${existing.userBookId}');
+                                                }
+                                              }
+                                            } else {
+                                              print('[PlanToRead] no title match found on Hardcover');
+                                            }
+                                          } catch (e) {
+                                            print('[PlanToRead] error: $e');
+                                          }
+                                        }
+                                      } else {
+                                        print('[PlanToRead] Hardcover not configured, skipping');
+                                      }
+                                    } else {
+                                      print('[PlanToRead] removing from wishlist, also removing from Hardcover');
+                                      final settings = ref.read(settingsProvider);
+                                      if (settings.hardcoverHasKey) {
+                                        final service = ref.read(hardcoverApiServiceProvider);
+                                        final repo = ref.read(audiobookRepositoryProvider);
+                                        final userBookId = await repo.getHardcoverUserBookId(displayBook.id);
+                                        if (userBookId != null) {
+                                          print('[PlanToRead] found userBookId=$userBookId, deleting from Hardcover');
+                                          final ok = await service.deleteUserBook(settings.hardcoverApiKey, userBookId);
+                                          print('[PlanToRead] deleteUserBook ok=$ok');
+                                        } else {
+                                          print('[PlanToRead] no mapping found, searching on Hardcover');
+                                          try {
+                                            final normalizedTitle = normalizeBookTitle(displayBook.title);
+                                            if (normalizedTitle.isNotEmpty) {
+                                              final results = await service.searchBooks(settings.hardcoverApiKey, normalizedTitle, perPage: 5);
+                                              final matched = results.isNotEmpty ? pickBestTitleMatch(results, normalizedTitle) : null;
+                                              if (matched != null) {
+                                                final existing = await service.getProgressForBook(settings.hardcoverApiKey, matched.id);
+                                                if (existing != null) {
+                                                  print('[PlanToRead] found via search userBookId=${existing.userBookId}, deleting');
+                                                  await service.deleteUserBook(settings.hardcoverApiKey, existing.userBookId);
+                                                }
+                                              }
+                                            }
+                                          } catch (e) {
+                                            print('[PlanToRead] error removing from Hardcover: $e');
+                                          }
+                                        }
+                                      }
+                                    }
+                                    try {
+                                      if (context.mounted) {
+                                        ref.invalidate(isBookInWishlistProvider(normalBook.id));
+                                        ref.invalidate(audiobookWishlistProvider);
+                                      }
+                                    } catch (_) {}
                                   },
                                   icon: Icon(
                                     inWishlist ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
@@ -995,6 +1101,17 @@ class AudiobookDetailScreen extends ConsumerWidget {
             chaptersAsync.when(
             data: (chapters) {
               if (chapters.isEmpty) {
+                if (torrentSearchAsync == null) {
+                  return const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(40),
+                        child: Text('No chapters found.'),
+                      ),
+                    ),
+                  );
+                }
                 return torrentSearchAsync.when(
                   data: (torrents) {
                     if (torrents.isEmpty) {
@@ -1659,7 +1776,15 @@ class AudiobookDetailScreen extends ConsumerWidget {
     String? epubPath,
     Map<String, dynamic>? epubProgress,
   ) {
-    final selectedTab = epubPath != null
+    final settings = ref.watch(settingsProvider);
+    final hasHardcover = settings.hardcoverHasKey;
+    final hardcoverEntryAsync = hasHardcover
+        ? ref.watch(hardcoverBookProgressProvider((title: displayBook.title, author: displayBook.author)))
+        : null;
+
+    final hasEpub = epubPath != null;
+    final showTabs = hasEpub || hasHardcover;
+    final selectedTab = showTabs
         ? ref.watch(selectedProgressTabProvider(displayBook.id))
         : 'listening';
 
@@ -1676,7 +1801,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (epubPath != null) ...[
+          if (showTabs) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 16),
               height: 36,
@@ -1908,106 +2033,274 @@ class AudiobookDetailScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                ],
-              );
-            }),
-          ] else if (selectedTab == 'reading' && epubPath != null) ...[
-            Builder(builder: (context) {
-              final double epubPercent = epubProgress?['progress'] ?? 0.0;
-              final int currentChapter = epubProgress?['currentChapter'] ?? 0;
-              final int epubTotalChapters = epubProgress?['totalChapters'] ?? 0;
-              final int pagesRead = epubProgress?['pagesRead'] ?? 0;
-              final int totalPages = epubProgress?['totalPages'] ?? 0;
+                  if (hardcoverEntryAsync != null)
+                    hardcoverEntryAsync.when(
+                      data: (hcEntry) {
+                        if (hcEntry == null) return const SizedBox.shrink();
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.menu_book_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Reading Progress',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${(epubPercent * 100).round()}%',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: epubPercent,
-                      minHeight: 6,
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _buildProgressStat(
-                        context,
-                        Icons.format_list_numbered_rounded,
-                        epubTotalChapters > 0 ? 'Ch. ${currentChapter + 1} / $epubTotalChapters' : 'Ch. ${currentChapter + 1}',
-                        'Current Chapter',
-                      ),
-                      if (totalPages > 0) ...[
-                        const SizedBox(width: 24),
-                        _buildProgressStat(
-                          context,
-                          Icons.auto_stories_rounded,
-                          '$pagesRead / $totalPages',
-                          'Pages read',
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => EpubReaderScreen(
-                              epubFilePath: epubPath,
-                              bookId: displayBook.id,
-                              onClose: () {
-                                Navigator.pop(context);
-                                ref.invalidate(epubProgressProvider(displayBook.id));
-                              },
-                            ),
+                        final localTotalSecs = totalDurationMillis > 0
+                            ? totalDurationMillis / 1000.0
+                            : 0.0;
+                        final hcTotalSecs = hcEntry.book.audioSeconds != null
+                            ? hcEntry.book.audioSeconds!.toDouble()
+                            : 0.0;
+                        final bestTotalSecs = hcTotalSecs > 0 ? hcTotalSecs : localTotalSecs;
+                        final double hcPercent = hcEntry.progressSeconds != null && bestTotalSecs > 0
+                            ? (hcEntry.progressSeconds! / bestTotalSecs).clamp(0.0, 1.0)
+                            : 0.0;
+
+                        // Store Hardcover mapping for auto-sync on pause/stop
+                        if (hcEntry.readId != null && hcEntry.editionId != null) {
+                          final repo = ref.read(audiobookRepositoryProvider);
+                          repo.saveHardcoverMapping(displayBook.id, hcEntry.userBookId, hcEntry.readId!, hcEntry.editionId!);
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Divider(),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Icon(Icons.menu_book_rounded,
+                                    color: Theme.of(context).colorScheme.primary, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text('Hardcover',
+                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.primary)),
+                                  const Spacer(),
+                                  Text('${(hcPercent * 100).round()}%',
+                                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.primary)),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: hcPercent,
+                                  minHeight: 6,
+                                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  _buildProgressStat(context, Icons.timer_outlined,
+                                    hcEntry.progressSeconds != null
+                                        ? _formatDuration(hcEntry.progressSeconds! * 1000)
+                                        : '0h', 'Hardcover'),
+                                  if (bestTotalSecs > 0) ...[
+                                    const SizedBox(width: 24),
+                                    _buildProgressStat(context, Icons.schedule_rounded,
+                                      _formatDuration((bestTotalSecs * 1000).round()),
+                                      'Total'),
+                                  ],
+                                ],
+                              ),
+                            ],
                           ),
                         );
                       },
-                      icon: const Icon(Icons.chrome_reader_mode_rounded),
-                      label: const Text('Continue Reading'),
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                      loading: () => const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
                       ),
+                      error: (err, _) => const SizedBox.shrink(),
                     ),
-                  ),
                 ],
               );
             }),
+          ] else if (selectedTab == 'reading') ...[
+            if (epubPath != null) ...[
+              Builder(builder: (context) {
+                final double epubPercent = epubProgress?['progress'] ?? 0.0;
+                final int currentChapter = epubProgress?['currentChapter'] ?? 0;
+                final int epubTotalChapters = epubProgress?['totalChapters'] ?? 0;
+                final int pagesRead = epubProgress?['pagesRead'] ?? 0;
+                final int totalPages = epubProgress?['totalPages'] ?? 0;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.menu_book_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Reading Progress',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${(epubPercent * 100).round()}%',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: epubPercent,
+                        minHeight: 6,
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _buildProgressStat(
+                          context,
+                          Icons.format_list_numbered_rounded,
+                          epubTotalChapters > 0 ? 'Ch. ${currentChapter + 1} / $epubTotalChapters' : 'Ch. ${currentChapter + 1}',
+                          'Current Chapter',
+                        ),
+                        if (totalPages > 0) ...[
+                          const SizedBox(width: 24),
+                          _buildProgressStat(
+                            context,
+                            Icons.auto_stories_rounded,
+                            '$pagesRead / $totalPages',
+                            'Pages read',
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => EpubReaderScreen(
+                                epubFilePath: epubPath,
+                                bookId: displayBook.id,
+                                onClose: () {
+                                  Navigator.pop(context);
+                                  ref.invalidate(epubProgressProvider(displayBook.id));
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.chrome_reader_mode_rounded),
+                        label: const Text('Continue Reading'),
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ] else if (hardcoverEntryAsync != null) ...[
+              Builder(builder: (context) {
+                return hardcoverEntryAsync!.when(
+                  data: (entry) {
+                    if (entry == null) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Column(
+                            children: [
+                              Icon(Icons.menu_book_rounded, size: 48,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                              const SizedBox(height: 8),
+                              Text('No Hardcover reading progress found',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    final totalHours = entry.book.audioSeconds != null
+                        ? entry.book.audioSeconds! / 3600.0
+                        : 0.0;
+                    final double hcPercent = entry.progressHours > 0 && totalHours > 0
+                        ? (entry.progressHours / totalHours).clamp(0.0, 1.0)
+                        : 0.0;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.menu_book_rounded,
+                              color: Theme.of(context).colorScheme.primary, size: 20),
+                            const SizedBox(width: 8),
+                            Text('Hardcover Progress',
+                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary)),
+                            const Spacer(),
+                            Text('${(hcPercent * 100).round()}%',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: hcPercent,
+                            minHeight: 6,
+                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            _buildProgressStat(context, Icons.timer_outlined,
+                              '${entry.progressHours.toStringAsFixed(1)}h',
+                              'Progress'),
+                            if (totalHours > 0) ...[
+                              const SizedBox(width: 24),
+                              _buildProgressStat(context, Icons.schedule_rounded,
+                                '${totalHours.toStringAsFixed(1)}h',
+                                'Total'),
+                            ],
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                  ),
+                  error: (err, _) => Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Text('Hardcover error: $err',
+                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ],
         ],
       ),

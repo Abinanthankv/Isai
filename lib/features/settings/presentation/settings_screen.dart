@@ -395,7 +395,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
 
                   const SizedBox(height: 12),
 
-                  AppleMusicSectionHeader(title: 'Audiobooks Library'),
+                  AppleMusicSectionHeader(title: 'Audiobooks'),
 
                   GlassCard(
                     padding: EdgeInsets.zero,
@@ -446,6 +446,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                             onTap: () => _pickAudiobookFolder(),
                           ),
                         ],
+                        Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
+                        const _HardcoverSettingsSection(),
                       ],
                     ),
                   ),
@@ -1262,6 +1264,148 @@ class _SettingsSwitchTile extends StatelessWidget {
             onChanged: onChanged,
             activeColor: Theme.of(context).colorScheme.primary,
             activeTrackColor: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HardcoverSettingsSection extends ConsumerStatefulWidget {
+  const _HardcoverSettingsSection();
+  @override
+  ConsumerState<_HardcoverSettingsSection> createState() => _HardcoverSettingsSectionState();
+}
+
+class _HardcoverSettingsSectionState extends ConsumerState<_HardcoverSettingsSection> {
+  late TextEditingController _hcController;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = ref.read(settingsProvider).hardcoverApiKey;
+    _hcController = TextEditingController(text: existing);
+  }
+
+  @override
+  void dispose() {
+    _hcController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (settings.hardcoverUsername != null) {
+      return Column(
+        children: [
+          _SettingsTile(
+            icon: Icons.person_outline,
+            title: 'Logged in as ${settings.hardcoverUsername}',
+            subtitle: 'Hardcover connected',
+            showChevron: false,
+          ),
+          const Divider(height: 1, indent: 48),
+          _SettingsTile(
+            icon: Icons.logout,
+            title: 'Disconnect Hardcover',
+            subtitle: 'Remove API token',
+            onTap: () {
+              _hcController.clear();
+              ref.read(settingsProvider.notifier).clearHardcoverKey();
+            },
+          ),
+        ],
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.menu_book_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Connect Hardcover',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Track your currently reading books and sync reading progress.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _hcController,
+            obscureText: true,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+            decoration: InputDecoration(
+              labelText: 'Bearer Token',
+              labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+              prefixIcon: Icon(Icons.vpn_key, color: isDark ? Colors.white54 : Colors.black45),
+              filled: true,
+              fillColor: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          if (settings.hardcoverError != null) ...[
+            const SizedBox(height: 8),
+            Text(settings.hardcoverError!, style: const TextStyle(color: Colors.redAccent)),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: GlassButton(
+              onPressed: settings.hardcoverIsValidating
+                  ? null
+                  : () => ref
+                      .read(settingsProvider.notifier)
+                      .saveAndValidateHardcoverKey(_hcController.text.trim()),
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  AppleMusicTheme.primaryPurple,
+                ],
+              ),
+              child: settings.hardcoverIsValidating
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                        SizedBox(width: 12),
+                        Text('Validating...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ],
+                    )
+                  : const Text('Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              'Get your token at hardcover.app/settings',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+            ),
           ),
         ],
       ),

@@ -7,7 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../music/presentation/music_providers.dart';
 import 'audiobook_providers.dart';
+import 'audiobook_recommendation_providers.dart';
 import '../data/audiobook_models.dart';
+import '../data/audiobook_recommendation_engine.dart';
 import '../data/audiobook_repository.dart';
 import 'audiobook_detail_screen.dart';
 import 'audiobook_now_playing_screen.dart';
@@ -22,7 +24,6 @@ class AudiobooksSubScreen extends ConsumerStatefulWidget {
 
 class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _continueSearchController = TextEditingController();
   Timer? _debounce;
   String _libraryTab = 'local';
   String _librarySort = 'recent'; // recent, author, title, progress
@@ -43,126 +44,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _continueSearchController.dispose();
     _debounce?.cancel();
     super.dispose();
-  }
-
-  Future<void> _resumePlayback(BuildContext context, WidgetRef ref, AudiobookResult book) async {
-    final repo = ref.read(audiobookRepositoryProvider);
-    
-    // Show a loading dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    
-    try {
-      final progress = await repo.getLatestBookProgress(book.id);
-      final chapters = await repo.getBookChapters(book.id);
-      
-      if (context.mounted) Navigator.pop(context); // Dismiss loading dialog
-      
-      if (chapters.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No chapters found to play.')),
-          );
-        }
-        return;
-      }
-      
-      final chapterIdx = (progress != null && progress.chapterIndex < chapters.length) 
-          ? progress.chapterIndex 
-          : 0;
-      final chapter = chapters[chapterIdx];
-      
-      final streamUrl = await repo.resolveChapterStream(chapter);
-      if (streamUrl == null || streamUrl.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to resolve stream URL.')),
-          );
-        }
-        return;
-      }
-      
-      // Cache metadata on resume
-      await repo.cacheBookMetadata(book);
-
-      // Play via AudioHandler
-      await audioHandler.customAction('play', {
-        'url': streamUrl,
-        'title': chapter.title,
-        'artist': book.author,
-        'artworkUrl': book.artworkUrl ?? '',
-        'forceReplace': true,
-        'mediaType': 'audiobook', // critical guard
-        'extras': {
-          'bookId': book.id,
-          'chapterIndex': chapterIdx,
-          'initialPositionMillis': progress?.positionMillis ?? 0,
-        },
-      });
-      
-      if (context.mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => AudiobookNowPlayingScreen(book: book)),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) Navigator.pop(context); // Dismiss loading dialog if error
-      print('[AudiobooksSubScreen] Resume playback error: $e');
-    }
-  }
-
-  void _showProgressOptions(BuildContext context, WidgetRef ref, AudiobookWithProgress progress) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.info_outline_rounded),
-                title: const Text('Show Details'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => AudiobookDetailScreen(book: progress.book),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                title: const Text('Dismiss', style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final prefs = await SharedPreferences.getInstance();
-                  final list = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
-                  if (!list.contains(progress.book.id)) {
-                    list.add(progress.book.id);
-                    await prefs.setStringList('dismissed_continue_listening_audiobooks', list);
-                  }
-                  if (context.mounted) {
-                    ref.invalidate(inProgressAudiobooksProvider);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Dismissed from Continue Listening.')),
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   void _showLocalBookOptions(BuildContext context, WidgetRef ref, AudiobookResult book) {
@@ -281,43 +164,6 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
         child: Center(child: Text('No results found.')),
       ));
     } else {
-      // Continue Listening
-      content.add(Consumer(builder: (context, ref, _) {
-        return ref.watch(inProgressAudiobooksProvider).when(
-          data: (progressList) {
-            if (progressList.isEmpty) return const SizedBox.shrink();
-            final filteredList = _continueSearchController.text.isEmpty
-                ? progressList
-                : progressList.where((p) =>
-                    p.book.title.toLowerCase().contains(_continueSearchController.text.toLowerCase()) ||
-                    p.book.author.toLowerCase().contains(_continueSearchController.text.toLowerCase())
-                  ).toList();
-            return _buildSection(
-              title: 'Continue Listening',
-              searchController: progressList.length > 3 ? _continueSearchController : null,
-              onSearchChanged: progressList.length > 3 ? (_) => setState(() {}) : null,
-              child: filteredList.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text('No matches found.', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                    )
-                  : _buildHorizontalList(
-                      height: 180,
-                      itemCount: filteredList.length,
-                      itemBuilder: (context, index) {
-                        return _buildProgressCard(context, filteredList[index]);
-                      },
-                    ),
-            );
-          },
-          loading: () => const SizedBox.shrink(),
-          error: (e, _) {
-            print('[AudiobooksSubScreen] Continue Listening error: $e');
-            return const SizedBox.shrink();
-          },
-        );
-      }));
-
       // Wishlist
       content.add(Consumer(builder: (context, ref, _) {
         return ref.watch(audiobookWishlistProvider).when(
@@ -386,6 +232,12 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
             ),
           ],
         );
+      }));
+
+      // Recommended for You
+      content.add(Consumer(builder: (context, ref, _) {
+        final recsAsync = ref.watch(audiobookRecommendationsProvider);
+        return _buildRecommendationSection(context, recsAsync);
       }));
 
       // Browse Catalog Header + Genre Chips + Grid
@@ -812,62 +664,6 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     );
   }
 
-  Widget _buildProgressCard(BuildContext context, AudiobookWithProgress progress) {
-    return GestureDetector(
-      onTap: () => _resumePlayback(context, ref, progress.book),
-      onLongPress: () => _showProgressOptions(context, ref, progress),
-      child: Container(
-        width: 140,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: _buildArtworkWidget(
-                progress.book.artworkUrl,
-                width: double.infinity,
-                height: double.infinity,
-                borderRadius: 12,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    value: progress.progressPercent,
-                    strokeWidth: 4,
-                    strokeCap: StrokeCap.round,
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${(progress.progressPercent * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              progress.book.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _openCatalogScreen(BuildContext context, String title, AsyncValue<List<AudiobookResult>> asyncValue) {
     asyncValue.whenData((catalog) {
       if (context.mounted) {
@@ -939,6 +735,90 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
     ),
+    );
+  }
+
+  Widget _buildRecommendationSection(BuildContext context, AsyncValue<List<AudiobookRecommendation>> async) {
+    return RepaintBoundary(
+      child: async.when(
+        data: (recs) {
+          if (recs.isEmpty) return const SizedBox.shrink();
+          final theme = Theme.of(context);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome, size: 20, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Recommended for You',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: recs.length,
+                    itemBuilder: (context, index) {
+                      final rec = recs[index];
+                      return _buildRecommendedBookCard(context, rec);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  Widget _buildRecommendedBookCard(BuildContext context, AudiobookRecommendation rec) {
+    final theme = Theme.of(context);
+    final book = rec.book;
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(
+        builder: (_) => AudiobookDetailScreen(book: book),
+      )),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: SizedBox(
+          width: 130,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: book.artworkUrl != null
+                      ? CachedNetworkImage(imageUrl: book.artworkUrl!, fit: BoxFit.cover, width: 130)
+                      : Container(color: theme.colorScheme.surfaceContainerHighest, child: const Icon(Icons.book, size: 40)),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurfaceVariant)),
+              if (rec.score > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(rec.reason, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 9, color: theme.colorScheme.primary)),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

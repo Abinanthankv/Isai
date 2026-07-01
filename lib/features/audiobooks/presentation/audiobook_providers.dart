@@ -490,52 +490,6 @@ final bookTorrentSearchProvider = FutureProvider.autoDispose.family<List<Audiobo
   return results.where((b) => b.id.startsWith('torrent:') || b.id.startsWith('audiobookbay:')).toList();
 });
 
-final inProgressAudiobooksProvider = FutureProvider.autoDispose<List<AudiobookWithProgress>>((ref) async {
-  final repo = ref.read(audiobookRepositoryProvider);
-  final prefs = await SharedPreferences.getInstance();
-  final dismissed = prefs.getStringList('dismissed_continue_listening_audiobooks') ?? [];
-
-  final allProgress = await repo.getAllProgress();
-  if (allProgress.isEmpty) return [];
-
-  final Map<String, List<DbAudiobookProgress>> grouped = {};
-  for (final p in allProgress) {
-    grouped.putIfAbsent(p.bookId, () => []).add(p);
-  }
-
-  final result = <AudiobookWithProgress>[];
-  for (final entry in grouped.entries) {
-    if (dismissed.contains(entry.key)) continue;
-
-    final progressList = entry.value;
-    final latest = progressList.reduce((a, b) =>
-        a.lastListenedAt.isAfter(b.lastListenedAt) ? a : b);
-    final completed = progressList.where((p) => p.isCompleted).length;
-    final total = progressList.length;
-
-    final cached = await repo.getCachedMetadata(entry.key);
-    final totalChapters = cached?.totalChapters ?? total;
-    if (totalChapters > 0 && completed >= totalChapters) continue;
-
-    result.add(AudiobookWithProgress(
-      book: AudiobookResult(
-        id: entry.key,
-        title: cached?.title ?? entry.key,
-        author: cached?.author ?? 'Unknown Author',
-        artworkUrl: cached?.artworkUrl,
-      ),
-      currentChapter: latest.chapterIndex,
-      positionMillis: latest.positionMillis,
-      totalChapters: totalChapters,
-      lastListenedAt: latest.lastListenedAt,
-      progressPercent: totalChapters > 0 ? completed / totalChapters : 0.0,
-    ));
-  }
-
-  result.sort((a, b) => b.lastListenedAt.compareTo(a.lastListenedAt));
-  return result;
-});
-
 final completedAudiobookIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) async {
   final repo = ref.read(audiobookRepositoryProvider);
   final allProgress = await repo.getAllProgress();

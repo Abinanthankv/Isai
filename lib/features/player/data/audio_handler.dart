@@ -283,7 +283,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                       bookId: bookId,
                       chapterIndex: chapterIndex,
                       positionMillis: prevEnd.toInt(),
-                      durationMillis: prevDuration.toInt() > 0 ? prevDuration.toInt() : (item.duration?.inMilliseconds ?? 0),
+                      durationMillis: item.duration?.inMilliseconds ?? 0,
                       isCompleted: true,
                     ).catchError((_) {});
                   }
@@ -626,17 +626,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           }
         }
         
-        // Fetch real extended metadata (bitrate, samplerate)
-        _fetchExtendedMetadata(index);
-
-        // --- 4c. Pre-fetch Next Track FULLY ---
-        _prefetchNext(index);
-        
-        // --- 4d. Enrich Metadata for Upcoming Queue ---
-        _enrichQueueInRange(index);
-        
-        // --- 4e. Dynamic/Autoplay Queue Extension ---
-        _checkAndExtendQueue(index);
+        // Skip all background enrichment/prefetch for audiobooks - chapters are sequential, not random
+        final isAudiobook = tagItem.extras?['mediaType'] == 'audiobook' || broadcastItem.extras?['mediaType'] == 'audiobook';
+        if (!isAudiobook) {
+          // Fetch real extended metadata (bitrate, samplerate)
+          _fetchExtendedMetadata(index);
+          // --- 4c. Pre-fetch Next Track FULLY ---
+          _prefetchNext(index);
+          // --- 4d. Enrich Metadata for Upcoming Queue ---
+          _enrichQueueInRange(index);
+          // --- 4e. Dynamic/Autoplay Queue Extension ---
+          _checkAndExtendQueue(index);
+        }
       } catch (e) {
         print('[AudioHandler] Error in currentIndexStream: $e');
       }
@@ -1163,9 +1164,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         String? localPath = item.extras?['localPath'] as String?;
         
         // Fallback: check DB directly (crucial for offline robust resolution)
-        if (localPath == null) {
-          final allFiles = await db.getAllFiles();
-          final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+        if (localPath == null && torrentId != null && fileId != null) {
+          final dbFile = await (db.select(db.files)
+                ..where((f) => f.torrentId.equals(torrentId!) & f.id.equals(fileId!)))
+              .getSingleOrNull();
           localPath = dbFile?.localPath;
         }
 
@@ -1361,6 +1363,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               }
             }
 
+            print('[AudioHandler] _saveAudiobookProgressIfNeeded: bookId=$bookId ch=$chapterIndex posMs=${position.inMilliseconds} durMs=${duration.inMilliseconds} completed=$isCompleted');
             await repo.saveProgress(
               bookId: bookId,
               chapterIndex: chapterIndex,
@@ -1379,12 +1382,29 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     }
   }
 
+  Future<void> _syncHardcoverProgressIfNeeded() async {
+    final current = mediaItem.value;
+    if (current != null && current.extras?['mediaType'] == 'audiobook') {
+      final bookId = current.extras?['bookId'] as String?;
+      if (bookId != null) {
+        try {
+          final repo = getIt<AudiobookRepository>();
+          await repo.syncHardcoverProgress(bookId);
+        } catch (e) {
+          print('[AudioHandler] Hardcover sync error: $e');
+        }
+      }
+    }
+  }
+
   @override
   Future<void> play() => _player.play();
 
   @override
   Future<void> pause() async {
     await _saveAudiobookProgressIfNeeded();
+    // Hardcover sync runs in background so pause is not blocked by HTTP.
+    _syncHardcoverProgressIfNeeded();
     await _player.pause();
     playbackState.add(_transformEvent(_player.playbackEvent));
   }
@@ -1416,6 +1436,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> stop() async {
     await _saveAudiobookProgressIfNeeded();
+    // Hardcover sync runs in background so stop is not blocked by HTTP.
+    _syncHardcoverProgressIfNeeded();
     await _player.stop();
     mediaItem.add(null);
     queue.add([]);
@@ -2004,8 +2026,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     // Fallback: Check DB if localPath is missing from extras
     if (localPath == null && torrentId != null && fileId != null) {
       final db = getIt<AppDatabase>();
-      final allFiles = await db.getAllFiles();
-      final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+      final dbFile = await (db.select(db.files)
+            ..where((f) => f.torrentId.equals(torrentId!) & f.id.equals(fileId!)))
+          .getSingleOrNull();
       localPath = dbFile?.localPath;
     }
 
@@ -2079,8 +2102,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (!io.Platform.isLinux && !isYouTube && torrentId != null && fileId != null) {
       String ext = '.mp3';
       final db = getIt<AppDatabase>();
-      final allFiles = await db.getAllFiles();
-      final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+      final dbFile = await (db.select(db.files)
+            ..where((f) => f.torrentId.equals(torrentId!) & f.id.equals(fileId!)))
+          .getSingleOrNull();
       if (dbFile != null) {
         final dot = dbFile.name.lastIndexOf('.');
         if (dot != -1) {
@@ -2169,8 +2193,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       String? localPath = mergedItem.extras?['localPath'] as String?;
       if (localPath == null && torrentId != null && fileId != null) {
         final db = getIt<AppDatabase>();
-        final allFiles = await db.getAllFiles();
-        final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+        final dbFile = await (db.select(db.files)
+              ..where((f) => f.torrentId.equals(torrentId!) & f.id.equals(fileId!)))
+            .getSingleOrNull();
         if (dbFile != null) {
           localPath = dbFile.localPath;
         }
@@ -2182,8 +2207,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (fileToExtract == null && torrentId != null && fileId != null) {
         String ext = '.mp3';
         final db = getIt<AppDatabase>();
-        final allFiles = await db.getAllFiles();
-        final dbFile = allFiles.where((f) => f.id == fileId && f.torrentId == torrentId).firstOrNull;
+        final dbFile = await (db.select(db.files)
+              ..where((f) => f.torrentId.equals(torrentId!) & f.id.equals(fileId!)))
+            .getSingleOrNull();
         if (dbFile != null) {
           final dot = dbFile.name.lastIndexOf('.');
           if (dot != -1) {
