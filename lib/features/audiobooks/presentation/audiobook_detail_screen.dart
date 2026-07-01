@@ -3363,9 +3363,9 @@ class _AuthorCatalogScreenState extends ConsumerState<AuthorCatalogScreen> {
                 if (_isGridView)
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _responsiveCrossAxisCount(context),
                         childAspectRatio: 0.7,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
@@ -3416,8 +3416,8 @@ class _AuthorCatalogScreenState extends ConsumerState<AuthorCatalogScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: _responsiveCrossAxisCount(context),
                       childAspectRatio: 0.7,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
@@ -3468,6 +3468,15 @@ class _AuthorCatalogScreenState extends ConsumerState<AuthorCatalogScreen> {
         ),
       ),
     );
+  }
+
+  int _responsiveCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 6;
+    if (width > 900) return 5;
+    if (width > 700) return 4;
+    if (width > 500) return 3;
+    return 2;
   }
 
   Widget _buildGridCard(BuildContext context, AudiobookResult book, ThemeData theme) {
@@ -3680,8 +3689,8 @@ class _GenreCatalogScreenState extends ConsumerState<GenreCatalogScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: _responsiveCrossAxisCount(context),
                       childAspectRatio: 0.7,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
@@ -3709,6 +3718,15 @@ class _GenreCatalogScreenState extends ConsumerState<GenreCatalogScreen> {
         error: (_, __) => const Center(child: Text('Failed to load books')),
       ),
     );
+  }
+
+  int _responsiveCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 6;
+    if (width > 900) return 5;
+    if (width > 700) return 4;
+    if (width > 500) return 3;
+    return 2;
   }
 
   Widget _buildGridCard(BuildContext context, AudiobookResult book, ThemeData theme) {

@@ -303,8 +303,8 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                   child: GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: _responsiveCrossAxisCount(context),
                       childAspectRatio: 0.7,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
@@ -966,6 +966,15 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
     ),
     );
   }
+
+  int _responsiveCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 6;
+    if (width > 900) return 5;
+    if (width > 700) return 4;
+    if (width > 500) return 3;
+    return 2;
+  }
 }
 
 class AudiobookCatalogAllScreen extends ConsumerStatefulWidget {
@@ -1107,11 +1116,20 @@ class _AudiobookCatalogAllScreenState extends ConsumerState<AudiobookCatalogAllS
     );
   }
 
+  int _responsiveCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 6;
+    if (width > 900) return 5;
+    if (width > 700) return 4;
+    if (width > 500) return 3;
+    return 2;
+  }
+
   Widget _buildGridView(List<AudiobookResult> catalog) {
     return GridView.builder(
       padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _responsiveCrossAxisCount(context),
         childAspectRatio: 0.7,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
