@@ -25,6 +25,8 @@ import 'playlist_grid_screen.dart';
 import 'package:isai/features/audiobooks/presentation/audiobook_providers.dart';
 import 'package:isai/features/audiobooks/presentation/audiobooks_sub_screen.dart';
 import 'package:isai/features/audiobooks/data/audiobook_models.dart';
+import 'package:isai/features/podcast/presentation/podcast_providers.dart';
+import 'package:isai/features/podcast/presentation/podcast_listing_screen.dart';
 
 
 class DiscoveryScreen extends ConsumerWidget {
@@ -73,6 +75,9 @@ class DiscoveryScreen extends ConsumerWidget {
               ref.read(audiobookCatalogProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
               ref.read(localAudiobooksProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
             ]).catchError((_) => []);
+          } else if (selectedTab == 'podcast') {
+            ref.invalidate(podcastTrendingProvider);
+            ref.invalidate(podcastRecentProvider);
           } else {
             ref.invalidate(cachedTrendingSongsProvider);
             ref.invalidate(newReleasesProvider(selectedRegion));
@@ -97,6 +102,10 @@ class DiscoveryScreen extends ConsumerWidget {
             if (selectedTab == 'audiobooks')
               const SliverToBoxAdapter(
                 child: AudiobooksSubScreen(),
+              )
+            else if (selectedTab == 'podcast')
+              const SliverToBoxAdapter(
+                child: PodcastsSubScreen(),
               )
             else ...[
               SliverToBoxAdapter(
@@ -928,6 +937,7 @@ class DiscoveryScreen extends ConsumerWidget {
     final tabs = [
       ('music', 'Music'),
       ('audiobooks', 'Audiobooks'),
+      ('podcast', 'Podcasts'),
     ];
 
     return SliverAppBar(

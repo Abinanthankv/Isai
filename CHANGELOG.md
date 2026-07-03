@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.6] - July 2026
+
+### Added
+- **Podcast Continue Listening**: Episode progress now persists after stopping. Multiple in-progress episodes are tracked and shown in the discover screen with resume playback.
+- **Podcast Stop Button**: Mini player replaces the next-track button with a stop button for podcasts.
+- **Podcast Redirect Resolution**: Audio URLs with tracking redirect chains (e.g., pscrb.fm) are resolved upfront to prevent playback timeouts.
+- **Multi-Episode Tracking**: Continue Listening section now shows all in-progress podcast episodes, not just the last played one.
+
+### Fixed & Improved
+- **Podcast Progress Not Lost on Stop**: Stopping a podcast no longer clears the saved position — your place is always preserved.
+- **Mini Player Tap No Longer Restarts**: Tapping Continue Listening for an already-loaded episode just resumes playback instead of force-replacing and re-seeking.
+- **Podcast Duration Accuracy**: Episode duration now comes from the actual audio file instead of the RSS feed (which often omits it), fixing "0 secs left" display.
+- **Riverpod Dispose Safety**: Fixed crash when saving podcast progress during widget disposal by caching notifier references.
+
 ## [1.0.5] - June 2026
 
 > ⚠️ **Audiobooks are in Beta** — Some features may be rough around the edges. Feedback is welcome!

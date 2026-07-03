@@ -9,6 +9,7 @@ import '../../music/presentation/now_playing_screen.dart';
 import '../../music/data/music_models.dart';
 import '../../audiobooks/presentation/audiobook_now_playing_screen.dart';
 import '../../audiobooks/data/audiobook_models.dart';
+import '../../podcast/presentation/podcast_now_playing_screen.dart';
 import '../../../main.dart';
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/theme_extensions.dart';
@@ -118,6 +119,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
         final mediaItem = snapshot.data;
         if (mediaItem == null) return const SizedBox.shrink();
         final isAudiobook = mediaItem.extras?['mediaType'] == 'audiobook';
+        final isPodcast = mediaItem.extras?['mediaType'] == 'podcast';
 
         return StreamBuilder<PlaybackState>(
           stream: audioHandler.playbackState,
@@ -218,7 +220,6 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                 name: mediaItem.title,
                                 localPath: extras['localPath'] as String?,
                               );
-                              final isAudiobook = extras['mediaType'] == 'audiobook';
                               final navState = navigatorKey.currentState;
                               
                               Route createRoute() {
@@ -236,6 +237,9 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                           artworkUrl: mediaItem.artUri?.toString(),
                                         ),
                                       );
+                                    }
+                                    if (isPodcast) {
+                                      return PodcastNowPlayingScreen.fromMediaItem();
                                     }
                                     return NowPlayingScreen(
                                       file: file,
@@ -346,16 +350,14 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                     ),
                                     const SizedBox(width: 4),
                                     GlassIconButton(
-                                      icon: isAudiobook 
+                                      icon: (isAudiobook || isPodcast)
                                           ? Icons.stop_rounded 
                                           : Icons.skip_next_rounded,
                                       size: 32,
                                       onPressed: () {
                                         HapticFeedback.mediumImpact();
-                                        if (isAudiobook) {
+                                        if (isAudiobook || isPodcast) {
                                           audioHandler.stop();
-                                        } else {
-                                          audioHandler.skipToNext();
                                         }
                                       },
                                     ),
