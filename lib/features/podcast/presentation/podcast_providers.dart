@@ -202,6 +202,7 @@ class ContinueListeningData {
   final String? feedUrl;
   final bool isLive;
   final DateTime? lastPlayedAt;
+  final String? primaryGenre;
 
   ContinueListeningData({
     required this.podcastTitle,
@@ -216,11 +217,12 @@ class ContinueListeningData {
     this.feedUrl,
     this.isLive = false,
     this.lastPlayedAt,
+    this.primaryGenre,
   });
 
   String get episodeKey => '${podcastTitle}_$episodeId';
 
-  ContinueListeningData copyWith({Duration? position, bool? isLive, DateTime? lastPlayedAt}) =>
+  ContinueListeningData copyWith({Duration? position, bool? isLive, DateTime? lastPlayedAt, String? primaryGenre}) =>
       ContinueListeningData(
         podcastTitle: podcastTitle,
         podcastArtist: podcastArtist,
@@ -234,6 +236,7 @@ class ContinueListeningData {
         feedUrl: feedUrl,
         isLive: isLive ?? this.isLive,
         lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
+        primaryGenre: primaryGenre ?? this.primaryGenre,
       );
 
   Map<String, dynamic> toJson() => {
@@ -248,6 +251,7 @@ class ContinueListeningData {
     'positionMillis': position.inMilliseconds,
     'feedUrl': feedUrl,
     'lastPlayedAtMs': lastPlayedAt?.millisecondsSinceEpoch,
+    'primaryGenre': primaryGenre,
   };
 
   static ContinueListeningData fromJson(Map<String, dynamic> json) =>
@@ -265,6 +269,7 @@ class ContinueListeningData {
         lastPlayedAt: json['lastPlayedAtMs'] != null
             ? DateTime.fromMillisecondsSinceEpoch((json['lastPlayedAtMs'] as num).toInt())
             : null,
+        primaryGenre: json['primaryGenre'] as String?,
       );
 }
 
@@ -382,3 +387,76 @@ class ShowAllContinueNotifier extends StateNotifier<bool> {
 
   void toggle() => state = !state;
 }
+
+class PodcastStatsData {
+  final Duration totalListeningTime;
+  final int completedEpisodes;
+  final int inProgressEpisodes;
+  final int startedEpisodes;
+  final int followedPodcasts;
+  final int uniquePodcastsPlayed;
+  final List<({String title, int count})> topPodcasts;
+  final List<ContinueListeningData> recentActivity;
+  final List<({String genre, int count})> genreBreakdown;
+
+  PodcastStatsData({
+    this.totalListeningTime = Duration.zero,
+    this.completedEpisodes = 0,
+    this.inProgressEpisodes = 0,
+    this.startedEpisodes = 0,
+    this.followedPodcasts = 0,
+    this.uniquePodcastsPlayed = 0,
+    this.topPodcasts = const [],
+    this.recentActivity = const [],
+    this.genreBreakdown = const [],
+  });
+}
+
+final podcastStatsProvider = Provider<PodcastStatsData>((ref) {
+  final progressMap = ref.watch(podcastProgressProvider);
+  final lastPlayedMap = ref.watch(lastPlayedPodcastProvider);
+  final followed = ref.watch(podcastFollowedProvider);
+
+  int completed = 0, inProgress = 0, started = 0;
+  Duration totalTime = Duration.zero;
+  final podcastCount = <String, int>{};
+  final genreCount = <String, int>{};
+
+  for (final entry in lastPlayedMap.values) {
+    final posMs = progressMap[entry.episodeKey] ?? entry.position.inMilliseconds;
+    final durMs = entry.duration.inMilliseconds;
+    if (posMs > 0) started++;
+    if (durMs > 0) {
+      final fraction = posMs / durMs;
+      if (fraction > 0.95) completed++;
+      else if (fraction > 0.05) inProgress++;
+    }
+    totalTime += Duration(milliseconds: posMs);
+    podcastCount[entry.podcastTitle] = (podcastCount[entry.podcastTitle] ?? 0) + 1;
+    if (entry.primaryGenre != null) {
+      genreCount[entry.primaryGenre!] = (genreCount[entry.primaryGenre!] ?? 0) + 1;
+    }
+  }
+
+  final topPodcasts = podcastCount.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  final genreSorted = genreCount.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  final recent = lastPlayedMap.values.toList()
+    ..sort((a, b) => (b.lastPlayedAt ?? DateTime(0))
+        .compareTo(a.lastPlayedAt ?? DateTime(0)));
+
+  return PodcastStatsData(
+    totalListeningTime: totalTime,
+    completedEpisodes: completed,
+    inProgressEpisodes: inProgress,
+    startedEpisodes: started,
+    followedPodcasts: followed.length,
+    uniquePodcastsPlayed: podcastCount.length,
+    topPodcasts: topPodcasts.take(10).map((e) => (title: e.key, count: e.value)).toList(),
+    recentActivity: recent.take(20).toList(),
+    genreBreakdown: genreSorted.map((e) => (genre: e.key, count: e.value)).toList(),
+  );
+});

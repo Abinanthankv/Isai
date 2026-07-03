@@ -10,6 +10,7 @@ import 'podcast_artwork.dart';
 import 'package:isai/main.dart';
 import 'podcast_detail_screen.dart';
 import 'podcast_now_playing_screen.dart';
+import 'podcast_stats_screen.dart';
 
 class PodcastsSubScreen extends ConsumerStatefulWidget {
   const PodcastsSubScreen({super.key});
@@ -82,6 +83,18 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               hintText: 'Search podcasts...',
               leading: const Icon(Icons.search),
               trailing: [
+                IconButton(
+                  icon: const Icon(Icons.bar_chart_rounded),
+                  tooltip: 'Stats',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PodcastStatsScreen(),
+                      ),
+                    );
+                  },
+                ),
                 if (_searchController.text.isNotEmpty)
                   IconButton(
                     icon: const Icon(Icons.clear),

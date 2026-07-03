@@ -362,6 +362,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                   podcastTitle: widget.podcast.collectionName,
                   podcastArtist: widget.podcast.artistName,
                   feedUrl: feedUrl,
+                  primaryGenre: widget.podcast.primaryGenre,
                 ),
               ),
             );

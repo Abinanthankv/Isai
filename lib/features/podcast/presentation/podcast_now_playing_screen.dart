@@ -17,6 +17,7 @@ class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
   final String podcastTitle;
   final String podcastArtist;
   final String? feedUrl;
+  final String? primaryGenre;
 
   const PodcastNowPlayingScreen({
     super.key,
@@ -27,6 +28,7 @@ class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
     this.podcastTitle = '',
     this.podcastArtist = '',
     this.feedUrl,
+    this.primaryGenre,
   });
 
   factory PodcastNowPlayingScreen.fromMediaItem() {
@@ -50,6 +52,7 @@ class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
       podcastArtist: extras['podcastArtist'] as String? ?? item?.artist ?? '',
       podcastArtwork: extras['podcastArtwork'] as String? ?? item?.artUri?.toString(),
       feedUrl: extras['feedUrl'] as String?,
+      primaryGenre: extras['primaryGenre'] as String?,
     );
   }
 
@@ -67,6 +70,8 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   bool _wasPlaying = false;
   Timer? _seekDebounceTimer;
   int _accumulatedSeekSeconds = 0;
+  Timer? _positionTimer;
+  Duration _currentPosition = Duration.zero;
   Duration? _initialSeekPosition;
   PodcastProgressNotifier? _progressNotifier;
   LastPlayedPodcastNotifier? _lastPlayedNotifier;
@@ -96,6 +101,13 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
       }
       _wasPlaying = state.playing;
     });
+    _positionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = audioHandler.playbackState.value.position;
+      });
+    });
+    _currentPosition = audioHandler.playbackState.value.position;
   }
 
   @override
@@ -103,6 +115,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     _playbackStateSub?.cancel();
     _sleepTimer?.cancel();
     _seekDebounceTimer?.cancel();
+    _positionTimer?.cancel();
     Future(() => _saveProgress());
     super.dispose();
   }
@@ -125,6 +138,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         duration: actualDuration,
         position: Duration(milliseconds: pos),
         feedUrl: widget.feedUrl,
+        primaryGenre: widget.primaryGenre,
       ));
     }
   }
@@ -150,6 +164,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'feedUrl': widget.feedUrl ?? '',
         'chaptersUrl': widget.episode.chaptersUrl ?? '',
         'episodeArtwork': widget.episode.artworkUrl ?? '',
+        if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
       },
     });
   }
@@ -175,6 +190,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'feedUrl': widget.feedUrl ?? '',
         'chaptersUrl': episode.chaptersUrl ?? '',
         'episodeArtwork': episode.artworkUrl ?? '',
+        if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
       },
     });
   }
@@ -338,7 +354,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                       builder: (context, stateSnapshot) {
                         final playbackState = stateSnapshot.data;
                         final playing = playbackState?.playing ?? false;
-                        final position = playbackState?.position ?? Duration.zero;
+                        final position = _currentPosition;
                         final mediaItem = audioHandler.mediaItem.value;
                         final duration = mediaItem?.duration ?? Duration.zero;
 
@@ -360,6 +376,10 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                                 activeColor: Theme.of(context).colorScheme.primary,
                                 inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                                 onChanged: (val) {
+                                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
+                                  setState(() => _currentPosition = seekPos);
+                                },
+                                onChangeEnd: (val) {
                                   final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
                                   audioHandler.seek(seekPos);
                                 },
