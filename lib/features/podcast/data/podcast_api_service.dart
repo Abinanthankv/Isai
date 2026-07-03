@@ -2,10 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:xml/xml.dart';
-import 'package:injectable/injectable.dart';
 import 'podcast_models.dart';
 
-@lazySingleton
 class PodcastApiService {
   final Dio _dio;
   static final _resolvedCache = <String, String>{};
