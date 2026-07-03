@@ -11,6 +11,7 @@ class PodcastEpisode {
   final String? episodeUrl;
   final String? feedUrl;
   final String? collectionName;
+  final String? chaptersUrl;
 
   const PodcastEpisode({
     required this.id,
@@ -23,6 +24,21 @@ class PodcastEpisode {
     this.episodeUrl,
     this.feedUrl,
     this.collectionName,
+    this.chaptersUrl,
+  });
+}
+
+class PodcastChapter {
+  final String title;
+  final int startTimeMs;
+  final int endTimeMs;
+  final int? number;
+
+  const PodcastChapter({
+    required this.title,
+    required this.startTimeMs,
+    required this.endTimeMs,
+    this.number,
   });
 }
 
@@ -74,6 +90,47 @@ class PodcastSeries {
       trackCount: episodes.length,
       releaseDate: releaseDate,
       episodes: episodes,
+    );
+  }
+}
+
+class SpotifyChartItem {
+  final String showName;
+  final String showPublisher;
+  final String showImageUrl;
+  final String showDescription;
+  final String showUri;
+  final String chartRankMove;
+  final String? episodeName;
+  final String? episodeImageUrl;
+  final String? episodeDescription;
+  final String? episodeUri;
+
+  const SpotifyChartItem({
+    required this.showName,
+    required this.showPublisher,
+    required this.showImageUrl,
+    required this.showDescription,
+    required this.showUri,
+    required this.chartRankMove,
+    this.episodeName,
+    this.episodeImageUrl,
+    this.episodeDescription,
+    this.episodeUri,
+  });
+
+  factory SpotifyChartItem.fromJson(Map<String, dynamic> json) {
+    return SpotifyChartItem(
+      showName: json['showName'] as String? ?? '',
+      showPublisher: json['showPublisher'] as String? ?? '',
+      showImageUrl: json['showImageUrl'] as String? ?? '',
+      showDescription: json['showDescription'] as String? ?? '',
+      showUri: json['showUri'] as String? ?? '',
+      chartRankMove: json['chartRankMove'] as String? ?? '',
+      episodeName: json['episodeName'] as String?,
+      episodeImageUrl: json['episodeImageUrl'] as String?,
+      episodeDescription: json['episodeDescription'] as String?,
+      episodeUri: json['episodeUri'] as String?,
     );
   }
 }

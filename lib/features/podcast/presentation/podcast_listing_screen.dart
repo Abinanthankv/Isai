@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:isai/main.dart';
 import '../data/podcast_models.dart';
 import '../data/podcast_api_service.dart';
 import 'podcast_providers.dart';
+import 'podcast_artwork.dart';
+import 'package:isai/main.dart';
 import 'podcast_detail_screen.dart';
 import 'podcast_now_playing_screen.dart';
 
@@ -67,8 +68,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final trendingAsync = ref.watch(podcastTrendingProvider);
-    final recentAsync = ref.watch(podcastRecentProvider);
+    final newReleasesAsync = ref.watch(podcastRecentProvider);
     final followed = ref.watch(podcastFollowedProvider);
 
     return SingleChildScrollView(
@@ -95,10 +95,13 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
           ),
           if (followed.isNotEmpty) _buildFollowedSection(followed),
           _buildContinueListening(),
-          _buildTrendingSection(trendingAsync),
-          _buildRecentSection(recentAsync),
+          _buildNewReleasesSection(newReleasesAsync),
           _buildGenreCatalogs(),
-          const SizedBox(height: 32),
+          _buildSpotifySection('Top Podcasts - US', spotifyTopPodcastsUsProvider),
+          _buildSpotifySection('Top Podcasts - India', spotifyTopPodcastsInProvider),
+          _buildSpotifySection('Top Episodes - US', spotifyTopEpisodesUsProvider),
+          _buildSpotifySection('Top Episodes - India', spotifyTopEpisodesInProvider),
+          const SizedBox(height: 120),
         ],
       ),
     );
@@ -123,6 +126,10 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     final items = ref.watch(continueListeningProvider);
     if (items.isEmpty) return const SizedBox.shrink();
 
+    const int initialCount = 3;
+    final showAll = ref.watch(showAllContinueProvider);
+    final displayed = showAll ? items : items.take(initialCount).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -142,10 +149,25 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
             ],
           ),
         ),
-        for (final item in items)
+        for (final item in displayed)
           item.isLive
               ? _buildLiveContinueCard(item)
               : _buildSavedContinueCard(item),
+        if (items.length > initialCount)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 8),
+            child: GestureDetector(
+              onTap: () =>
+                  ref.read(showAllContinueProvider.notifier).toggle(),
+              child: Text(
+                showAll ? 'Show less' : 'Show more (${items.length - initialCount} more)',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 8),
       ],
     );
@@ -184,9 +206,33 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
                 ),
               );
             },
+            onLongPress: () => _confirmRemove(current),
           ),
         );
       },
+    );
+  }
+
+  void _confirmRemove(ContinueListeningData item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove from Continue Listening?'),
+        content: Text('Remove "${item.episodeTitle}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(lastPlayedPodcastProvider.notifier).remove(item.episodeKey);
+              Navigator.pop(ctx);
+            },
+            child: Text('Remove', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -246,6 +292,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
             );
           }
         },
+        onLongPress: () => _confirmRemove(current),
       ),
     );
   }
@@ -256,6 +303,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     required String subtitle,
     required Widget trailing,
     required VoidCallback onTap,
+    VoidCallback? onLongPress,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -266,34 +314,18 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: current.podcastArtwork != null
-                      ? CachedNetworkImage(
-                          imageUrl: current.podcastArtwork!,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          ),
-                          errorWidget: (_, __, ___) => Container(
-                            width: 56,
-                            height: 56,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            child: const Icon(Icons.podcasts, size: 28),
-                          ),
-                        )
-                      : Container(
-                          width: 56,
-                          height: 56,
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.podcasts, size: 28),
-                        ),
+                  child: PodcastArtworkImage(
+                    imageUrl: current.episodeArtwork ?? current.podcastArtwork,
+                    width: 56,
+                    height: 56,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -362,28 +394,13 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     return '${remaining.inSeconds}s left';
   }
 
-  Widget _buildTrendingSection(AsyncValue<List<PodcastSeries>> async) {
+  Widget _buildNewReleasesSection(AsyncValue<List<PodcastSeries>> async) {
     return async.when(
       data: (podcasts) {
         if (podcasts.isEmpty) return const SizedBox.shrink();
         return _buildHorizontalSection(
-          title: 'Trending Podcasts',
-          icon: Icons.trending_up_rounded,
-          podcasts: podcasts,
-        );
-      },
-      loading: () => _buildLoadingSection(180),
-      error: (_, __) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildRecentSection(AsyncValue<List<PodcastSeries>> async) {
-    return async.when(
-      data: (podcasts) {
-        if (podcasts.isEmpty) return const SizedBox.shrink();
-        return _buildHorizontalSection(
-          title: 'New & Noteworthy',
-          icon: Icons.fiber_new_rounded,
+          title: 'New Releases',
+          icon: Icons.new_releases_rounded,
           podcasts: podcasts,
         );
       },
@@ -396,6 +413,8 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     required String title,
     required IconData icon,
     required List<PodcastSeries> podcasts,
+    VoidCallback? onShowMore,
+    int? maxItems,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,16 +434,11 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
             ],
           ),
         ),
-        SizedBox(
-          height: 220,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: podcasts.length,
-            itemBuilder: (context, index) {
-              return _buildPodcastCard(podcasts[index]);
-            },
-          ),
+        _PodcastHorizontalRow(
+          podcasts: podcasts,
+          onShowMore: onShowMore,
+          maxItems: maxItems,
+          buildPodcastCard: _buildPodcastCard,
         ),
       ],
     );
@@ -448,28 +462,11 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: podcast.artworkUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: podcast.artworkUrl!,
-                      width: 150,
-                      height: 150,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        width: 150,
-                        height: 150,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        child: const Icon(Icons.podcasts, size: 48),
-                      ),
-                    )
-                  : Container(
-                      width: 150,
-                      height: 150,
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.podcasts, size: 48),
-                    ),
+              child: PodcastArtworkImage(
+                imageUrl: podcast.artworkUrl,
+                width: 150,
+                height: 150,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -507,6 +504,15 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               title: genre,
               icon: _genreIcons[genre] ?? Icons.category_rounded,
               podcasts: podcasts,
+              maxItems: 10,
+              onShowMore: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => PodcastGenreScreen(genre: genre),
+                  ),
+                );
+              },
             );
           }).toList(),
         );
@@ -521,6 +527,205 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
       height: height,
       child: const Center(
         child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+
+  Widget _buildSpotifySection(String title, FutureProvider<List<SpotifyChartItem>> provider) {
+    final async = ref.watch(provider);
+    return async.when(
+      data: (items) {
+        if (items.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 180,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  return _buildSpotifyCard(items[index]);
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => _buildLoadingSection(170),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildSpotifyCard(SpotifyChartItem item) {
+    final imageUrl = item.episodeImageUrl ?? item.showImageUrl;
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PodcastSearchScreen(query: item.showName),
+          ),
+        );
+      },
+      child: Container(
+        width: 150,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: PodcastArtworkImage(
+                imageUrl: imageUrl,
+                width: 150,
+                height: 140,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              item.episodeName ?? item.showName,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PodcastHorizontalRow extends StatefulWidget {
+  final List<PodcastSeries> podcasts;
+  final VoidCallback? onShowMore;
+  final int? maxItems;
+  final Widget Function(PodcastSeries) buildPodcastCard;
+
+  const _PodcastHorizontalRow({
+    required this.podcasts,
+    required this.buildPodcastCard,
+    this.onShowMore,
+    this.maxItems,
+  });
+
+  @override
+  State<_PodcastHorizontalRow> createState() => _PodcastHorizontalRowState();
+}
+
+class _PodcastHorizontalRowState extends State<_PodcastHorizontalRow> {
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
+    final delta = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowRight => 200.0,
+      LogicalKeyboardKey.arrowLeft => -200.0,
+      _ => null,
+    };
+    if (delta != null) {
+      final target = (_scrollController.offset + delta)
+          .clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(target);
+      _focusNode.requestFocus();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double cardWidth = 158;
+    const double horizontalPadding = 24;
+
+    return SizedBox(
+      height: 220,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth - horizontalPadding;
+          final fitsWithoutScroll = (availableWidth / cardWidth).floor();
+          final minItems = widget.maxItems ?? widget.podcasts.length;
+          final itemsToShow = fitsWithoutScroll > minItems
+              ? fitsWithoutScroll
+              : minItems;
+          final hasShowMore = widget.onShowMore != null && widget.podcasts.length > itemsToShow;
+          final display = widget.podcasts.take(itemsToShow).toList();
+
+          return Focus(
+            focusNode: _focusNode,
+            onKeyEvent: (node, event) {
+              _onKeyEvent(event);
+              return event is KeyDownEvent &&
+                  (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                   event.logicalKey == LogicalKeyboardKey.arrowRight)
+                  ? KeyEventResult.handled
+                  : KeyEventResult.ignored;
+            },
+            child: ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: display.length + (hasShowMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index < display.length) {
+                  return widget.buildPodcastCard(display[index]);
+                }
+                return _ShowMoreCard(onTap: widget.onShowMore!);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ShowMoreCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ShowMoreCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 150,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.arrow_forward_rounded, size: 32,
+              color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 8),
+            Text('Show all',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              )),
+          ],
+        ),
       ),
     );
   }
@@ -607,25 +812,14 @@ class _PodcastSearchScreenState extends ConsumerState<PodcastSearchScreen> {
         contentPadding: const EdgeInsets.all(8),
         leading: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 56,
-            height: 56,
-            child: podcast.artworkUrl != null
-                ? CachedNetworkImage(
-                    imageUrl: podcast.artworkUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    ),
-                    errorWidget: (_, __, ___) => Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.podcasts, size: 28),
-                    ),
-                  )
-                : Container(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: const Icon(Icons.podcasts, size: 28),
-                  ),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: PodcastArtworkImage(
+                imageUrl: podcast.artworkUrl,
+                width: 56,
+                height: 56,
+              ),
           ),
         ),
         title: Text(
@@ -673,17 +867,22 @@ class _PodcastSearchScreenState extends ConsumerState<PodcastSearchScreen> {
   }
 }
 
-class PodcastGenreScreen extends ConsumerWidget {
+class PodcastGenreScreen extends ConsumerStatefulWidget {
   final String genre;
 
   const PodcastGenreScreen({super.key, required this.genre});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final resultsAsync = ref.watch(podcastByGenreProvider(genre));
+  ConsumerState<PodcastGenreScreen> createState() => _PodcastGenreScreenState();
+}
+
+class _PodcastGenreScreenState extends ConsumerState<PodcastGenreScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final resultsAsync = ref.watch(genrePodcastsProvider(widget.genre));
 
     return Scaffold(
-      appBar: AppBar(title: Text(genre)),
+      appBar: AppBar(title: Text(widget.genre)),
       body: resultsAsync.when(
         data: (podcasts) {
           if (podcasts.isEmpty) {
@@ -694,7 +893,7 @@ class PodcastGenreScreen extends ConsumerWidget {
                   Icon(Icons.search_off_rounded, size: 48,
                     color: Theme.of(context).colorScheme.onSurfaceVariant),
                   const SizedBox(height: 12),
-                  Text('No podcasts found for $genre',
+                  Text('No podcasts found for ${widget.genre}',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     )),
@@ -704,11 +903,11 @@ class PodcastGenreScreen extends ConsumerWidget {
           }
           return GridView.builder(
             padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.75,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 140,
+              childAspectRatio: 0.7,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
             ),
             itemCount: podcasts.length,
             itemBuilder: (context, index) {
@@ -717,7 +916,19 @@ class PodcastGenreScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Error: $e', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => ref.read(genrePodcastsProvider(widget.genre).notifier).retry(),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -737,24 +948,12 @@ class PodcastGenreScreen extends ConsumerWidget {
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: podcast.artworkUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: podcast.artworkUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      placeholder: (_, __) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        child: const Icon(Icons.podcasts, size: 48),
-                      ),
-                    )
-                  : Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.podcasts, size: 48),
-                    ),
+              borderRadius: BorderRadius.circular(10),
+              child: PodcastArtworkImage(
+                imageUrl: podcast.artworkUrl,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -762,7 +961,7 @@ class PodcastGenreScreen extends ConsumerWidget {
             podcast.collectionName,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
           ),
           Text(
             podcast.artistName,

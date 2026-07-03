@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'podcast_artwork.dart';
 import '../data/podcast_models.dart';
 import 'podcast_providers.dart';
 import 'podcast_now_playing_screen.dart';
@@ -64,12 +64,9 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                 fit: StackFit.expand,
                 children: [
                   if (widget.podcast.artworkUrl != null)
-                    CachedNetworkImage(
-                      imageUrl: widget.podcast.artworkUrl!,
+                    PodcastArtworkImage(
+                      imageUrl: widget.podcast.artworkUrl,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ),
                     ),
                   Positioned.fill(
                     child: BackdropFilter(
@@ -89,19 +86,11 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            child: widget.podcast.artworkUrl != null
-                                ? CachedNetworkImage(
-                                    imageUrl: widget.podcast.artworkUrl!,
-                                    width: 140,
-                                    height: 140,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Container(
-                                    width: 140,
-                                    height: 140,
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    child: const Icon(Icons.podcasts, size: 60),
-                                  ),
+                          child: PodcastArtworkImage(
+                            imageUrl: widget.podcast.artworkUrl,
+                            width: 140,
+                            height: 140,
+                          ),
                           ),
                           const SizedBox(height: 16),
                           Padding(
@@ -384,25 +373,11 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: episode.artworkUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: episode.artworkUrl!,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(
-                            width: 56,
-                            height: 56,
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            child: const Icon(Icons.podcasts, size: 28),
-                          ),
-                        )
-                      : Container(
-                          width: 56,
-                          height: 56,
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.podcasts, size: 28),
-                        ),
+                  child: PodcastArtworkImage(
+                    imageUrl: episode.artworkUrl,
+                    width: 56,
+                    height: 56,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

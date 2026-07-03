@@ -151,6 +151,8 @@ class Mp3Parser {
 
       final frameContent = tagData.sublist(offset + 10, offset + 10 + frameSize);
 
+      print('[Mp3Parser] Frame: $frameId size=${frameSize}');
+
       if (frameId == 'CHAP') {
         final chapter = _parseChapFrame(frameContent);
         if (chapter != null) {

@@ -76,7 +76,6 @@ class DiscoveryScreen extends ConsumerWidget {
               ref.read(localAudiobooksProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
             ]).catchError((_) => []);
           } else if (selectedTab == 'podcast') {
-            ref.invalidate(podcastTrendingProvider);
             ref.invalidate(podcastRecentProvider);
           } else {
             ref.invalidate(cachedTrendingSongsProvider);

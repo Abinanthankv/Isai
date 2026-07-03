@@ -80,9 +80,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     print('[AudioHandler] Initialized with cache at: $_cachePath');
 
     // 2. Listen for playback events (playing, position, buffered, processingState)
-    _player.playbackEventStream.listen((event) {
-      print('[AudioHandler] PlaybackEvent: status=${_player.processingState}, playing=${_player.playing}');
-    }, onError: (e) {
+    _player.playbackEventStream.listen((_) {}, onError: (e) {
       print('[AudioHandler] PlaybackEvent ERROR: $e');
       // If a source error occurs, stop the player to avoid being stuck in "playing" state
       stop();

@@ -77,12 +77,17 @@ class PodcastApiService {
       final collectionName = channel.findElements('title').firstOrNull?.text ?? '';
       final artwork = _artworkFromChannel(channel);
 
+      final ns = 'https://podcastindex.org/namespace/1.0';
       return channel.findElements('item').map((item) {
         final enclosure = item.findElements('enclosure').firstOrNull;
         final audioUrl = enclosure?.getAttribute('url') ?? '';
         final duration = _parseDuration(item);
         final desc = item.findElements('description').firstOrNull?.text ?? '';
         final description = _stripHtml(desc);
+        final chaptersEl = item.childElements.where((e) =>
+            e.name.local == 'chapters' && e.name.namespaceUri == ns).firstOrNull ?? 
+            item.findElements('chapters').firstOrNull;
+        final chaptersUrl = chaptersEl?.getAttribute('url');
         return PodcastEpisode(
           id: audioUrl.isNotEmpty ? audioUrl : item.findElements('guid').firstOrNull?.text ?? '',
           title: item.findElements('title').firstOrNull?.text ?? '',
@@ -93,6 +98,7 @@ class PodcastApiService {
           artworkUrl: _episodeArtwork(item) ?? artwork,
           feedUrl: feedUrl,
           collectionName: collectionName,
+          chaptersUrl: chaptersUrl,
         );
       }).toList();
     } catch (e) {
@@ -127,23 +133,6 @@ class PodcastApiService {
     return null;
   }
 
-  Future<List<PodcastSeries>> trending({int limit = 20}) async {
-    try {
-      final res = await _dio.get('$_rssFeed/top/$limit/podcasts.json');
-      final json = _decodeJson(res.data);
-      final feed = json?['feed'] as Map<String, dynamic>?;
-      if (feed == null) return [];
-      final results = feed['results'] as List? ?? [];
-      return results
-          .whereType<Map<String, dynamic>>()
-          .map((j) => _fromRssResult(j))
-          .toList();
-    } catch (e) {
-      print('[PodcastApi] trending error: $e');
-      return [];
-    }
-  }
-
   Future<List<PodcastSeries>> recent({int limit = 20}) async {
     try {
       final res = await _dio.get('$_rssFeed/top/$limit/podcasts.json');
@@ -168,10 +157,10 @@ class PodcastApiService {
     }
   }
 
-  Future<List<PodcastSeries>> byGenre(String genre, {int limit = 20}) async {
+  Future<List<PodcastSeries>> byGenre(String genre, {int limit = 20, int offset = 0}) async {
     try {
       final res = await _dio.get(_itunesSearch, queryParameters: {
-        'term': genre, 'media': 'podcast', 'limit': limit, 'country': 'us',
+        'term': genre, 'media': 'podcast', 'limit': limit, 'country': 'us', 'offset': offset,
       });
       final json = _decodeJson(res.data);
       if (json == null) return [];
@@ -184,6 +173,40 @@ class PodcastApiService {
     }
   }
 
+  Future<List<SpotifyChartItem>> spotifyTopPodcasts(String region, {int limit = 50}) async {
+    try {
+      final res = await _dio.get(
+        'https://podcastcharts.byspotify.com/api/charts/top-podcasts',
+        queryParameters: {'region': region, 'limit': limit},
+      );
+      final data = res.data;
+      if (data is List) {
+        return data.map((e) => SpotifyChartItem.fromJson(e as Map<String, dynamic>)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('[PodcastApi] spotifyTopPodcasts error: $e');
+      return [];
+    }
+  }
+
+  Future<List<SpotifyChartItem>> spotifyTopEpisodes(String region, {int limit = 50}) async {
+    try {
+      final res = await _dio.get(
+        'https://podcastcharts.byspotify.com/api/charts/top-episodes',
+        queryParameters: {'region': region, 'limit': limit},
+      );
+      final data = res.data;
+      if (data is List) {
+        return data.map((e) => SpotifyChartItem.fromJson(e as Map<String, dynamic>)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('[PodcastApi] spotifyTopEpisodes error: $e');
+      return [];
+    }
+  }
+
   static final List<String> genres = [
     'Comedy', 'Technology', 'Science', 'News', 'Music',
     'History', 'True Crime', 'Business', 'Health', 'Education',
@@ -191,21 +214,32 @@ class PodcastApiService {
   ];
 
   String? _artworkFromChannel(XmlElement channel) {
-    final itunes = channel.findElements('{http://www.itunes.com/dtds/podcast-1.0.dtd}image').firstOrNull;
+    final nsUri = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+    final itunes = channel.childElements.where((e) =>
+        e.name.local == 'image' && e.name.namespaceUri == nsUri).firstOrNull;
     if (itunes != null) return itunes.getAttribute('href');
     return channel.findElements('image').firstOrNull
         ?.findElements('url').firstOrNull?.text;
   }
 
   String? _episodeArtwork(XmlElement item) {
-    final itunes = item.findElements('{http://www.itunes.com/dtds/podcast-1.0.dtd}image').firstOrNull;
-    if (itunes != null) return itunes.getAttribute('href');
+    final nsUri = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+    final itunes = item.childElements.where((e) =>
+        e.name.local == 'image' && e.name.namespaceUri == nsUri).firstOrNull;
+    if (itunes != null) {
+      final href = itunes.getAttribute('href');
+      return href;
+    }
     return null;
   }
 
   int? _parseDuration(XmlElement item) {
-    for (final tag in ['duration', '{http://www.itunes.com/dtds/podcast-1.0.dtd}duration']) {
-      final el = item.findElements(tag).firstOrNull;
+    final nsUri = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+    for (final tag in ['duration', '$nsUri']) {
+      final el = tag == nsUri
+          ? item.childElements.where((e) =>
+              e.name.local == 'duration' && e.name.namespaceUri == nsUri).firstOrNull
+          : item.findElements(tag).firstOrNull;
       if (el == null) continue;
       final text = el.text.trim();
       final num = int.tryParse(text);
@@ -231,8 +265,9 @@ class PodcastApiService {
       final xml = XmlDocument.parse(raw);
       final channel = xml.findAllElements('channel').firstOrNull;
       if (channel == null) return null;
-      final itunesSummary = channel
-          .findElements('{http://www.itunes.com/dtds/podcast-1.0.dtd}summary')
+      final nsUri = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+      final itunesSummary = channel.childElements.where((e) =>
+          e.name.local == 'summary' && e.name.namespaceUri == nsUri)
           .firstOrNull?.text;
       if (itunesSummary != null && itunesSummary.isNotEmpty) return _stripHtml(itunesSummary);
       final description = channel.findElements('description').firstOrNull?.text;
@@ -240,6 +275,35 @@ class PodcastApiService {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  static Future<List<PodcastChapter>> fetchChapters(String chaptersUrl) async {
+    try {
+      final res = await Dio().get<Map<String, dynamic>>(
+        chaptersUrl,
+        options: Options(
+          headers: {'User-Agent': 'Isai-Podcast/1.0'},
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+      final data = res.data;
+      if (data == null) return [];
+      final rawChapters = data['chapters'];
+      if (rawChapters is! List) return [];
+      return rawChapters.whereType<Map<String, dynamic>>().map((ch) {
+        final startSec = (ch['startTime'] as num?)?.toDouble() ?? 0;
+        final endSec = (ch['endTime'] as num?)?.toDouble() ?? 0;
+        return PodcastChapter(
+          title: ch['title'] as String? ?? '',
+          startTimeMs: (startSec * 1000).toInt(),
+          endTimeMs: (endSec * 1000).toInt(),
+          number: ch['number'] as int?,
+        );
+      }).toList();
+    } catch (e) {
+      print('[PodcastApi] fetchChapters error: $e');
+      return [];
     }
   }
 

@@ -2,11 +2,11 @@ import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:audio_service/audio_service.dart';
 import '../data/podcast_models.dart';
 import '../data/podcast_api_service.dart';
 import 'podcast_providers.dart';
+import 'podcast_artwork.dart';
 import 'package:isai/main.dart';
 
 class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
@@ -38,7 +38,10 @@ class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
       description: extras['episodeDescription'] as String?,
       audioUrl: item?.id,
       durationSec: extras['episodeDuration'] as int?,
-      artworkUrl: extras['podcastArtwork'] as String? ?? item?.artUri?.toString(),
+      artworkUrl: (extras['episodeArtwork'] as String?)?.isNotEmpty == true
+          ? extras['episodeArtwork'] as String?
+          : extras['podcastArtwork'] as String? ?? item?.artUri?.toString(),
+      chaptersUrl: extras['chaptersUrl'] as String?,
     );
     return PodcastNowPlayingScreen(
       episode: ep,
@@ -67,6 +70,8 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   Duration? _initialSeekPosition;
   PodcastProgressNotifier? _progressNotifier;
   LastPlayedPodcastNotifier? _lastPlayedNotifier;
+  bool _chaptersExpanded = false;
+  bool _descriptionExpanded = false;
 
   static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -98,7 +103,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     _playbackStateSub?.cancel();
     _sleepTimer?.cancel();
     _seekDebounceTimer?.cancel();
-    _saveProgress();
+    Future(() => _saveProgress());
     super.dispose();
   }
 
@@ -113,6 +118,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         podcastTitle: widget.podcastTitle,
         podcastArtist: widget.podcastArtist,
         podcastArtwork: widget.podcastArtwork,
+        episodeArtwork: widget.episode.artworkUrl,
         episodeTitle: widget.episode.title,
         episodeId: widget.episode.id,
         audioUrl: widget.episode.audioUrl ?? widget.episode.id,
@@ -142,6 +148,8 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'episodeDescription': widget.episode.description ?? '',
         'episodeDuration': widget.episode.durationSec,
         'feedUrl': widget.feedUrl ?? '',
+        'chaptersUrl': widget.episode.chaptersUrl ?? '',
+        'episodeArtwork': widget.episode.artworkUrl ?? '',
       },
     });
   }
@@ -165,6 +173,8 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'episodeTitle': episode.title,
         'episodeDuration': episode.durationSec,
         'feedUrl': widget.feedUrl ?? '',
+        'chaptersUrl': episode.chaptersUrl ?? '',
+        'episodeArtwork': episode.artworkUrl ?? '',
       },
     });
   }
@@ -275,7 +285,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         children: [
           if (artworkUrl != null) ...[
             Positioned.fill(
-              child: CachedNetworkImage(
+              child: PodcastArtworkImage(
                 imageUrl: artworkUrl, fit: BoxFit.cover, memCacheWidth: 200,
               ),
             ),
@@ -298,15 +308,11 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     const SizedBox(height: 16),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: artworkUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: artworkUrl, width: 220, height: 220, fit: BoxFit.cover,
-                            )
-                          : Container(
-                              width: 220, height: 220,
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              child: const Icon(Icons.podcasts, size: 80),
-                            ),
+                      child: PodcastArtworkImage(
+                        imageUrl: artworkUrl,
+                        width: 220,
+                        height: 220,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Text(
@@ -378,14 +384,14 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.skip_previous_rounded, size: 32),
+                                  icon: const Icon(Icons.fast_rewind_rounded, size: 32),
                                   onPressed: _previousEpisode,
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
                                   icon: const Icon(Icons.replay_10_rounded, size: 32),
                                   onPressed: () {
-                                    _accumulateSeek(-15, playbackState?.position ?? Duration.zero);
+                                    _accumulateSeek(-10, playbackState?.position ?? Duration.zero);
                                   },
                                 ),
                                 const SizedBox(width: 8),
@@ -413,12 +419,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                                 IconButton(
                                   icon: const Icon(Icons.forward_10_rounded, size: 32),
                                   onPressed: () {
-                                    _accumulateSeek(15, playbackState?.position ?? Duration.zero);
+                                    _accumulateSeek(10, playbackState?.position ?? Duration.zero);
                                   },
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  icon: const Icon(Icons.skip_next_rounded, size: 32),
+                                  icon: const Icon(Icons.fast_forward_rounded, size: 32),
                                   onPressed: _nextEpisode,
                                 ),
                               ],
@@ -428,20 +434,51 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                       },
                     ),
                     const SizedBox(height: 24),
+                    _buildChaptersSection(context),
                     if (widget.episode.description != null && widget.episode.description!.isNotEmpty) ...[
+                      const SizedBox(height: 16),
                       _buildSectionHeader('About this Episode'),
                       const SizedBox(height: 8),
-                      Text(
-                        widget.episode.description!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                          height: 1.5,
+                      AnimatedCrossFade(
+                        duration: const Duration(milliseconds: 200),
+                        crossFadeState: _descriptionExpanded
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        firstChild: Text(
+                          widget.episode.description!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                            height: 1.5,
+                          ),
+                          maxLines: 5,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 5,
-                        overflow: TextOverflow.ellipsis,
+                        secondChild: Text(
+                          widget.episode.description!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                            height: 1.5,
+                          ),
+                        ),
                       ),
+                      if (widget.episode.description!.length > 200)
+                        GestureDetector(
+                          onTap: () => setState(() => _descriptionExpanded = !_descriptionExpanded),
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              _descriptionExpanded ? 'Show less' : 'Show more',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 16),
                     ],
+                    const SizedBox(height: 16),
                     podcastDescAsync?.when(
                       data: (desc) {
                         if (desc == null || desc.isEmpty) return const SizedBox.shrink();
@@ -488,52 +525,113 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     );
   }
 
-  void _previousEpisode() {
-    final episodes = widget.allEpisodes;
-    if (episodes == null) return;
-    final currentIndex = episodes.indexOf(widget.episode);
-    if (currentIndex > 0) {
-      final prev = episodes[currentIndex - 1];
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PodcastNowPlayingScreen(
-            episode: prev,
-            allEpisodes: episodes,
-            initialIndex: currentIndex - 1,
-            podcastArtwork: widget.podcastArtwork,
-            podcastTitle: widget.podcastTitle,
-            podcastArtist: widget.podcastArtist,
-            feedUrl: widget.feedUrl,
-          ),
-        ),
-      );
-      _playEpisode(prev, currentIndex - 1);
+  Widget _buildChaptersSection(BuildContext context) {
+    final chaptersAsync = ref.watch(podcastChaptersProvider(widget.episode));
+    return chaptersAsync.when(
+      data: (chapters) {
+        if (chapters.isEmpty) return const SizedBox.shrink();
+        final currentPos = audioHandler.playbackState.value.position.inMilliseconds;
+        final currentIndex = _getCurrentChapterIndex(chapters, currentPos);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => setState(() => _chaptersExpanded = !_chaptersExpanded),
+              child: Row(
+                children: [
+                  _buildSectionHeader('Chapters (${chapters.length})'),
+                  const Spacer(),
+                  Icon(
+                    _chaptersExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (!_chaptersExpanded && currentIndex >= 0)
+              _buildChapterTile(chapters[currentIndex], currentIndex, true, chapters)
+            else if (_chaptersExpanded)
+              ...List.generate(chapters.length, (i) =>
+                _buildChapterTile(chapters[i], i, i == currentIndex, chapters)),
+          ],
+        );
+      },
+      loading: () => const SizedBox(height: 40,
+        child: Center(child: SizedBox(width: 16, height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2)))),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  int _getCurrentChapterIndex(List<PodcastChapter> chapters, int positionMs) {
+    for (int i = chapters.length - 1; i >= 0; i--) {
+      if (positionMs >= chapters[i].startTimeMs) return i;
     }
+    return -1;
+  }
+
+  Widget _buildChapterTile(PodcastChapter chapter, int index, bool isCurrent, List<PodcastChapter> chapters) {
+    final theme = Theme.of(context);
+    final endMs = index + 1 < chapters.length
+        ? chapters[index + 1].startTimeMs
+        : chapter.endTimeMs;
+    final durationMs = endMs - chapter.startTimeMs;
+    return InkWell(
+      onTap: () {
+        audioHandler.seek(Duration(milliseconds: chapter.startTimeMs));
+        audioHandler.play();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        margin: const EdgeInsets.only(bottom: 4),
+        decoration: BoxDecoration(
+          color: isCurrent ? theme.colorScheme.primaryContainer.withValues(alpha: 0.4) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 2,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isCurrent ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                chapter.title,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: isCurrent ? FontWeight.bold : null,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _formatDuration(Duration(milliseconds: durationMs > 0 ? durationMs : 0)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _previousEpisode() {
+    final pos = audioHandler.playbackState.value.position;
+    _accumulateSeek(-60, pos);
   }
 
   void _nextEpisode() {
-    final episodes = widget.allEpisodes;
-    if (episodes == null) return;
-    final currentIndex = episodes.indexOf(widget.episode);
-    if (currentIndex < episodes.length - 1) {
-      final next = episodes[currentIndex + 1];
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PodcastNowPlayingScreen(
-            episode: next,
-            allEpisodes: episodes,
-            initialIndex: currentIndex + 1,
-            podcastArtwork: widget.podcastArtwork,
-            podcastTitle: widget.podcastTitle,
-            podcastArtist: widget.podcastArtist,
-            feedUrl: widget.feedUrl,
-          ),
-        ),
-      );
-      _playEpisode(next, currentIndex + 1);
-    }
+    final pos = audioHandler.playbackState.value.position;
+    _accumulateSeek(60, pos);
   }
 
   void _showSleepTimerSheet() {

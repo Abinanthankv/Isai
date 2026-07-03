@@ -22,9 +22,24 @@ final podcastSearchProvider = FutureProvider.family<List<PodcastSeries>, String>
   return api.searchPodcasts(query);
 });
 
-final podcastTrendingProvider = FutureProvider<List<PodcastSeries>>((ref) async {
+final spotifyTopPodcastsUsProvider = FutureProvider<List<SpotifyChartItem>>((ref) async {
   final api = ref.read(podcastApiServiceProvider);
-  return api.trending(limit: 20);
+  return api.spotifyTopPodcasts('us', limit: 50);
+});
+
+final spotifyTopPodcastsInProvider = FutureProvider<List<SpotifyChartItem>>((ref) async {
+  final api = ref.read(podcastApiServiceProvider);
+  return api.spotifyTopPodcasts('in', limit: 50);
+});
+
+final spotifyTopEpisodesUsProvider = FutureProvider<List<SpotifyChartItem>>((ref) async {
+  final api = ref.read(podcastApiServiceProvider);
+  return api.spotifyTopEpisodes('us', limit: 50);
+});
+
+final spotifyTopEpisodesInProvider = FutureProvider<List<SpotifyChartItem>>((ref) async {
+  final api = ref.read(podcastApiServiceProvider);
+  return api.spotifyTopEpisodes('in', limit: 50);
 });
 
 final podcastRecentProvider = FutureProvider<List<PodcastSeries>>((ref) async {
@@ -36,6 +51,35 @@ final podcastByGenreProvider = FutureProvider.family<List<PodcastSeries>, String
   final api = ref.read(podcastApiServiceProvider);
   return api.byGenre(genre, limit: 20);
 });
+
+final genrePodcastsProvider = StateNotifierProvider.family<GenrePodcastsNotifier, AsyncValue<List<PodcastSeries>>, String>((ref, genre) {
+  return GenrePodcastsNotifier(ref.read(podcastApiServiceProvider), genre);
+});
+
+class GenrePodcastsNotifier extends StateNotifier<AsyncValue<List<PodcastSeries>>> {
+  final PodcastApiService _api;
+  final String _genre;
+  bool _loading = false;
+
+  GenrePodcastsNotifier(this._api, this._genre) : super(const AsyncValue.loading()) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
+    state = const AsyncValue.loading();
+    try {
+      final results = await _api.byGenre(_genre, limit: 100);
+      state = AsyncValue.data(results);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+    _loading = false;
+  }
+
+  void retry() => _load();
+}
 
 final podcastLookupProvider = FutureProvider.family<PodcastSeries?, int>((ref, collectionId) async {
   final api = ref.read(podcastApiServiceProvider);
@@ -52,7 +96,7 @@ final podcastGenreFilterProvider = StateProvider<String>((ref) => 'All');
 final allGenresPodcastsProvider = FutureProvider<Map<String, List<PodcastSeries>>>((ref) async {
   final api = ref.read(podcastApiServiceProvider);
   final futures = podcastGenreNames.map((g) async {
-    final results = await api.byGenre(g, limit: 10);
+    final results = await api.byGenre(g, limit: 15);
     return MapEntry(g, results);
   });
   final entries = await Future.wait(futures);
@@ -62,6 +106,11 @@ final allGenresPodcastsProvider = FutureProvider<Map<String, List<PodcastSeries>
 final podcastDescriptionProvider = FutureProvider.family<String?, String>((ref, feedUrl) async {
   final api = ref.read(podcastApiServiceProvider);
   return api.fetchDescription(feedUrl);
+});
+
+final podcastChaptersProvider = FutureProvider.family<List<PodcastChapter>, PodcastEpisode>((ref, episode) async {
+  if (episode.chaptersUrl == null || episode.chaptersUrl!.isEmpty) return [];
+  return PodcastApiService.fetchChapters(episode.chaptersUrl!);
 });
 
 final podcastFollowedProvider = StateNotifierProvider<PodcastFollowedNotifier, Set<int>>((ref) {
@@ -144,6 +193,7 @@ class ContinueListeningData {
   final String podcastTitle;
   final String podcastArtist;
   final String? podcastArtwork;
+  final String? episodeArtwork;
   final String episodeTitle;
   final String episodeId;
   final String audioUrl;
@@ -157,6 +207,7 @@ class ContinueListeningData {
     required this.podcastTitle,
     required this.podcastArtist,
     this.podcastArtwork,
+    this.episodeArtwork,
     required this.episodeTitle,
     required this.episodeId,
     required this.audioUrl,
@@ -174,6 +225,7 @@ class ContinueListeningData {
         podcastTitle: podcastTitle,
         podcastArtist: podcastArtist,
         podcastArtwork: podcastArtwork,
+        episodeArtwork: episodeArtwork,
         episodeTitle: episodeTitle,
         episodeId: episodeId,
         audioUrl: audioUrl,
@@ -188,6 +240,7 @@ class ContinueListeningData {
     'podcastTitle': podcastTitle,
     'podcastArtist': podcastArtist,
     'podcastArtwork': podcastArtwork,
+    'episodeArtwork': episodeArtwork,
     'episodeTitle': episodeTitle,
     'episodeId': episodeId,
     'audioUrl': audioUrl,
@@ -202,6 +255,7 @@ class ContinueListeningData {
         podcastTitle: json['podcastTitle'] as String? ?? '',
         podcastArtist: json['podcastArtist'] as String? ?? '',
         podcastArtwork: json['podcastArtwork'] as String?,
+        episodeArtwork: json['episodeArtwork'] as String?,
         episodeTitle: json['episodeTitle'] as String? ?? '',
         episodeId: json['episodeId'] as String? ?? '',
         audioUrl: json['audioUrl'] as String? ?? '',
@@ -280,10 +334,14 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
 
   if (isLive) {
     final extras = mediaItem!.extras!;
+    final epArtwork = (extras['episodeArtwork'] as String?)?.isNotEmpty == true
+        ? extras['episodeArtwork'] as String?
+        : null;
     results.add(ContinueListeningData(
       podcastTitle: extras['podcastTitle'] as String? ?? '',
       podcastArtist: extras['podcastArtist'] as String? ?? '',
       podcastArtwork: extras['podcastArtwork'] as String?,
+      episodeArtwork: epArtwork,
       episodeTitle: mediaItem.title,
       episodeId: mediaItem.id,
       audioUrl: mediaItem.id,
@@ -316,3 +374,11 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
 
   return results;
 });
+
+final showAllContinueProvider = StateNotifierProvider<ShowAllContinueNotifier, bool>((_) => ShowAllContinueNotifier());
+
+class ShowAllContinueNotifier extends StateNotifier<bool> {
+  ShowAllContinueNotifier() : super(false);
+
+  void toggle() => state = !state;
+}

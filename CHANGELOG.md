@@ -7,12 +7,26 @@
 - **Podcast Stop Button**: Mini player replaces the next-track button with a stop button for podcasts.
 - **Podcast Redirect Resolution**: Audio URLs with tracking redirect chains (e.g., pscrb.fm) are resolved upfront to prevent playback timeouts.
 - **Multi-Episode Tracking**: Continue Listening section now shows all in-progress podcast episodes, not just the last played one.
+- **Spotify Podcast Charts**: Added Top Podcasts and Top Episodes sections for US and India, sourced from Spotify's podcast charts API.
+- **Keyboard Navigation**: Horizontal podcast rows now support left/right arrow key navigation on desktop (Linux/Windows).
+- **Responsive Genre Grid**: Genre show-more screen adapts columns to screen width using max-cross-axis-extent layout.
+- **Remove from Continue Listening**: Long-press any continue-listening card to remove it from the list.
+- **Expandable Episode Descriptions**: Podcast episode descriptions now have a "Show more / Show less" toggle.
+- **Show More for Genre Catalogs**: Genre sections show 10 items by default with a "Show all" card for the rest.
 
 ### Fixed & Improved
 - **Podcast Progress Not Lost on Stop**: Stopping a podcast no longer clears the saved position — your place is always preserved.
 - **Mini Player Tap No Longer Restarts**: Tapping Continue Listening for an already-loaded episode just resumes playback instead of force-replacing and re-seeking.
 - **Podcast Duration Accuracy**: Episode duration now comes from the actual audio file instead of the RSS feed (which often omits it), fixing "0 secs left" display.
 - **Riverpod Dispose Safety**: Fixed crash when saving podcast progress during widget disposal by caching notifier references.
+- **iTunes RSS Namespace Parsing**: Fixed broken `<itunes:image>` parsing across all RSS methods by switching to manual namespace filtering.
+- **Per-Episode Artwork**: Episode-specific artwork from RSS feeds now displays correctly in mini player and continue listening.
+- **Episode Artwork in Continue Listening**: Saved continue-listening entries now persist and display episode artwork.
+- **Seek Icons Match Behavior**: Rewind/forward icons show 10s and seek by 10s (was 15s).
+- **Skip Buttons Repurposed for Podcasts**: Previous/next track buttons now seek ±60s instead of switching episodes.
+- **Mini Player Stop Button Taps**: Stop button no longer propagates tap to the parent InkWell (no longer opens now-playing on stop).
+- **Genre Pagination Fixed**: Removed offset-based iTunes pagination (which cycled same results); now fetches 100 podcasts per genre in one call.
+- **Bottom Padding for Mini Player**: Listing screen bottom spacing increased so last row isn't hidden behind the mini player.
 
 ## [1.0.5] - June 2026
 
