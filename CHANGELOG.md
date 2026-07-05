@@ -14,6 +14,7 @@
 ### Fixed & Improved
 - **Seek/Play Race Condition**: Fixed addon audio starting from position 0 when toggling video off — `audioHandler.seek()` is now properly awaited before `play()`.
 - **Volume Override Removed**: YouTube player volume is always set to 0.0 (muted); audio handled separately via just_audio `AudioPlayer` for reliable cross-platform playback.
+- **Unison Removed, Lyrics.ovh Added**: Replaced the dead Unison lyrics provider (unison.boidu.dev - 404) with lyrics.ovh free API. No auth required, no Cloudflare blocking. Lyrics.ovh returns plain-text lyrics as a fallback when LRCLIB has no synced LRC.
 
 ## [1.0.6] - July 2026
 

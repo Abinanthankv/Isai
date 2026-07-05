@@ -120,7 +120,7 @@ class SettingsState {
     this.enableArchiveScraper = false,
     this.enableTidalScraper = false,
     this.enableMassTamilanScraper = false,
-    this.enableYouTubeScraper = false,
+    this.enableYouTubeScraper = true,
     this.enableJioSaavnScraper = false,
     this.enableSoundcloudScraper = false,
     this.downloadFolders = const [],

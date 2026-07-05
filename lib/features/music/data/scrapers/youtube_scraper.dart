@@ -1,18 +1,21 @@
 import 'dart:async';
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import '../../../youtube/data/youtube_video_service.dart';
 import '../music_models.dart';
 import 'music_scraper.dart';
 
 class YouTubeScraper implements MusicScraper {
-  final _yt = YoutubeExplode();
-  YouTubeScraper();
+  final YoutubeVideoService _service = YoutubeVideoService();
 
   @override
-  String get name => 'YouTube (Stream)';
+  String get name => 'YouTube';
 
   @override
   Future<List<ScraperResult>> search(String query) async {
-    return searchStream(query).toList();
+    final results = <ScraperResult>[];
+    await for (final r in searchStream(query)) {
+      results.add(r);
+    }
+    return results;
   }
 
   @override
@@ -20,31 +23,30 @@ class YouTubeScraper implements MusicScraper {
     try {
       final cleanQuery = query.trim();
       if (cleanQuery.isEmpty) return;
-      print('[Scraper] YouTube initializing search for keyword: "$cleanQuery"');
-      final videos = await _yt.search.search(cleanQuery);
-      
-      int count = 0;
-      for (final v in videos) {
-        if (count >= 5) break; // Limit to 5 results for speed
-        count++;
+      print('[Scraper] YouTube searching via InnerTube: "$cleanQuery"');
+
+      final videos = await _service.search('$cleanQuery official audio');
+      if (videos.isEmpty) return;
+
+      for (final v in videos.take(5)) {
         yield ScraperResult(
           title: v.title,
           artist: v.author,
-          url: v.id.value, // videoId
-          source: 'YouTube (Stream)',
+          url: v.id,
+          source: 'YouTube',
           size: 0,
-          format: v.duration?.toString().split('.').first ?? 'Unknown format',
+          format: 'Audio',
           linkType: 'youtube',
-          duration: v.duration?.toString().split('.').first,
-          thumbnail: v.thumbnails.highResUrl,
+          duration: Duration(seconds: v.durationSeconds).toString().split('.').first,
+          thumbnail: v.thumbnailUrl,
           extras: {
             'author': v.author,
-            'duration': v.duration?.inSeconds ?? 0,
+            'duration': v.durationSeconds,
           },
         );
       }
     } catch (e) {
-      print('[Music] YouTube search error: $e');
+      print('[Scraper] YouTube search error: $e');
     }
   }
 }

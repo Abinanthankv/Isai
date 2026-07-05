@@ -13,6 +13,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/database/database.dart';
 import '../../music/data/music_models.dart';
 import '../../music/data/itunes_metadata_service.dart';
+import '../../youtube/data/youtube_video_service.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:drift/drift.dart';
@@ -36,8 +37,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   late final String _cachePath;
   final _yt = YoutubeExplode();
   final _ytClients = [YoutubeApiClient.androidVr, YoutubeApiClient.android, YoutubeApiClient.ios];
-  // Session-level URL cache: videoId → {url, expiry, contentLength}
-  final Map<String, ({String url, DateTime expiry, int? contentLength})> _ytUrlCache = {};
+  // Session-level URL cache: videoId → {url, expiry, contentLength, userAgent}
+  final Map<String, ({String url, DateTime expiry, int? contentLength, String? userAgent})> _ytUrlCache = {};
   final Set<int> _metadataEnrichingIndices = {};
   bool _currentTrackRecorded = false;
   int _consecutiveFailures = 0; // Safeguard against skipping loops
@@ -2402,7 +2403,7 @@ class _YouTubeStreamAudioSource extends StreamAudioSource {
 
   Future<void> _resolveInternal() async {
     final videoId = item.id;
-    
+
     // Check the handler's session-level cache first
     final cached = handler._ytUrlCache[videoId];
     if (cached != null && DateTime.now().isBefore(cached.expiry)) {
@@ -2411,35 +2412,49 @@ class _YouTubeStreamAudioSource extends StreamAudioSource {
       print('[YouTubeSource] Cache HIT for $videoId (expires ${cached.expiry})');
       return;
     }
-    
+
     if (_resolvedUrl != null) return;
-    
+
     try {
-      print('[YouTubeSource] Resolving: $videoId');
-      
-      // Try with prioritized clients
+      print('[YouTubeSource] Resolving via youtube_explode for $videoId');
       final manifest = await handler._yt.videos.streamsClient.getManifest(
-        videoId, 
-        ytClients: handler._ytClients
+        videoId,
+        ytClients: handler._ytClients,
       );
-      
       final streamInfo = manifest.audioOnly
           .where((s) => s.container.toString().toLowerCase().contains('mp4'))
           .withHighestBitrate();
-          
       _resolvedUrl = streamInfo.url.toString();
       _contentLength = streamInfo.size.totalBytes;
-      
-      // Store in session cache with a 5-hour expiry (YouTube URLs last ~6h)
       handler._ytUrlCache[videoId] = (
         url: _resolvedUrl!,
         expiry: DateTime.now().add(const Duration(hours: 5)),
         contentLength: _contentLength,
+        userAgent: 'com.google.ios.youtube/20.10.4 (iPhone; U; iOS 18.0; en_US)',
       );
-      print('[YouTubeSource] Resolved and cached $videoId');
+      print('[YouTubeSource] Resolved and cached $videoId via youtube_explode');
     } catch (e) {
-      print('[YouTubeSource] Resolution failed: $e');
-      rethrow;
+      print('[YouTubeSource] youtube_explode failed, trying InnerTube: $e');
+      try {
+        final service = YoutubeVideoService();
+        final res = await service.resolveAudioUrlInnerTube(videoId);
+        if (res == null) throw Exception('No audio URL from InnerTube');
+
+        _resolvedUrl = res.url;
+        _contentLength = null;
+
+        // Store in session cache with a 5-hour expiry (YouTube URLs last ~6h)
+        handler._ytUrlCache[videoId] = (
+          url: _resolvedUrl!,
+          expiry: DateTime.now().add(const Duration(hours: 5)),
+          contentLength: _contentLength,
+          userAgent: res.userAgent,
+        );
+        print('[YouTubeSource] Resolved and cached $videoId via InnerTube');
+      } catch (e2) {
+        print('[YouTubeSource] All resolution methods failed: $e2');
+        rethrow;
+      }
     }
   }
 
@@ -2456,19 +2471,23 @@ class _YouTubeStreamAudioSource extends StreamAudioSource {
       if (_resolvedUrl == null) await _resolve();
       if (_resolvedUrl == null) throw Exception('Failed to resolve stream URL');
       
+      final cached = handler._ytUrlCache[item.id];
+      final userAgent = cached?.userAgent ?? 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip';
+      
       final request = await client.getUrl(Uri.parse(_resolvedUrl!));
       
-      // Use simpler, more targeted headers for the updated library
-      request.headers.set('User-Agent', 'com.google.android.youtube/19.05.35 (Linux; U; Android 14; en_US; Pixel 7; Build/UP1A.231005.007)');
+      request.headers.set('User-Agent', userAgent);
       request.headers.set('Accept', '*/*');
-      request.headers.set('Range', 'bytes=${start ?? 0}-${end ?? ''}');
-      request.headers.set('X-YouTube-Client-Name', '3'); 
-      request.headers.set('X-YouTube-Client-Version', '19.05.35');
+      
+      if (userAgent.contains('com.google.android.youtube')) {
+        request.headers.set('X-YouTube-Client-Name', '3'); 
+        request.headers.set('X-YouTube-Client-Version', '19.05.35');
+      }
       
       if (start != null || end != null) {
         final range = 'bytes=${start ?? 0}-${end ?? ''}';
         request.headers.set('Range', range);
-        print('[YouTubeSource] Requesting range: $range (Retry: $retryCount)');
+        print('[YouTubeSource] Requesting range: $range with UA: $userAgent (Retry: $retryCount)');
       } else {
         request.headers.set('Range', 'bytes=0-');
       }

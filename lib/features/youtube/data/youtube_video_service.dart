@@ -236,6 +236,7 @@ class YoutubeVideoService {
             thumbnailUrl: info?.thumbnailUrl,
             videoStreams: videos,
             audioStreams: audios,
+            clientUserAgent: client['userAgent'] as String?,
           );
         }
 
@@ -251,6 +252,7 @@ class YoutubeVideoService {
             thumbnailUrl: info.thumbnailUrl,
             videoStreams: const [],
             audioStreams: const [],
+            clientUserAgent: client['userAgent'] as String?,
           );
         }
       } catch (e) {
@@ -495,6 +497,36 @@ class YoutubeVideoService {
         .where((s) => s.container.toString().toLowerCase().contains('mp4'))
         .withHighestBitrate();
     return streamInfo.url.toString();
+  }
+
+  Future<({String url, String userAgent})?> resolveAudioUrlInnerTube(String videoId) async {
+    try {
+      final info = await _getVideoInfoInnerTube(videoId);
+      if (info != null && info.audioStreams.isNotEmpty) {
+        final best = info.audioStreams.reduce(
+          (a, b) => a.bitrate > b.bitrate ? a : b,
+        );
+        return (
+          url: best.url,
+          userAgent: info.clientUserAgent ?? 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip'
+        );
+      }
+    } catch (e) {
+      print('[YoutubeVideoService] resolveAudioUrlInnerTube error: $e');
+    }
+    return null;
+  }
+
+  Future<List<YoutubeSearchResult>> searchAudioOnly(String query) async {
+    final results = await search('$query audio');
+    if (results.isEmpty) return [];
+    await Future.wait(results.take(3).map((r) async {
+      final res = await resolveAudioUrlInnerTube(r.id);
+      if (res != null) {
+        r.audioUrl = res.url;
+      }
+    }));
+    return results;
   }
 
   void dispose() {

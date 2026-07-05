@@ -38,6 +38,7 @@ class YoutubeVideoInfo {
   final String? thumbnailUrl;
   final List<YoutubeStreamInfo> videoStreams;
   final List<YoutubeStreamInfo> audioStreams;
+  final String? clientUserAgent;
 
   YoutubeVideoInfo({
     required this.id,
@@ -49,6 +50,7 @@ class YoutubeVideoInfo {
     this.thumbnailUrl,
     this.videoStreams = const [],
     this.audioStreams = const [],
+    this.clientUserAgent,
   });
 }
 
@@ -60,6 +62,7 @@ class YoutubeSearchResult {
   final int durationSeconds;
   final String? thumbnailUrl;
   final String? description;
+  String? audioUrl;
 
   YoutubeSearchResult({
     required this.id,
@@ -69,5 +72,6 @@ class YoutubeSearchResult {
     required this.durationSeconds,
     this.thumbnailUrl,
     this.description,
+    this.audioUrl,
   });
 }

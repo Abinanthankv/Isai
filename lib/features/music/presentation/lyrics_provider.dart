@@ -4,7 +4,7 @@ import '../data/scrapers/lyrics_scraper.dart';
 
 enum LyricsProviderType {
   auto,
-  unison,
+  lyricsOvh,
   lrclib,
 }
 
@@ -37,7 +37,7 @@ class LyricsState {
 }
 
 class LyricsNotifier extends Notifier<LyricsState> {
-  final LyricsScraper _unisonScraper = UnisonScraper();
+  final LyricsScraper _lyricsOvhScraper = LyricsOvhScraper();
   final LyricsScraper _lrclibScraper = LrclibScraper();
   String? _currentTrackKey;
   int _lastRequestId = 0;
@@ -56,9 +56,9 @@ class LyricsNotifier extends Notifier<LyricsState> {
     final cachedTrack = _lyricsCache[trackKey];
     if (cachedTrack != null) {
       if (state.selectedProvider == LyricsProviderType.auto) {
-        final unisonLyrics = cachedTrack[LyricsProviderType.unison.name];
+        final lyricsOvhLyrics = cachedTrack[LyricsProviderType.lyricsOvh.name];
         final lrclibLyrics = cachedTrack[LyricsProviderType.lrclib.name];
-        final autoLyrics = unisonLyrics ?? lrclibLyrics;
+        final autoLyrics = lyricsOvhLyrics ?? lrclibLyrics;
         if (autoLyrics != null) {
           state = state.copyWith(lyrics: autoLyrics, isLoading: false, error: null);
           _currentTrackKey = trackKey;
@@ -87,8 +87,8 @@ class LyricsNotifier extends Notifier<LyricsState> {
 
     // Build the list of scrapers based on selected provider
     final scrapers = <MapEntry<LyricsProviderType, LyricsScraper>>[];
-    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.unison) {
-      scrapers.add(MapEntry(LyricsProviderType.unison, _unisonScraper));
+    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.lyricsOvh) {
+      scrapers.add(MapEntry(LyricsProviderType.lyricsOvh, _lyricsOvhScraper));
     }
     if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.lrclib) {
       scrapers.add(MapEntry(LyricsProviderType.lrclib, _lrclibScraper));

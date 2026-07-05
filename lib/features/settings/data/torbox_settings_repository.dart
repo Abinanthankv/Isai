@@ -169,7 +169,7 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
   Future<void> setMassTamilanScraperEnabled(bool enabled) => _prefs.setBool('enable_masstamilan_scraper', enabled);
 
   @override
-  bool get isYouTubeScraperEnabled => _prefs.getBool('enable_youtube_scraper') ?? false; // Default false
+  bool get isYouTubeScraperEnabled => _prefs.getBool('enable_youtube_scraper') ?? true;
   @override
   Future<void> setYouTubeScraperEnabled(bool enabled) => _prefs.setBool('enable_youtube_scraper', enabled);
 
