@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.7] - July 2026
+
+### Added
+- **YouTube Music Video Playback**: Now Playing screen shows YouTube music videos inside the album art area. Toggle video on/off with a center button — album art switches from square (1:1) to rectangular (16:9).
+- **YouTube Audio Synced with Video**: When video is enabled, audio plays from YouTube's separate audio-only stream via a dedicated `AudioPlayer`, while the video (media_kit) stays muted — just like YouTube Music.
+- **Auto Video Search**: The app automatically searches YouTube by track title + artist using "official music video" for accurate results. Video info is cached per track.
+- **Video Quality Switcher**: A new HD icon in the bottom bar lets you switch between available video resolutions (360p–1080p).
+- **Fullscreen Video**: Expand video to fullscreen with a dedicated button at the bottom-right of the video area.
+- **Stream Fallback**: If no YouTube video is found, the existing addon audio plays normally. Switching to a video-only stream (e.g. 1080p) falls back to addon audio.
+- **YouTube Test Screen**: New standalone test screen (`youtube_music_now_playing_test_screen.dart`) for isolated video/audio playback testing.
+
+### Fixed & Improved
+- **Seek/Play Race Condition**: Fixed addon audio starting from position 0 when toggling video off — `audioHandler.seek()` is now properly awaited before `play()`.
+- **Volume Override Removed**: YouTube player volume is always set to 0.0 (muted); audio handled separately via just_audio `AudioPlayer` for reliable cross-platform playback.
+
 ## [1.0.6] - July 2026
 
 ### Added

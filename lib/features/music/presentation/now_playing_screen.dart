@@ -8,9 +8,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:isai/main.dart';
 import 'music_providers.dart';
@@ -44,6 +46,8 @@ import 'package:isai/core/theme/dynamic_color_provider.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 import 'spotify_canvas_provider.dart';
 import 'interactive_controls.dart';
+import '../../youtube/presentation/youtube_music_video_provider.dart';
+import '../../youtube/data/youtube_models.dart';
 
 
 class NowPlayingScreen extends ConsumerWidget {
@@ -109,6 +113,10 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   final ScrollController _lyricsScrollController = ScrollController();
   int _lastLyricIndex = -1;
   StreamSubscription<MediaItem?>? _mediaSubscription;
+  StreamSubscription? _youtubePlaybackSubscription;
+  StreamSubscription? _youtubePositionSubscription;
+  StreamSubscription? _youtubeAudioPositionSubscription;
+  String? _currentTrackKey;
 
   // Sleep timer
   Timer? _sleepTimer;
@@ -116,6 +124,14 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   bool _sleepAtEndOfTrack = false;
   String? _sleepTimerTrackId;
   Duration _lyricsOffset = Duration.zero;
+
+  final Player _youtubePlayer = Player();
+  VideoController? _youtubeController;
+  bool _youtubeVideoEnabled = false;
+  YoutubeStreamInfo? _youtubeSelectedVideo;
+  bool _lastYoutubeSyncPlaying = false;
+  bool _youtubeFullscreen = false;
+  AudioPlayer? _youtubeAudioPlayer;
 
   @override
   void initState() {
@@ -125,6 +141,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       duration: const Duration(seconds: 8),
     ); */
     _loadAndPlay();
+    _youtubeController = VideoController(_youtubePlayer);
+    _youtubePlayer.setVolume(0.0);
+    _initYoutubeSync();
     // Ensure metadata is fetched if missing, but only if we don't already have it fully
     final existingMeta = ref.read(libraryProvider).metadata['${widget.file.torrentId}-${widget.file.id}'];
     final hasArtwork = existingMeta?.artworkUrlHigh != null && existingMeta!.artworkUrlHigh!.isNotEmpty;
@@ -173,6 +192,15 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     // Listen for track changes to: (a) fetch lyrics, (b) enrich library metadata for new track
     _mediaSubscription = audioHandler.mediaItem.listen((item) {
       if (item != null && mounted) {
+        final title = item.title;
+        final artist = item.artist ?? '';
+        final trackKey = '${title}_$artist';
+        
+        if (trackKey == _currentTrackKey) {
+          return;
+        }
+        _currentTrackKey = trackKey;
+
         if (_sleepAtEndOfTrack && _sleepTimerTrackId != null && item.id != _sleepTimerTrackId) {
           _sleepAtEndOfTrack = false;
           _sleepTimerTrackId = null;
@@ -180,10 +208,6 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           setState(() {});
           return;
         }
-
-        final title = item.title;
-        final artist = item.artist ?? '';
-        
         Future.microtask(() {
           if (!mounted) return;
           // Fetch lyrics for the new track
@@ -195,6 +219,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
           // Fetch Canvas for the new track
           ref.read(spotifyCanvasProvider.notifier).fetchCanvas(title, artist);
+
+          // Fetch YouTube video for the new track
+          ref.read(youtubeMusicVideoProvider.notifier).fetchVideo(title, artist);
+          setState(() {
+            _youtubeVideoEnabled = false;
+            _youtubeSelectedVideo = null;
+          });
 
           // Proactively enrich library metadata for this track if not already loaded
           final fileId = (item.extras?['fileId'] as num?)?.toInt();
@@ -232,8 +263,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     // _vinylController.dispose();
     _lyricsScrollController.dispose();
     _mediaSubscription?.cancel();
+    _youtubePlaybackSubscription?.cancel();
+    _youtubePositionSubscription?.cancel();
+    _youtubeAudioPositionSubscription?.cancel();
+    _youtubeAudioPlayer?.dispose();
     _sleepTimer?.cancel();
     _metadataSubscription?.close();
+    _youtubePlayer.dispose();
     super.dispose();
   }
 
@@ -629,6 +665,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           final settings = ref.watch(settingsProvider);
           final canvasState = ref.watch(spotifyCanvasProvider);
           final showCanvas = settings.playerSpotifyCanvasEnabled && canvasState.canvasUrl != null;
+          final youtubeState = ref.watch(youtubeMusicVideoProvider);
+          final showYoutube = youtubeState.videoInfo != null;
 
           // 1. Identify the active file (either from the stream or the widget if starting)
           // Use safe num -> int conversion to avoid issues with double/int JSON serialization
@@ -727,7 +765,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             flex: 5,
                             child: showCanvas 
                                 ? const SizedBox() 
-                                : _buildAlbumArt(hasArtwork, displayArtwork),
+                                : _buildAlbumArt(hasArtwork, displayArtwork, youtubeState),
                           ),
                           // Right side: Header, Lyrics / Controls
                           Expanded(
@@ -873,7 +911,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                         Expanded(
                           child: _showLyrics 
                             ? _buildLyricsContent()
-                            : (showCanvas ? const SizedBox() : _buildAlbumArt(hasArtwork, displayArtwork)),
+                            : (showCanvas ? const SizedBox() : _buildAlbumArt(hasArtwork, displayArtwork, youtubeState)),
                         ),
 
                         const SizedBox(height: 32),
@@ -927,7 +965,49 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       ),
     );
 
-    return widgetTree;
+    return Stack(
+      children: [
+        widgetTree,
+        if (_youtubeFullscreen) _buildYoutubeFullscreen(),
+      ],
+    );
+  }
+
+  Widget _buildYoutubeFullscreen() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _youtubeController != null
+                  ? Video(
+                      controller: _youtubeController!,
+                      fit: BoxFit.contain,
+                      controls: NoVideoControls,
+                    )
+                  : const SizedBox(),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: () => setState(() => _youtubeFullscreen = false),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.fullscreen_exit_rounded, color: Colors.white, size: 22),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -952,6 +1032,147 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
         ],
       ),
     );
+  }
+
+  void _initYoutubeSync() {
+    _youtubePlaybackSubscription?.cancel();
+    _youtubePlaybackSubscription = audioHandler.playbackState.listen((state) {
+      if (!mounted) return;
+      final playing = state.playing;
+      if (playing == _lastYoutubeSyncPlaying) return;
+      _lastYoutubeSyncPlaying = playing;
+      if (playing && _youtubeVideoEnabled && _youtubeAudioPlayer == null) {
+        _youtubePlayer.play();
+      } else if (_youtubeAudioPlayer == null) {
+        _youtubePlayer.pause();
+      }
+    });
+
+    _youtubePositionSubscription?.cancel();
+    _youtubePositionSubscription = AudioService.position.listen((p) {
+      if (!mounted) return;
+      if (_youtubeVideoEnabled && _youtubePlayer.state.playing && _youtubeAudioPlayer == null) {
+        final diff = (p - _youtubePlayer.state.position).inMilliseconds.abs();
+        if (diff > 3000) {
+          _youtubePlayer.seek(p);
+        }
+      }
+    });
+  }
+
+  Future<void> _initYoutubeVideo(YoutubeStreamInfo stream) async {
+    try {
+      final url = Uri.parse(stream.url);
+      final media = Media(
+        url.toString(),
+        httpHeaders: {
+          'Accept': '*/*',
+          'X-YouTube-Client-Name': '3',
+          'X-YouTube-Client-Version': '19.05.35',
+        },
+      );
+      await _youtubePlayer.open(media, play: false);
+      await _youtubePlayer.setVolume(0.0);
+      try {
+        await (_youtubePlayer.platform as dynamic).setProperty('user-agent', 'com.google.android.youtube/19.05.35 (Linux; U; Android 14; en_US; Pixel 7)');
+      } catch (_) {}
+      setState(() => _youtubeSelectedVideo = stream);
+    } catch (e) {
+      print('[NowPlayingScreen] youtube video init error: $e');
+    }
+  }
+
+  Future<void> _initYoutubeAudio(YoutubeStreamInfo audioStream) async {
+    try {
+      final player = AudioPlayer();
+      await player.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(audioStream.url),
+          headers: {
+            'User-Agent': 'com.google.android.youtube/19.05.35 (Linux; U; Android 14; en_US; Pixel 7)',
+            'Accept': '*/*',
+            'X-YouTube-Client-Name': '3',
+            'X-YouTube-Client-Version': '19.05.35',
+          },
+        ),
+      );
+      _youtubeAudioPlayer = player;
+
+      _youtubeAudioPositionSubscription?.cancel();
+      _youtubeAudioPositionSubscription = player.positionStream.listen((p) {
+        if (!mounted) return;
+        if (_youtubeVideoEnabled && _youtubePlayer.state.playing) {
+          final diff = (p - _youtubePlayer.state.position).inMilliseconds.abs();
+          if (diff > 3000) {
+            _youtubePlayer.seek(p);
+          }
+        }
+      });
+    } catch (e) {
+      print('[NowPlayingScreen] youtube audio init error: $e');
+    }
+  }
+
+  Future<void> _toggleYoutubeVideo(YoutubeMusicVideoState youtubeState) async {
+    final enabling = !_youtubeVideoEnabled;
+
+    if (enabling) {
+      if (_youtubeSelectedVideo == null && youtubeState.videoInfo != null) {
+        final videoStreams = List<YoutubeStreamInfo>.from(youtubeState.videoInfo!.videoStreams)
+          ..sort((a, b) => b.height.compareTo(a.height));
+        await _initYoutubeVideo(videoStreams.first);
+
+        if (youtubeState.videoInfo!.audioStreams.isNotEmpty) {
+          final bestAudio = youtubeState.videoInfo!.audioStreams.reduce(
+            (a, b) => a.bitrate > b.bitrate ? a : b,
+          );
+          await _initYoutubeAudio(bestAudio);
+        }
+      }
+
+      if (_youtubeSelectedVideo != null) {
+        final pos = audioHandler.playbackState.value.position;
+        final wasPlaying = audioHandler.playbackState.value.playing;
+        await audioHandler.pause();
+
+        if (_youtubeAudioPlayer != null) {
+          await _youtubeAudioPlayer!.seek(pos);
+          if (wasPlaying) _youtubeAudioPlayer!.play();
+        }
+
+        await _youtubePlayer.seek(pos);
+        _youtubePlayer.setVolume(0.0);
+        if (wasPlaying) _youtubePlayer.play();
+      }
+    } else {
+      final pos = _youtubeAudioPlayer?.position ?? audioHandler.playbackState.value.position;
+      final wasPlaying = _youtubeAudioPlayer?.playing ?? audioHandler.playbackState.value.playing;
+
+      _youtubeAudioPositionSubscription?.cancel();
+      await _youtubeAudioPlayer?.stop();
+      await _youtubeAudioPlayer?.dispose();
+      _youtubeAudioPlayer = null;
+
+      await audioHandler.seek(pos);
+      if (wasPlaying) await audioHandler.play();
+
+      _youtubePlayer.pause();
+    }
+
+    setState(() => _youtubeVideoEnabled = enabling);
+  }
+
+  Future<void> _changeYoutubeQuality(YoutubeStreamInfo stream) async {
+    final pos = _youtubeAudioPlayer?.position ?? _youtubePlayer.state.position;
+    final wasPlaying = _youtubeAudioPlayer?.playing ?? false;
+
+    await _initYoutubeVideo(stream);
+
+    if (_youtubeVideoEnabled) {
+      await _youtubePlayer.seek(pos);
+      _youtubePlayer.setVolume(0.0);
+      if (wasPlaying) _youtubePlayer.play();
+    }
   }
 
   Future<void> _shareNowPlaying() async {
@@ -1541,7 +1762,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     );
   }
 
-  Widget _buildAlbumArt(bool hasArtwork, String? artworkUrl) {
+  Widget _buildAlbumArt(bool hasArtwork, String? artworkUrl, YoutubeMusicVideoState youtubeState) {
     return StreamBuilder<PlaybackState>(
       stream: audioHandler.playbackState,
       builder: (context, snapshot) {
@@ -1561,40 +1782,26 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
         final isWideScreen = MediaQuery.of(context).size.width > 720;
         return Align(
-          alignment: isWideScreen ? Alignment.center : const Alignment(0, -0.3),
+          alignment: _youtubeVideoEnabled ? Alignment.center : (isWideScreen ? Alignment.center : const Alignment(0, -0.3)),
           child: Container(
             constraints: BoxConstraints(
-              maxWidth: displaySize,
-              maxHeight: displaySize,
+              maxWidth: _youtubeVideoEnabled ? double.infinity : displaySize,
+              maxHeight: _youtubeVideoEnabled ? 400 : displaySize,
             ),
             child: AspectRatio(
-              aspectRatio: 1.0,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 600),
-                switchInCurve: Curves.easeOutQuart,
-                switchOutCurve: Curves.easeInQuart,
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  final animType = settings.playerArtworkAnimation;
-                  
-                  if (animType == 'zoom') {
-                    return ScaleTransition(
-                      scale: Tween<double>(begin: 0.8, end: 1.0).animate(animation),
-                      child: FadeTransition(opacity: animation, child: child),
-                    );
-                  } else if (animType == 'slide') {
-                    return SlideTransition(
-                      position: Tween<Offset>(begin: const Offset(0.2, 0), end: Offset.zero).animate(animation),
-                      child: FadeTransition(opacity: animation, child: child),
-                    );
+              aspectRatio: _youtubeVideoEnabled ? 16 / 9 : 1.0,
+              child: GestureDetector(
+                onTap: () {
+                  if (youtubeState.videoInfo != null && _youtubeController != null) {
+                    _toggleYoutubeVideo(youtubeState);
                   }
-                  
-                  return FadeTransition(opacity: animation, child: child);
                 },
                 child: Stack(
-                  key: ValueKey(artworkUrl ?? 'no_art'),
+                  key: ValueKey('art_${artworkUrl ?? 'no_art'}_${_youtubeVideoEnabled}'),
                   alignment: Alignment.center,
                   children: [
-                    if (showGlow && hasArtwork)
+                    // Glow effect (behind everything, only for album art)
+                    if (showGlow && hasArtwork && !_youtubeVideoEnabled)
                       Positioned.fill(
                         child: Transform.scale(
                           scale: 1.15,
@@ -1610,36 +1817,73 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           ),
                         ),
                       ),
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: shape == 'circle' ? BoxShape.circle : BoxShape.rectangle,
-                          borderRadius: shape == 'circle' ? null : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Hero(
-                          tag: 'artwork_hero',
-                          child: ClipRRect(
-                            borderRadius: shape == 'circle' 
-                                ? BorderRadius.circular(displaySize / 2) 
-                                : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
-                            child: hasArtwork
-                                ? CachedNetworkImage(
-                                    imageUrl: artworkUrl!,
-                                    fit: BoxFit.cover,
-                                    errorWidget: (context, url, error) => _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
-                                  )
-                                : _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+
+                    // YouTube video (fills the rectangle when enabled)
+                    if (_youtubeVideoEnabled && _youtubeController != null && youtubeState.videoInfo != null)
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Video(
+                            controller: _youtubeController!,
+                            fit: BoxFit.contain,
+                            controls: NoVideoControls,
                           ),
                         ),
                       ),
-                    ),
+
+                    // Fullscreen expand icon overlay on video
+                    if (_youtubeVideoEnabled && _youtubeController != null)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: GestureDetector(
+                          onTap: () => setState(() => _youtubeFullscreen = true),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.fullscreen_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ),
+
+                    // Album art image (hidden when video is showing)
+                    if (!_youtubeVideoEnabled)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: shape == 'circle' ? BoxShape.circle : BoxShape.rectangle,
+                            borderRadius: shape == 'circle' ? null : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Hero(
+                            tag: 'artwork_hero',
+                            child: ClipRRect(
+                              borderRadius: shape == 'circle' 
+                                  ? BorderRadius.circular(displaySize / 2) 
+                                  : BorderRadius.circular(shape == 'rounded' ? 24 : 4),
+                              child: hasArtwork
+                                  ? CachedNetworkImage(
+                                      imageUrl: artworkUrl!,
+                                      fit: BoxFit.cover,
+                                      errorWidget: (context, url, error) => _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+                                    )
+                                  : _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Loading indicator
                     if (showLoading)
                       Container(
                         decoration: BoxDecoration(
@@ -1651,6 +1895,27 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           child: CircularProgressIndicator(
                             color: Theme.of(context).colorScheme.primary,
                             strokeWidth: 3,
+                          ),
+                        ),
+                      ),
+
+                    // YouTube video toggle button at center (only shown when video is NOT active)
+                    if (youtubeState.videoInfo != null && _youtubeController != null && !_youtubeVideoEnabled)
+                      IgnorePointer(
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.9),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 8),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.videocam_rounded,
+                            color: Colors.black87,
+                            size: 24,
                           ),
                         ),
                       ),
@@ -2099,9 +2364,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     value: value,
                     onChanged: (v) {
                       if (totalDuration.inMilliseconds > 0) {
-                        audioHandler.seek(Duration(
+                        final target = Duration(
                           milliseconds: (v * totalDuration.inMilliseconds).toInt(),
-                        ));
+                        );
+                        audioHandler.seek(target);
+                        if (_youtubeVideoEnabled) {
+                          _youtubePlayer.seek(target);
+                        }
                       }
                     },
                     onChangeEnd: (v) {
@@ -2339,6 +2608,33 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
         IconButton(
           icon: Icon(Icons.queue_music, color: activeColor),
           onPressed: _showQueue,
+        ),
+        // YouTube video quality switcher
+        Consumer(
+          builder: (context, ref, _) {
+            final ytState = ref.watch(youtubeMusicVideoProvider);
+            final ytInfo = ytState.videoInfo;
+            if (ytInfo == null || ytInfo.videoStreams.isEmpty) return const SizedBox(width: 0);
+            return PopupMenuButton<YoutubeStreamInfo>(
+              tooltip: 'Video quality',
+              icon: Icon(Icons.hd, color: _youtubeVideoEnabled ? activeColor : inactiveColor),
+              onSelected: _changeYoutubeQuality,
+              itemBuilder: (_) => ytInfo.videoStreams.map((s) {
+                final isSelected = s.url == (_youtubeSelectedVideo?.url ?? ytInfo.videoStreams.first.url);
+                return PopupMenuItem(
+                  value: s,
+                  child: Text(
+                    '${s.qualityLabel} | ${s.width}x${s.height}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : null,
+                      color: isSelected ? colorScheme.primary : null,
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
         ),
       ],
     );
