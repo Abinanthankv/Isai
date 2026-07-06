@@ -369,6 +369,60 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
 
             const SizedBox(height: 20),
 
+            // Built-in Sources
+            AppleMusicSectionHeader(title: 'Built-in Sources'),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _BuiltInSourceTile(
+                    icon: Icons.play_circle,
+                    name: 'YouTube',
+                    description: 'YouTube audio streams via InnerTube',
+                    enabled: ref.watch(settingsProvider).enableYouTubeScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setYouTubeScraperEnabled(val),
+                  ),
+                  _BuiltInSourceTile(
+                    icon: Icons.library_music,
+                    name: 'JioSaavn',
+                    description: 'Indian music from JioSaavn',
+                    enabled: ref.watch(settingsProvider).enableJioSaavnScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setJioSaavnScraperEnabled(val),
+                  ),
+                  _BuiltInSourceTile(
+                    icon: Icons.cloud,
+                    name: 'SoundCloud',
+                    description: 'Independent music from SoundCloud',
+                    enabled: ref.watch(settingsProvider).enableSoundcloudScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setSoundcloudScraperEnabled(val),
+                  ),
+                  _BuiltInSourceTile(
+                    icon: Icons.music_video,
+                    name: 'Tidal',
+                    description: 'High-quality Tidal music via squid proxy',
+                    enabled: ref.watch(settingsProvider).enableTidalScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setTidalScraperEnabled(val),
+                  ),
+                  _BuiltInSourceTile(
+                    icon: Icons.archive,
+                    name: 'Internet Archive',
+                    description: 'Free public domain music from archive.org',
+                    enabled: ref.watch(settingsProvider).enableArchiveScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setArchiveScraperEnabled(val),
+                  ),
+                  _BuiltInSourceTile(
+                    icon: Icons.language,
+                    name: 'MassTamilan',
+                    description: 'Tamil and regional music from masstamilan',
+                    enabled: ref.watch(settingsProvider).enableMassTamilanScraper,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setMassTamilanScraperEnabled(val),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
             // Installed Plugins List
             AppleMusicSectionHeader(
               title: 'Installed Addons',
@@ -675,6 +729,59 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BuiltInSourceTile extends StatelessWidget {
+  final IconData icon;
+  final String name;
+  final String description;
+  final bool enabled;
+  final ValueChanged<bool> onToggle;
+
+  const _BuiltInSourceTile({
+    required this.icon,
+    required this.name,
+    required this.description,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          leading: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+          ),
+          title: Text(
+            name,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(
+            description,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Switch(
+            value: enabled,
+            activeColor: Theme.of(context).colorScheme.primary,
+            onChanged: onToggle,
+          ),
+        ),
+        Divider(height: 1, indent: 72, color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+      ],
     );
   }
 }
