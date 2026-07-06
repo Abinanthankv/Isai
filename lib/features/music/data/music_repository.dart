@@ -13,6 +13,8 @@ import 'scrapers/last_fm_scraper.dart';
 import 'musicbrainz_service.dart';
 import 'itunes_metadata_service.dart';
 import 'deezer_service.dart';
+import 'plugins/js_plugin.dart';
+import 'plugins/eclipse_addon.dart';
 import 'plugins/plugin_manager.dart';
 import 'scrapers/js_plugin_scraper.dart';
 import 'scrapers/eclipse_addon_scraper.dart';

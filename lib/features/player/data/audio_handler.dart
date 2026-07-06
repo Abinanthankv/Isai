@@ -202,7 +202,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
         if (mediaType == 'music') {
           final lfmRepo = getIt<LastfmRepository>();
-          if (lfmRepo.isConnected) {
+          if (lfmRepo.isConnected && lfmRepo.scrobbleEnabled) {
             final lfmService = getIt<LastFmService>();
             lfmService.updateNowPlaying(item, lfmRepo.sessionKey!);
           }
@@ -347,63 +347,67 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             }
          }
        }
-       if (item == null || _currentTrackRecorded || item.duration == null || item.duration! == Duration.zero) return;
+        if (item == null || _currentTrackRecorded || item.duration == null || item.duration! == Duration.zero) return;
 
-       final double progress = position.inMilliseconds / item.duration!.inMilliseconds;
-       if (progress >= 0.5) {
-         _currentTrackRecorded = true;
-         
-         final torrentId = (item.extras?['torrentId'] as num?)?.toInt();
-         final fileId = (item.extras?['fileId'] as num?)?.toInt();
-         
-         // GUARD: Only record playback history for music, not audiobooks
-         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
-         if (mediaType == 'audiobook') {
-           print('[AudioHandler] Audiobook chapter — skipping music history recording.');
-           // Future: save audiobook progress here via AudiobookRepository
-           return;
-         }
-         
-         if (torrentId != null && fileId != null) {
-           print('[AudioHandler] Progress reached ${ (progress * 100).toStringAsFixed(0) }%. Recording playback for "${item.title}"');
-           
-           final repo = getIt<MusicRepository>();
-           final db = getIt<AppDatabase>();
-           
-           try {
-             final dbMeta = await db.getTrackMetadata(torrentId, fileId);
-             final meta = dbMeta != null ? ItunesMeta(
-               trackName: dbMeta.trackTitle,
-               artistName: dbMeta.artist,
-               album: dbMeta.album,
-               genre: dbMeta.genre,
-             ) : ItunesMeta(
-               trackName: item.title,
-               artistName: item.artist,
-             );
+        final double progress = position.inMilliseconds / item.duration!.inMilliseconds;
+        final lfmRepo = getIt<LastfmRepository>();
+        final scrobbleThreshold = lfmRepo.scrobblePercentage / 100.0;
 
-             final torBoxFile = TorBoxFile(
-               id: fileId,
-               torrentId: torrentId,
-               name: item.title,
-               size: 0,
-               localPath: item.extras?['localPath'],
-             );
+        if (progress >= scrobbleThreshold) {
+          _currentTrackRecorded = true;
+          
+          final torrentId = (item.extras?['torrentId'] as num?)?.toInt();
+          final fileId = (item.extras?['fileId'] as num?)?.toInt();
+          
+          // GUARD: Only record playback history for music, not audiobooks
+          final mediaType = item.extras?['mediaType'] as String? ?? 'music';
+          if (mediaType == 'audiobook') {
+            print('[AudioHandler] Audiobook chapter — skipping music history recording.');
+            // Future: save audiobook progress here via AudiobookRepository
+            return;
+          }
+          
+          if (torrentId != null && fileId != null) {
+            print('[AudioHandler] Progress reached ${ (progress * 100).toStringAsFixed(0) }%. Recording playback for "${item.title}"');
+            
+            final repo = getIt<MusicRepository>();
+            final db = getIt<AppDatabase>();
+            
+            try {
+              final dbMeta = await db.getTrackMetadata(torrentId, fileId);
+              final meta = dbMeta != null ? ItunesMeta(
+                trackName: dbMeta.trackTitle,
+                artistName: dbMeta.artist,
+                album: dbMeta.album,
+                genre: dbMeta.genre,
+              ) : ItunesMeta(
+                trackName: item.title,
+                artistName: item.artist,
+              );
 
-             await repo.recordPlayback(
-               torBoxFile, 
-               meta,
-               artworkUrlLow: item.artUri?.toString(),
-               artworkUrlHigh: item.artUri?.toString(),
-               duration: item.duration?.inSeconds,
-             );
-            } catch (e) {
-              print('[AudioHandler] Error recording playback: $e');
-            }
+              final torBoxFile = TorBoxFile(
+                id: fileId,
+                torrentId: torrentId,
+                name: item.title,
+                size: 0,
+                localPath: item.extras?['localPath'],
+              );
+
+              await repo.recordPlayback(
+                torBoxFile, 
+                meta,
+                artworkUrlLow: item.artUri?.toString(),
+                artworkUrlHigh: item.artUri?.toString(),
+                duration: item.duration?.inSeconds,
+              );
+             } catch (e) {
+               print('[AudioHandler] Error recording playback: $e');
+             }
 
             // Last.fm: Submit Scrobble — GUARD: audiobooks already returned above
-            final lfmRepo = getIt<LastfmRepository>();
-            if (lfmRepo.isConnected) {
+            final minDurationSec = lfmRepo.minScrobbleMinutes * 60;
+            final trackDurationSec = item.duration!.inSeconds;
+            if (lfmRepo.isConnected && lfmRepo.scrobbleEnabled && trackDurationSec >= minDurationSec) {
               final lfmService = getIt<LastFmService>();
               lfmService.scrobble(item, lfmRepo.sessionKey!);
             }

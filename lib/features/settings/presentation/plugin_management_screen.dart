@@ -509,7 +509,6 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                             children: [
                               Switch(
                                 value: enabled,
-                                activeColor: Theme.of(context).colorScheme.primary,
                                 onChanged: (val) async {
                                   if (isEclipse) {
                                     await _pluginManager.toggleEclipseAddon(id, val);
@@ -737,7 +736,6 @@ class _BuiltInSourceTile extends StatelessWidget {
           ),
           trailing: Switch(
             value: enabled,
-            activeColor: Theme.of(context).colorScheme.primary,
             onChanged: onToggle,
           ),
         ),

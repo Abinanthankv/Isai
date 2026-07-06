@@ -3,18 +3,20 @@
 ## [1.0.7] - July 2026
 
 ### Added
-- **YouTube Music Video Playback**: Now Playing screen shows YouTube music videos inside the album art area. Toggle video on/off with a center button — album art switches from square (1:1) to rectangular (16:9).
-- **YouTube Audio Synced with Video**: When video is enabled, audio plays from YouTube's separate audio-only stream via a dedicated `AudioPlayer`, while the video (media_kit) stays muted — just like YouTube Music.
-- **Auto Video Search**: The app automatically searches YouTube by track title + artist using "official music video" for accurate results. Video info is cached per track.
-- **Video Quality Switcher**: A new HD icon in the bottom bar lets you switch between available video resolutions (360p–1080p).
-- **Fullscreen Video**: Expand video to fullscreen with a dedicated button at the bottom-right of the video area.
-- **Stream Fallback**: If no YouTube video is found, the existing addon audio plays normally. Switching to a video-only stream (e.g. 1080p) falls back to addon audio.
-- **YouTube Test Screen**: New standalone test screen (`youtube_music_now_playing_test_screen.dart`) for isolated video/audio playback testing.
+- **For You Page Diversity**: New discovery sections — Outside Your Bubble (under-listened genres) and Fresh & Different (Last.fm similar artists) — with cross-mix deduplication, max 2 per artist, and genre rotation.
+- **Discovery Rate Card**: Insights screen now shows a weekly discovery rate, 8-week bar chart, recently-discovered artist chips, and lifetime discovery totals — all from local playback history.
+- **Last.fm Scrobble Settings**: Dedicated settings screen with scrobble enable toggle, scrobble threshold slider (25–100%), minimum track length slider (0–10 min), and account info with disconnect.
+- **Visualizer Overhaul**: Spectral flux beat detection (kicks/snares across full spectrum), auto-gain normalization, frequency-reactive per-bar colors (rainbow from bass→treble), and a new Circular style.
+- **Lyrics.ovh Fallback**: Replaced dead Unison lyrics provider with lyrics.ovh free API — no auth, no Cloudflare blocking.
 
 ### Fixed & Improved
+- **Visualizer Frequency Mapping**: Equal-band distribution across all FFT bins with quadratic gain ramp so all bars show visible activity instead of just the first few.
+- **Beat Detection Accuracy**: Replaced simple bass-energy threshold with spectral flux (positive frame-to-frame energy deltas) with adaptive thresholding.
+- **Auto-Gain Feedback Loop**: Normalized FFT stored in a separate list to prevent corrupting the exponential smoothing pipeline.
 - **Seek/Play Race Condition**: Fixed addon audio starting from position 0 when toggling video off — `audioHandler.seek()` is now properly awaited before `play()`.
-- **Volume Override Removed**: YouTube player volume is always set to 0.0 (muted); audio handled separately via just_audio `AudioPlayer` for reliable cross-platform playback.
-- **Unison Removed, Lyrics.ovh Added**: Replaced the dead Unison lyrics provider (unison.boidu.dev - 404) with lyrics.ovh free API. No auth required, no Cloudflare blocking. Lyrics.ovh returns plain-text lyrics as a fallback when LRCLIB has no synced LRC.
+- **Switch Contrast Fixes**: Removed `activeColor: primary` overrides from Switch widgets (Last.fm settings, plugin manager) that made toggles invisible.
+- **Slider Reactivity**: Last.fm threshold sliders now use local state for instant visual response; SharedPreferences write deferred to `onChangeEnd`.
+- **InteractiveControls Colors**: Reverted unintended white color overrides back to M3 scheme-aware colors.
 
 ## [1.0.6] - July 2026
 

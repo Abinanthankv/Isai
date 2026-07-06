@@ -82,8 +82,19 @@ final forYouMixProvider = FutureProvider<List<DailyMix>>((ref) async {
   // If still no seeds, return empty (UI will show global fallback in screen)
   if (seeds.isEmpty) return [];
 
-  // Limit to 6 mixes maximum
-  final mixSeeds = seeds.take(6).toList();
+  // Diversity: spread seeds by rank (top, bottom, middle) rather than top-N
+  final List<String> mixSeeds;
+  if (seeds.length <= 6) {
+    mixSeeds = seeds.toList();
+  } else {
+    // Pick from top, middle, and bottom for genre diversity
+    final shuffled = List<String>.from(seeds);
+    final top = shuffled.take(2).toList();
+    final bottom = shuffled.skip(shuffled.length - 2).toList();
+    final middle = shuffled.skip(2).take(shuffled.length - 4).toList();
+    middle.shuffle();
+    mixSeeds = [...top, ...middle.take(2), ...bottom];
+  }
   
   // Define gradients for variety
   final gradients = [
@@ -97,6 +108,7 @@ final forYouMixProvider = FutureProvider<List<DailyMix>>((ref) async {
 
   try {
     // Generate all mixes in parallel
+    final allTrackKeys = <String>{};
     final mixTasks = mixSeeds.asMap().entries.map((entry) async {
       final index = entry.key;
       final artistName = entry.value;
@@ -109,10 +121,26 @@ final forYouMixProvider = FutureProvider<List<DailyMix>>((ref) async {
         
         if (tracks.isEmpty) return null;
 
+        // Deduplicate tracks across mixes (max 2 per artist per mix, no dupes across mixes)
+        var itunesTracks = _deezerTracksToItunes(tracks);
+        final deduped = <ItunesTrack>[];
+        final artistCount = <String, int>{};
+        for (final t in itunesTracks) {
+          final key = '${t.trackName}-${t.artistName}'.toLowerCase();
+          if (allTrackKeys.contains(key)) continue;
+          final artistKey = t.artistName!.toLowerCase();
+          if ((artistCount[artistKey] ?? 0) >= 2) continue;
+          allTrackKeys.add(key);
+          artistCount[artistKey] = (artistCount[artistKey] ?? 0) + 1;
+          deduped.add(t);
+        }
+
+        if (deduped.isEmpty) return null;
+
         return (
           title: 'Daily Mix ${index + 1}',
           subtitle: 'Based on $artistName',
-          tracks: _deezerTracksToItunes(tracks),
+          tracks: deduped,
           colors: gradients[index % gradients.length],
         );
       } catch (e) {
@@ -185,7 +213,29 @@ final personalizedTasteMixProvider = FutureProvider<List<ItunesTrack>>((ref) asy
     }
   }
 
-  return results.take(50).toList();
+  // Inject ~30% global chart tracks for discovery
+  try {
+    final chart = await deezer.fetchDiscoveryCharts(limit: 50);
+    final chartTracks = _deezerTracksToItunes(chart);
+    chartTracks.shuffle();
+    final discoveryCount = (results.length * 0.3).round().clamp(3, 15);
+    results.addAll(chartTracks.take(discoveryCount));
+  } catch (e) {
+    print('[ForYou] Taste mix chart injection failed: $e');
+  }
+
+  // Enforce max 2 per artist
+  final artistCount = <String, int>{};
+  final deduped = <ItunesTrack>[];
+  for (final t in results) {
+    final artistKey = (t.artistName ?? '').toLowerCase();
+    if ((artistCount[artistKey] ?? 0) >= 2) continue;
+    artistCount[artistKey] = (artistCount[artistKey] ?? 0) + 1;
+    deduped.add(t);
+  }
+  deduped.shuffle();
+
+  return deduped.take(50).toList();
 });
 
 /// "Because you listened to [Artist]" — returns multiple sections.
@@ -274,18 +324,34 @@ final genreRadioProvider = FutureProvider<({String genre, List<ItunesTrack> trac
     return (genre: '', tracks: <ItunesTrack>[]);
   }
 
-  final topGenre = profile.genreWeights.first.genre;
+  // Pick a mid-weight genre (avoid top 2 most-listened) for diversity
+  final int genreIndex;
+  if (profile.genreWeights.length >= 5) {
+    // Deterministic rotation based on week number
+    final week = (DateTime.now().millisecondsSinceEpoch ~/ (7 * 24 * 60 * 60 * 1000));
+    genreIndex = 2 + (week % (profile.genreWeights.length - 2)).clamp(0, 5);
+  } else {
+    genreIndex = 0;
+  }
+  final selectedGenre = profile.genreWeights[genreIndex.clamp(0, profile.genreWeights.length - 1)].genre;
   final deezer = getIt<DeezerService>();
 
-  // Find an artist in the top genre and get their radio
-  final artist = await deezer.searchArtist(profile.topArtists.first);
-  if (artist == null) return (genre: topGenre, tracks: <ItunesTrack>[]);
+  // Find an artist in the selected genre and get their radio
+  // Try to pick an artist NOT in top artists for more discovery
+  String seedArtist = profile.topArtists.first;
+  if (profile.topArtists.length > 1) {
+    // Pick a lower-ranked artist to avoid same-artist fatigue
+    seedArtist = profile.topArtists[profile.topArtists.length > 3 ? 2 : 1];
+  }
+
+  final artist = await deezer.searchArtist(seedArtist);
+  if (artist == null) return (genre: selectedGenre, tracks: <ItunesTrack>[]);
 
   final artistId = artist['id']?.toString() ?? '';
-  if (artistId.isEmpty) return (genre: topGenre, tracks: <ItunesTrack>[]);
+  if (artistId.isEmpty) return (genre: selectedGenre, tracks: <ItunesTrack>[]);
 
   final tracks = await deezer.getArtistRadio(artistId);
-  return (genre: topGenre, tracks: _deezerTracksToItunes(tracks));
+  return (genre: selectedGenre, tracks: _deezerTracksToItunes(tracks));
 });
 
 /// Time-based mix — contextual recommendations.
@@ -347,6 +413,208 @@ final newReleasesForYouProvider = FutureProvider<List<ItunesTrack>>((ref) async 
   }
 
   return results.take(15).toList();
+});
+
+/// "Outside Your Bubble" — tracks from genres the user rarely listens to.
+final outsideYourBubbleProvider = FutureProvider<List<ItunesTrack>>((ref) async {
+  final profile = ref.watch(userMusicProfileProvider).value;
+  if (profile == null || profile.genreWeights.length < 3) return [];
+
+  final deezer = getIt<DeezerService>();
+
+  // Pick bottom 3 genres (least listened)
+  final bottomGenres = profile.genreWeights
+      .skip((profile.genreWeights.length / 2).floor())
+      .take(3)
+      .toList();
+
+  if (bottomGenres.isEmpty) return [];
+
+  final seenKeys = <String>{};
+  final results = <ItunesTrack>[];
+  final topArtistNames = profile.topArtists.map((a) => a.toLowerCase()).toSet();
+
+  for (final gw in bottomGenres) {
+    try {
+      final playlists = await deezer.getGenrePlaylists(0, genreName: gw.genre);
+      if (playlists.isEmpty) continue;
+
+      // Take first playlist's tracks
+      final playlistId = playlists.first['id']?.toString() ?? '';
+      if (playlistId.isEmpty) continue;
+
+      final tracks = await deezer.getPlaylistTracks(playlistId, limit: 20);
+      for (final t in _deezerTracksToItunes(tracks)) {
+        if (results.length >= 15) break;
+        final key = '${t.trackName}-${t.artistName}'.toLowerCase();
+        if (seenKeys.contains(key)) continue;
+        // Filter out artists the user already listens to
+        final artistKey = (t.artistName ?? '').toLowerCase();
+        if (topArtistNames.contains(artistKey)) continue;
+        seenKeys.add(key);
+        results.add(t);
+      }
+    } catch (e) {
+      print('[ForYou] Outside bubble error for ${gw.genre}: $e');
+    }
+    if (results.length >= 15) break;
+  }
+
+  return results;
+});
+
+/// "Fresh & Different" — tracks similar to liked tracks but by different artists.
+final freshAndDifferentProvider = FutureProvider<List<ItunesTrack>>((ref) async {
+  final profile = ref.watch(userMusicProfileProvider).value;
+  if (profile == null) return [];
+
+  final db = getIt<AppDatabase>();
+  final lastfm = getIt<LastFmService>();
+  final topArtistNames = profile.topArtists.map((a) => a.toLowerCase()).toSet();
+
+  // Get liked tracks as seeds
+  final liked = await db.getLikedTracks();
+  if (liked.isEmpty) return [];
+
+  // Pick up to 3 liked tracks with artists NOT in top artists (more discovery)
+  liked.shuffle();
+  final seeds = liked.where((t) {
+    final artist = (t.artist ?? '').toLowerCase();
+    return artist.isNotEmpty && !topArtistNames.contains(artist);
+  }).take(3).toList();
+
+  // Fallback: use any liked track if no discovery candidates
+  final seedTracks = seeds.isNotEmpty ? seeds : liked.take(3).toList();
+
+  final seenKeys = <String>{};
+  final results = <ItunesTrack>[];
+
+  for (final seed in seedTracks) {
+    try {
+      final similar = await lastfm.getSimilarTracks(
+        seed.trackTitle ?? '',
+        seed.artist ?? '',
+        limit: 15,
+      );
+      for (final s in similar) {
+        if (results.length >= 15) break;
+        final trackName = s['name'] as String? ?? '';
+        final artistName = s['artist'] as String? ?? s['artist_name'] as String? ?? '';
+        if (trackName.isEmpty || artistName.isEmpty) continue;
+        final key = '${trackName}_${artistName}'.toLowerCase();
+        if (seenKeys.contains(key)) continue;
+        // Filter out artists user already knows
+        if (topArtistNames.contains(artistName.toLowerCase())) continue;
+        seenKeys.add(key);
+        results.add(ItunesTrack(
+          trackId: trackName.hashCode,
+          trackName: trackName,
+          artistName: artistName,
+          collectionName: '',
+          artworkUrl: s['image_url'] as String? ?? '',
+        ));
+      }
+    } catch (e) {
+      print('[ForYou] Fresh & different error: $e');
+    }
+  }
+
+  return results;
+});
+
+// ─── Discovery Stats ──────────────────────────────────────────────────────────
+
+class DiscoveryStats {
+  final int thisWeekNewArtists;
+  final int thisWeekNewTracks;
+  final int totalNewArtists;
+  final int totalNewTracks;
+  final List<String> recentlyDiscoveredArtists;
+  final List<int> weeklyDiscoveryCounts;
+  final int peakWeekCount;
+
+  const DiscoveryStats({
+    required this.thisWeekNewArtists,
+    required this.thisWeekNewTracks,
+    required this.totalNewArtists,
+    required this.totalNewTracks,
+    required this.recentlyDiscoveredArtists,
+    required this.weeklyDiscoveryCounts,
+    required this.peakWeekCount,
+  });
+}
+
+/// Track new artist / track discovery rate over time.
+final discoveryStatsProvider = FutureProvider<DiscoveryStats>((ref) async {
+  final db = getIt<AppDatabase>();
+  final history = await db.getAllPlayback();
+  if (history.isEmpty) {
+    return const DiscoveryStats(
+      thisWeekNewArtists: 0,
+      thisWeekNewTracks: 0,
+      totalNewArtists: 0,
+      totalNewTracks: 0,
+      recentlyDiscoveredArtists: [],
+      weeklyDiscoveryCounts: [],
+      peakWeekCount: 0,
+    );
+  }
+
+  final sorted = List<DbPlaybackHistory>.from(history)
+    ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
+
+  final seenArtists = <String>{};
+  final seenTrackKeys = <String>{};
+  final weeklyMap = <int, int>{};
+  final recentArtists = <String>[];
+  final recentArtistSet = <String>{};
+
+  final now = DateTime.now();
+  final currentWeekStart = DateTime(now.year, now.month, now.day - now.weekday + 1);
+  final currentWeekMs = currentWeekStart.millisecondsSinceEpoch;
+
+  int thisWeekArtists = 0;
+  int thisWeekTracks = 0;
+
+  for (final h in sorted) {
+    final artistKey = h.artist.toLowerCase();
+    final trackKey = '${h.artist}|${h.trackTitle}'.toLowerCase();
+    final recDate = DateTime.fromMillisecondsSinceEpoch(h.playedAt);
+    final weekStart = DateTime(recDate.year, recDate.month, recDate.day - recDate.weekday + 1);
+    final weekMs = weekStart.millisecondsSinceEpoch;
+
+    final isNewArtist = !seenArtists.contains(artistKey);
+    final isNewTrack = !seenTrackKeys.contains(trackKey);
+
+    if (isNewArtist) seenArtists.add(artistKey);
+    if (isNewTrack) seenTrackKeys.add(trackKey);
+
+    if (isNewArtist || isNewTrack) {
+      weeklyMap[weekMs] = (weeklyMap[weekMs] ?? 0) + 1;
+
+      if (isNewArtist && !recentArtistSet.contains(artistKey)) {
+        recentArtistSet.add(artistKey);
+        recentArtists.add(h.artist);
+        if (recDate.millisecondsSinceEpoch >= currentWeekMs) thisWeekArtists++;
+      }
+      if (isNewTrack && recDate.millisecondsSinceEpoch >= currentWeekMs) thisWeekTracks++;
+    }
+  }
+
+  final sortedWeeks = weeklyMap.keys.toList()..sort();
+  final last8Weeks = sortedWeeks.reversed.take(8).toList()..sort();
+  final weeklyCounts = last8Weeks.map((w) => weeklyMap[w]!).toList();
+  final peak = weeklyCounts.isEmpty ? 0 : weeklyCounts.reduce((a, b) => a > b ? a : b);
+
+  return DiscoveryStats(
+    thisWeekNewArtists: thisWeekArtists,
+    thisWeekNewTracks: thisWeekTracks,
+    totalNewArtists: seenArtists.length,
+    totalNewTracks: seenTrackKeys.length,
+    recentlyDiscoveredArtists: recentArtists.reversed.take(6).toList(),
+    weeklyDiscoveryCounts: weeklyCounts,
+    peakWeekCount: peak,
+  );
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

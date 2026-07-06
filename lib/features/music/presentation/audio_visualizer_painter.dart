@@ -1,33 +1,22 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// A high-performance CustomPainter that renders audio visualizer graphics
-/// in multiple styles: Wave, Bar, and Line.
-///
-/// When [fftMagnitudes] is provided (from the native Android Visualizer),
-/// it uses **real audio frequency data** to drive the visualization — the bars
-/// and waves react to the actual song tempo, bass drops, and energy.
-///
-/// When [fftMagnitudes] is null (e.g. on non-Android platforms), it falls back
-/// to a procedural animation driven by [animationValue].
 class AudioVisualizerPainter extends CustomPainter {
-  final String style; // 'wave', 'bar', 'line'
+  final String style;
   final int pointCount;
   final double sensitivity;
   final double amplitude;
-  final double animationValue; // 0.0 → 1.0 repeating (fallback only)
+  final double animationValue;
   final Color color;
   final double alpha;
   final double barSpacing;
   final double cornerRadius;
   final bool isPlaying;
   final double bpm;
-  
-  /// Real FFT magnitude data from the native Visualizer (0–255 per bin).
-  /// When non-null, this drives the visualization instead of procedural math.
   final List<int>? fftMagnitudes;
+  final List<Color>? barColors;
+  final double beatIntensity;
 
-  // Cached seeds for procedural fallback
   static final Map<int, List<double>> _seedCache = {};
 
   AudioVisualizerPainter({
@@ -43,6 +32,8 @@ class AudioVisualizerPainter extends CustomPainter {
     required this.isPlaying,
     required this.bpm,
     this.fftMagnitudes,
+    this.barColors,
+    this.beatIntensity = 0.0,
   }) {
     if (!_seedCache.containsKey(pointCount)) {
       final rng = math.Random(42);
@@ -51,48 +42,34 @@ class AudioVisualizerPainter extends CustomPainter {
   }
 
   List<double> get _seeds => _seedCache[pointCount]!;
-
-  /// Whether we have real audio data to work with.
   bool get _hasRealData => fftMagnitudes != null && fftMagnitudes!.isNotEmpty;
 
-  /// Get the normalized height (0.0–1.0) for the i-th point.
-  /// Uses real FFT data when available, procedural fallback otherwise.
+  Color _getBarColor(int i) {
+    if (barColors != null && i < barColors!.length) {
+      return barColors![i].withValues(alpha: alpha);
+    }
+    if (beatIntensity > 0.01) {
+      return Color.lerp(color, Colors.white, beatIntensity * 0.5)!.withValues(alpha: alpha);
+    }
+    return color.withValues(alpha: alpha);
+  }
+
   double _getHeightForPoint(int i) {
     if (_hasRealData) {
       final fft = fftMagnitudes!;
-      
-      // LOGARITHMIC MAPPING
-      final double fraction = i / pointCount;
-      // High-Pass Filter: Skip early bins that contain sub-sonic noise
-      final int startBin = 12; 
-      final int endBin = fft.length - 2;
-      final int binRange = endBin - startBin;
-      
-      // Adjusted curve: 1.2 is a "sweet spot" that keeps bass on the left 
-      // but lets vocals and melodies take up most of the middle/right.
-      final double logIndex = (math.pow(fraction, 1.2) * binRange + startBin).toDouble();
-      final int index = logIndex.floor().clamp(startBin, endBin);
-      
-      // VERTICAL SMOOTHING
+      final int range = fft.length - 1;
+      final int bandStart = 1 + (i * range ~/ pointCount);
+      final int bandEnd = 1 + ((i + 1) * range ~/ pointCount);
       int sum = 0;
       int count = 0;
-      for (int k = index - 1; k <= index + 1; k++) {
-        if (k >= 0 && k < fft.length) {
-          sum += fft[k];
-          count++;
-        }
+      for (int k = bandStart; k < bandEnd && k < fft.length; k++) {
+        sum += fft[k];
+        count++;
       }
-      double magnitude = (sum / count) / 255.0;
-      
-      // HIGH-FREQUENCY COMPENSATION (Treble Boost)
-      // We scale the boost logarithmically so the far right (treble) 
-      // is roughly 2.5x more sensitive than the bass.
-      final double boost = 1.0 + (math.sqrt(fraction) * 1.5); 
-      magnitude *= boost;
-      
-      return isPlaying ? magnitude.clamp(0.0, 1.3) : magnitude * 0.05;
+      double magnitude = count > 0 ? (sum / count) / 255.0 : 0.0;
+      final double gainRamp = 1.0 + (i / pointCount) * (i / pointCount) * 6.0;
+      return isPlaying ? (magnitude * gainRamp).clamp(0.0, 1.0) : magnitude * 0.05;
     } else {
-      // Procedural fallback reacting to BPM
       final seed = _seeds[i];
       final speedFactor = bpm / 120.0;
       final phase1 = math.sin((animationValue * 2 * math.pi) + (seed * math.pi * 2)) * 0.5 + 0.5;
@@ -107,38 +84,28 @@ class AudioVisualizerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (pointCount <= 0) return;
 
-    final paint = Paint()
-      ..color = color.withValues(alpha: alpha)
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-
-    final strokePaint = Paint()
-      ..color = color.withValues(alpha: alpha)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
-
     switch (style) {
       case 'bar':
-        _paintBars(canvas, size, paint);
+        _paintBars(canvas, size);
         break;
       case 'wave':
-        _paintWave(canvas, size, paint, strokePaint);
+        _paintWave(canvas, size);
         break;
       case 'line':
-        _paintLine(canvas, size, strokePaint);
+        _paintLine(canvas, size);
         break;
       case 'mirrored':
-        _paintMirrored(canvas, size, paint);
+        _paintMirrored(canvas, size);
+        break;
+      case 'circular':
+        _paintCircular(canvas, size);
         break;
       default:
-        _paintBars(canvas, size, paint);
+        _paintBars(canvas, size);
     }
   }
 
-  /// Renders vertical bars driven by real audio or procedural fallback.
-  void _paintBars(Canvas canvas, Size size, Paint paint) {
+  void _paintBars(Canvas canvas, Size size) {
     final totalSpacing = barSpacing * (pointCount - 1);
     final barWidth = (size.width - totalSpacing) / pointCount;
     if (barWidth <= 0) return;
@@ -146,10 +113,12 @@ class AudioVisualizerPainter extends CustomPainter {
     for (int i = 0; i < pointCount; i++) {
       final heightFactor = _getHeightForPoint(i);
       final barHeight = (heightFactor * sensitivity * amplitude * size.height).clamp(2.0, size.height);
-
       final x = i * (barWidth + barSpacing);
       final y = size.height - barHeight;
-
+      final paint = Paint()
+        ..color = _getBarColor(i)
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true;
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(x, y, barWidth, barHeight),
         Radius.circular(cornerRadius.clamp(0, barWidth / 2)),
@@ -158,17 +127,15 @@ class AudioVisualizerPainter extends CustomPainter {
     }
   }
 
-  /// Renders a single high-fidelity smooth wave form.
-  void _paintWave(Canvas canvas, Size size, Paint fillPaint, Paint strokePaint) {
+  void _paintWave(Canvas canvas, Size size) {
     final pointSpacing = size.width / (pointCount - 1);
     final path = Path();
-    
+
     final rawYValues = List.generate(pointCount, (idx) {
       final heightFactor = _getHeightForPoint(idx);
       return size.height - (heightFactor * sensitivity * amplitude * size.height * 0.5 + size.height * 0.2);
     });
 
-    // Horizontal smoothing
     final smoothedY = List<double>.from(rawYValues);
     for (int k = 1; k < pointCount - 1; k++) {
       smoothedY[k] = (rawYValues[k-1] + rawYValues[k] * 2 + rawYValues[k+1]) / 4;
@@ -180,17 +147,16 @@ class AudioVisualizerPainter extends CustomPainter {
       final x2 = (i + 1) * pointSpacing;
       final y1 = smoothedY[i];
       final y2 = smoothedY[i + 1];
-      
-      final cpx1 = x1 + (x2 - x1) / 2.2; 
+      final cpx1 = x1 + (x2 - x1) / 2.2;
       final cpx2 = x1 + (x2 - x1) / 1.7;
       path.cubicTo(cpx1, y1, cpx2, y2, x2, y2);
     }
-    
+
     final fillPath = Path.from(path);
     fillPath.lineTo(size.width, size.height);
     fillPath.lineTo(0, size.height);
     fillPath.close();
-    
+
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
@@ -198,27 +164,25 @@ class AudioVisualizerPainter extends CustomPainter {
     );
     final gradientPaint = Paint()..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawPath(fillPath, gradientPaint);
-    
+
     final sPaint = Paint()
-      ..color = color.withValues(alpha: alpha)
+      ..color = color.withValues(alpha: (alpha * (1.0 - beatIntensity * 0.3)).clamp(0.0, 1.0))
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
-    // Glow
     final glowPaint = Paint()
-      ..color = color.withValues(alpha: alpha * 0.4)
+      ..color = color.withValues(alpha: (alpha * 0.4 + beatIntensity * 0.3).clamp(0.0, 1.0))
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 7.0
+      ..strokeWidth = 7.0 + beatIntensity * 5.0
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0)
       ..isAntiAlias = true;
     canvas.drawPath(path, glowPaint);
     canvas.drawPath(path, sPaint);
   }
 
-  /// Renders a single clean frequency line.
-  void _paintLine(Canvas canvas, Size size, Paint paint) {
+  void _paintLine(Canvas canvas, Size size) {
     final pointSpacing = size.width / (pointCount - 1);
     final path = Path();
 
@@ -234,35 +198,34 @@ class AudioVisualizerPainter extends CustomPainter {
 
     path.moveTo(0, smoothedY[0]);
     for (int i = 0; i < smoothedY.length - 1; i++) {
-        final x1 = i * pointSpacing;
-        final x2 = (i + 1) * pointSpacing;
-        final y1 = smoothedY[i];
-        final y2 = smoothedY[i + 1];
-        final cpx1 = x1 + (x2 - x1) / 2.2;
-        final cpx2 = x1 + (x2 - x1) / 1.7;
-        path.cubicTo(cpx1, y1, cpx2, y2, x2, y2);
+      final x1 = i * pointSpacing;
+      final x2 = (i + 1) * pointSpacing;
+      final y1 = smoothedY[i];
+      final y2 = smoothedY[i + 1];
+      final cpx1 = x1 + (x2 - x1) / 2.2;
+      final cpx2 = x1 + (x2 - x1) / 1.7;
+      path.cubicTo(cpx1, y1, cpx2, y2, x2, y2);
     }
 
     final lPaint = Paint()
       ..color = color.withValues(alpha: alpha)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.5
+      ..strokeWidth = 3.5 + beatIntensity * 2.0
       ..strokeCap = StrokeCap.round
       ..isAntiAlias = true;
 
     final glowPaint = Paint()
-      ..color = color.withValues(alpha: alpha * 0.5)
+      ..color = color.withValues(alpha: (alpha * 0.5 + beatIntensity * 0.3).clamp(0.0, 1.0))
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 8.0
+      ..strokeWidth = 8.0 + beatIntensity * 4.0
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6.0)
       ..isAntiAlias = true;
-    
+
     canvas.drawPath(path, glowPaint);
     canvas.drawPath(path, lPaint);
   }
 
-  /// NEW: Renders mirrored symmetric bars from the center.
-  void _paintMirrored(Canvas canvas, Size size, Paint paint) {
+  void _paintMirrored(Canvas canvas, Size size) {
     final totalSpacing = barSpacing * (pointCount - 1);
     final barWidth = (size.width - totalSpacing) / pointCount;
     final centerY = size.height * 0.5;
@@ -270,21 +233,68 @@ class AudioVisualizerPainter extends CustomPainter {
     for (int i = 0; i < pointCount; i++) {
       final heightFactor = _getHeightForPoint(i);
       final halfHeight = (heightFactor * sensitivity * amplitude * size.height * 0.4).clamp(1.0, size.height * 0.5);
-
       final x = i * (barWidth + barSpacing);
-      
+      final paint = Paint()
+        ..color = _getBarColor(i)
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true;
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(x, centerY - halfHeight, barWidth, halfHeight * 2),
         Radius.circular(cornerRadius.clamp(0, barWidth / 2)),
       );
-      
       canvas.drawRRect(rect, paint);
-      
-      // Add a subtle glow/shine to mirrored bars
+
       final shinePaint = Paint()
         ..color = Color.lerp(color, Colors.white, 0.3)!.withValues(alpha: alpha * 0.2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
       canvas.drawRect(Rect.fromLTWH(x + 1, centerY - halfHeight + 1, barWidth - 2, 2), shinePaint);
+    }
+  }
+
+  void _paintCircular(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final maxRadius = math.min(cx, cy) * 0.8;
+    final angleStep = (2 * math.pi) / pointCount;
+
+    for (int i = 0; i < pointCount; i++) {
+      final heightFactor = _getHeightForPoint(i);
+      final barHeight = (heightFactor * sensitivity * amplitude * maxRadius * 0.6).clamp(1.0, maxRadius * 0.8);
+      final angle = i * angleStep - math.pi / 2;
+      final innerRadius = maxRadius * 0.2;
+
+      final x0 = cx + innerRadius * math.cos(angle);
+      final y0 = cy + innerRadius * math.sin(angle);
+      final x1 = cx + (innerRadius + barHeight) * math.cos(angle);
+      final y1 = cy + (innerRadius + barHeight) * math.sin(angle);
+
+      final paint = Paint()
+        ..color = _getBarColor(i)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = barSpacing > 0 ? (angleStep * maxRadius * 0.8 / pointCount).clamp(2.0, 12.0) : 4.0
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+
+      canvas.drawLine(Offset(x0, y0), Offset(x1, y1), paint);
+
+      if (beatIntensity > 0.01) {
+        final glowPaint = Paint()
+          ..color = _getBarColor(i).withValues(alpha: alpha * 0.3 * beatIntensity)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (paint.strokeWidth + 4) * beatIntensity
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0)
+          ..isAntiAlias = true;
+        canvas.drawLine(Offset(x0, y0), Offset(x1, y1), glowPaint);
+      }
+    }
+
+    if (beatIntensity > 0.01) {
+      final ringPaint = Paint()
+        ..color = color.withValues(alpha: alpha * beatIntensity * 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0 * beatIntensity
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
+      canvas.drawCircle(Offset(cx, cy), maxRadius * 0.2 + beatIntensity * 10, ringPaint);
     }
   }
 
@@ -301,6 +311,8 @@ class AudioVisualizerPainter extends CustomPainter {
         oldDelegate.barSpacing != barSpacing ||
         oldDelegate.cornerRadius != cornerRadius ||
         oldDelegate.isPlaying != isPlaying ||
-        oldDelegate.bpm != bpm;
+        oldDelegate.bpm != bpm ||
+        oldDelegate.beatIntensity != beatIntensity ||
+        oldDelegate.barColors != barColors;
   }
 }

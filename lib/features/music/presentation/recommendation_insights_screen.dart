@@ -85,6 +85,8 @@ class RecommendationInsightsScreen extends ConsumerWidget {
   }
 
   Widget _buildContent(BuildContext context, WidgetRef ref, UserMusicProfile profile, bool isDark) {
+    final discoveryStats = ref.watch(discoveryStatsProvider).asData?.value;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       child: Column(
@@ -98,25 +100,33 @@ class RecommendationInsightsScreen extends ConsumerWidget {
           _buildQuickStats(context, profile, isDark),
           const SizedBox(height: 24),
 
-          // 3. Topic Weights (Genre Bar Chart)
+          // 3. Discovery Rate (this week's new artists/tracks)
+          if (discoveryStats != null) ...[
+            _buildSectionHeader(context, 'Discovery Rate'),
+            const SizedBox(height: 12),
+            _buildDiscoveryStats(context, discoveryStats, isDark),
+            const SizedBox(height: 24),
+          ],
+
+          // 4. Topic Weights (Genre Bar Chart)
           _buildSectionHeader(context, 'Topic Weights'),
           const SizedBox(height: 12),
           _buildTopicWeights(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
-          // 4. Interest Map (Bubble Chart)
+          // 5. Interest Map (Bubble Chart)
           _buildSectionHeader(context, 'Interest Map'),
           const SizedBox(height: 12),
           _buildInterestMap(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
-          // 5. Temporal Patterns
+          // 6. Temporal Patterns
           _buildSectionHeader(context, 'Temporal Patterns'),
           const SizedBox(height: 12),
           _buildTemporalPatterns(context, ref, profile, isDark),
           const SizedBox(height: 24),
 
-          // 6. Artist Memory
+          // 7. Artist Memory
           _buildSectionHeader(context, 'Artist Memory'),
           const SizedBox(height: 12),
           _buildArtistMemory(context, profile, isDark),
@@ -267,6 +277,191 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ─── Discovery Rate ─────────────────────────────────────────────────
+
+  Widget _buildDiscoveryStats(BuildContext context, DiscoveryStats stats, bool isDark) {
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // This week stat
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.explore_rounded, size: 20, color: primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'This Week',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: isDark ? Colors.white38 : Colors.black38,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '${stats.thisWeekNewArtists}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'new artists',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          '${stats.thisWeekNewTracks}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'new tracks',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Mini weekly bar chart
+          if (stats.weeklyDiscoveryCounts.length >= 2) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: stats.weeklyDiscoveryCounts.asMap().entries.map((entry) {
+                final i = entry.key;
+                final count = entry.value;
+                final height = stats.peakWeekCount > 0
+                    ? (count / stats.peakWeekCount) * 60
+                    : 0.0;
+                final isCurrentWeek = i == stats.weeklyDiscoveryCounts.length - 1;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$count',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white38 : Colors.black38,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: height.clamp(4.0, 60.0),
+                          decoration: BoxDecoration(
+                            gradient: isCurrentWeek
+                                ? LinearGradient(
+                                    colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
+                                  )
+                                : null,
+                            color: isCurrentWeek ? null : (isDark ? Colors.white24 : Colors.black12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Recently discovered artists
+          if (stats.recentlyDiscoveredArtists.isNotEmpty) ...[
+            Text(
+              'Recently discovered',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: stats.recentlyDiscoveredArtists.map((artist) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: primary.withOpacity(0.2)),
+                ),
+                child: Text(
+                  artist,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: primary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )).toList(),
+            ),
+          ],
+
+          // Lifetime totals
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                '${stats.totalNewArtists} artists',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isDark ? Colors.white24 : Colors.black26,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '·',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${stats.totalNewTracks} tracks',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isDark ? Colors.white24 : Colors.black26,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

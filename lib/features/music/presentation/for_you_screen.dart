@@ -54,6 +54,8 @@ class ForYouScreen extends ConsumerWidget {
           ref.invalidate(genreRadioProvider);
           ref.invalidate(timeBasedMixProvider);
           ref.invalidate(newReleasesForYouProvider);
+          ref.invalidate(outsideYourBubbleProvider);
+          ref.invalidate(freshAndDifferentProvider);
           
           // Wait for the main profile to at least start loading
           await ref.read(userMusicProfileProvider.future);
@@ -173,12 +175,15 @@ class ForYouScreen extends ConsumerWidget {
     final genreRadio = ref.watch(genreRadioProvider);
     final timeBasedMix = ref.watch(timeBasedMixProvider);
     final newReleases = ref.watch(newReleasesForYouProvider);
+    final outsideBubble = ref.watch(outsideYourBubbleProvider);
+    final freshDiff = ref.watch(freshAndDifferentProvider);
 
     return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(), // Important for RefreshIndicator
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         _buildAppBar(context, isDark),
 
+        // ─── Familiar Zone ─────────────────────────────────────────────
         // Made For You
         SliverToBoxAdapter(
           child: _buildPersonalizedMixSection(context, ref, tasteMix, isDark),
@@ -194,11 +199,33 @@ class ForYouScreen extends ConsumerWidget {
           child: _buildBecauseYouListenedSections(context, ref, becauseSections, isDark),
         ),
 
+        // ─── Discovery Zone ────────────────────────────────────────────
+        // Outside Your Bubble
+        SliverToBoxAdapter(
+          child: _buildDiscoverySection(
+            context, ref, outsideBubble, isDark,
+            title: 'Outside Your Bubble',
+            subtitle: 'Explore genres you rarely listen to',
+            icon: Icons.explore_rounded,
+          ),
+        ),
+
+        // Fresh & Different
+        SliverToBoxAdapter(
+          child: _buildDiscoverySection(
+            context, ref, freshDiff, isDark,
+            title: 'Fresh & Different',
+            subtitle: 'Tracks by artists you haven\'t heard yet',
+            icon: Icons.auto_awesome_rounded,
+          ),
+        ),
+
         // Genre Radio
         SliverToBoxAdapter(
           child: _buildGenreRadioSection(context, ref, genreRadio, isDark),
         ),
 
+        // ─── Utility Zone ─────────────────────────────────────────────
         // Artists You Might Like
         SliverToBoxAdapter(
           child: _buildSimilarArtistsSection(context, ref, similarArtists, isDark),
@@ -751,6 +778,54 @@ class ForYouScreen extends ConsumerWidget {
         );
       },
       loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  // ─── Discovery Section (shared by Outside Your Bubble + Fresh & Different) ──
+
+  Widget _buildDiscoverySection(
+    BuildContext context, WidgetRef ref, AsyncValue<List<ItunesTrack>> tracksAsync, bool isDark, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    return tracksAsync.when(
+      data: (tracks) {
+        if (tracks.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 4),
+              child: Row(
+                children: [
+                  Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: AppleMusicSectionHeader(
+                      title: title,
+                      subtitle: subtitle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 200,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: tracks.length.clamp(0, 10),
+                itemBuilder: (context, index) {
+                  return _buildTrackCard(context, ref, tracks[index], isDark, width: 150, height: 150);
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => _buildLoadingSection(context, title, isDark),
       error: (_, __) => const SizedBox.shrink(),
     );
   }

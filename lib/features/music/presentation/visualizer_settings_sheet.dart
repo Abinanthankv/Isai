@@ -124,9 +124,9 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                       children: [
                         // Segmented control for style
                         _SegmentedSelector(
-                          options: const ['Wave', 'Bar', 'Line', 'Mirrored'],
-                          selectedIndex: ['wave', 'bar', 'line', 'mirrored'].indexOf(settings.visualizerStyle).clamp(0, 3),
-                          onSelect: (i) => ref.read(settingsProvider.notifier).setVisualizerStyle(['wave', 'bar', 'line', 'mirrored'][i]),
+                          options: const ['Wave', 'Bar', 'Line', 'Mirrored', 'Circular'],
+                          selectedIndex: ['wave', 'bar', 'line', 'mirrored', 'circular'].indexOf(settings.visualizerStyle).clamp(0, 4),
+                          onSelect: (i) => ref.read(settingsProvider.notifier).setVisualizerStyle(['wave', 'bar', 'line', 'mirrored', 'circular'][i]),
                         ),
 
                         const SizedBox(height: 20),
@@ -159,7 +159,7 @@ class VisualizerSettingsSheet extends ConsumerWidget {
                   const SizedBox(height: 24),
 
                   // ── BAR-SPECIFIC SETTINGS ──────────────────────────
-                  if (settings.visualizerStyle == 'bar') ...[
+                  if (['bar', 'mirrored', 'circular'].contains(settings.visualizerStyle)) ...[
                     const _SectionLabel('BAR'),
                     GlassCard(
                       padding: const EdgeInsets.all(16),

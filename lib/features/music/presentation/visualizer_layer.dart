@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -12,11 +13,6 @@ import '../../../core/theme/apple_music_theme.dart';
 import '../../player/data/audio_handler.dart';
 import '../../player/data/visualizer_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Album art color extraction cache
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Global cache so we only extract colors once per artwork URL.
 final Map<String, Color> _artworkColorCache = {};
 
 Future<Color> _extractDominantColor(String? artworkUrl, Color fallbackColor) async {
@@ -31,7 +27,6 @@ Future<Color> _extractDominantColor(String? artworkUrl, Color fallbackColor) asy
       NetworkImage(artworkUrl),
       maximumColorCount: 8,
     );
-    // Prefer muted color for a more subtle, blended look (like the screenshot)
     final color = paletteGenerator.mutedColor?.color
         ?? paletteGenerator.dominantColor?.color
         ?? fallbackColor;
@@ -43,17 +38,12 @@ Future<Color> _extractDominantColor(String? artworkUrl, Color fallbackColor) asy
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Permission helper — only called when user enables the visualizer
-// ─────────────────────────────────────────────────────────────────────────────
-
 Future<bool> requestVisualizerPermission(BuildContext context) async {
   if (!Platform.isAndroid) return false;
 
   final status = await Permission.microphone.status;
   if (status.isGranted) return true;
 
-  // Show rationale before requesting
   final shouldRequest = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -97,10 +87,6 @@ Future<bool> requestVisualizerPermission(BuildContext context) async {
   return result.isGranted;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// VisualizerOverlay — full Now Playing overlay
-// ─────────────────────────────────────────────────────────────────────────────
-
 class VisualizerOverlay extends ConsumerStatefulWidget {
   final Color? albumArtColor;
 
@@ -117,11 +103,23 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
   StreamSubscription<List<int>>? _fftSub;
   List<int>? _currentFft;
   List<double>? _smoothedFft;
+  List<double>? _normalizedFft;
+  List<double>? _prevFft;
   bool _vizStarted = false;
   Color? _artColor;
   String? _lastArtUrl;
 
-  static const double _smoothingFactor = 0.2;
+  double _rollingMax = 1.0;
+
+  // Spectral flux beat detection
+  double _fluxValue = 0.0;
+  double _fluxAvg = 0.0;
+  double _beatIntensity = 0.0;
+
+  List<Color>? _barColors;
+  int _lastBarColorCount = 0;
+
+  static const double _smoothingFactor = 0.3;
 
   @override
   void initState() {
@@ -144,16 +142,39 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
         if (mounted) {
           setState(() {
             _currentFft = data;
-            
-            // Apply smoothing
+
+            // Step 1: Exponential smoothing
             if (_smoothedFft == null || _smoothedFft!.length != data.length) {
               _smoothedFft = data.map((e) => e.toDouble()).toList();
             } else {
               for (int i = 0; i < data.length; i++) {
-                _smoothedFft![i] = (_smoothedFft![i] * (1 - _smoothingFactor)) + 
+                _smoothedFft![i] = (_smoothedFft![i] * (1 - _smoothingFactor)) +
                                    (data[i].toDouble() * _smoothingFactor);
               }
             }
+
+            // Step 2: Spectral flux beat detection
+            if (_prevFft != null && _prevFft!.length == _smoothedFft!.length) {
+              double flux = 0;
+              for (int i = 1; i < _smoothedFft!.length; i++) {
+                final delta = _smoothedFft![i] - _prevFft![i];
+                if (delta > 0) flux += delta;
+              }
+              _fluxValue = _fluxValue * 0.6 + flux * 0.4;
+              _fluxAvg = _fluxAvg * 0.92 + _fluxValue * 0.08;
+              if (_fluxValue > _fluxAvg * 1.8 && flux > 30) {
+                _beatIntensity = 1.0;
+              }
+            }
+            _prevFft = List<double>.from(_smoothedFft!);
+            _beatIntensity *= 0.88;
+            if (_beatIntensity < 0.005) _beatIntensity = 0.0;
+
+            // Step 3: Auto-gain normalization (separate list)
+            final double currentMax = _smoothedFft!.reduce(math.max);
+            _rollingMax = (_rollingMax * 0.9 + currentMax * 0.1).clamp(15.0, 255.0);
+            final double scale = 200.0 / _rollingMax;
+            _normalizedFft = _smoothedFft!.map((e) => (e * scale).clamp(0.0, 255.0)).toList();
           });
         }
       });
@@ -167,6 +188,8 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
     _vizStarted = false;
     _currentFft = null;
     _smoothedFft = null;
+    _normalizedFft = null;
+    _prevFft = null;
   }
 
   Future<void> _updateArtworkColor(String? artUrl, Color fallbackColor) async {
@@ -184,11 +207,18 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
     return 70.0 + (hash % 81);
   }
 
+  List<Color> _generateBarColors(int count) {
+    return List.generate(count, (i) {
+      final fraction = count > 1 ? i / (count - 1) : 0.0;
+      final hue = fraction * 270.0;
+      return HSLColor.fromAHSL(1.0, hue, 0.8, 0.55).toColor();
+    });
+  }
+
   void _updateBpm(MediaItem? item) {
     if (item == null) return;
     final bpm = _getBpm(item);
     final durationMs = (120.0 / bpm * 3000).round().clamp(1500, 6000);
-    
     if (_controller.duration?.inMilliseconds != durationMs) {
       _controller.duration = Duration(milliseconds: durationMs);
       if (_controller.isAnimating) {
@@ -228,7 +258,6 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
       return const SizedBox.shrink();
     }
 
-    // Start native visualizer on demand
     if (!_vizStarted) _startNativeVisualizer();
 
     return StreamBuilder<MediaItem?>(
@@ -250,6 +279,11 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
                 final screenHeight = MediaQuery.of(context).size.height;
                 final vizHeight = screenHeight * settings.visualizerHeightPct;
 
+                if (_lastBarColorCount != settings.visualizerPoints && settings.visualizerPoints > 0) {
+                  _lastBarColorCount = settings.visualizerPoints;
+                  _barColors = _generateBarColors(settings.visualizerPoints);
+                }
+
                 return Positioned(
                   left: 0,
                   right: 0,
@@ -257,21 +291,23 @@ class _VisualizerOverlayState extends ConsumerState<VisualizerOverlay>
                   height: vizHeight,
                   child: IgnorePointer(
                     child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: AudioVisualizerPainter(
-                          style: settings.visualizerStyle,
-                          pointCount: settings.visualizerPoints,
-                          sensitivity: settings.visualizerSensitivity * 10,
-                          amplitude: settings.visualizerAmplitude * 8,
-                          animationValue: _controller.value,
-                          color: color,
-                          alpha: settings.visualizerAlpha,
-                          barSpacing: settings.visualizerBarSpacing,
-                          cornerRadius: settings.visualizerCornerRadius,
-                          isPlaying: isPlaying,
-                          bpm: _getBpm(mediaSnap.data),
-                          fftMagnitudes: _smoothedFft?.map((e) => e.round()).toList() ?? _currentFft,
-                        ),
+                        child: CustomPaint(
+                          painter: AudioVisualizerPainter(
+                            style: settings.visualizerStyle,
+                            pointCount: settings.visualizerPoints,
+                            sensitivity: settings.visualizerSensitivity * 10,
+                            amplitude: settings.visualizerAmplitude * 8,
+                            animationValue: _controller.value,
+                            color: color,
+                            alpha: settings.visualizerAlpha,
+                            barSpacing: settings.visualizerBarSpacing,
+                            cornerRadius: settings.visualizerCornerRadius,
+                            isPlaying: isPlaying,
+                            bpm: _getBpm(mediaSnap.data),
+                            fftMagnitudes: _normalizedFft?.map((e) => e.round()).toList() ?? _currentFft,
+                            barColors: settings.visualizerColorMode == 'dynamic' ? _barColors : null,
+                            beatIntensity: _beatIntensity,
+                          ),
                       ),
                     ),
                   ),

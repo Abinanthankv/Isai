@@ -15,6 +15,7 @@ import '../../music/presentation/lastfm_provider.dart';
 import '../../music/presentation/player_customization_screen.dart';
 import 'plugin_management_screen.dart';
 import 'storage_settings_screen.dart';
+import 'lastfm_settings_screen.dart';
 import 'package:dio/dio.dart';
 import 'package:isai/core/updater/app_updater.dart';
 
@@ -891,7 +892,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                   SwitchListTile(
                     title: Text('Liquid Glass Backgrounds', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: textColor,)),
                     subtitle: Text('Animated mesh gradient for mini player & nav bar', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: subtitleColor,)),
-                    activeColor: Theme.of(context).colorScheme.primary,
                     value: currentSettings.appleUseLiquidGlass,
                     onChanged: (val) {
                       ref.read(settingsProvider.notifier).setAppleUseLiquidGlass(val);
@@ -1428,7 +1428,14 @@ class _LastfmSettingsSection extends ConsumerWidget {
             icon: Icons.person_outline,
             title: 'Logged in as ${lastfm.username}',
             subtitle: 'Scrobbling is active',
-            showChevron: false,
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LastfmSettingsScreen())),
+          ),
+          const Divider(height: 1, indent: 48),
+          _SettingsTile(
+            icon: Icons.settings_rounded,
+            title: 'Scrobble settings',
+            subtitle: 'Threshold, minimum length, toggle',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LastfmSettingsScreen())),
           ),
           const Divider(height: 1, indent: 48),
           _SettingsTile(
