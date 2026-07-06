@@ -1544,6 +1544,37 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (io.Platform.isLinux) {
       _broadcastLinuxQueue();
     }
+  }
+
+  Future<void> removeQueueItemAt(int index) async {
+    if (index < 0 || index >= _playlist.length) return;
+
+    final currentIdx = _player.currentIndex;
+    final isCurrent = currentIdx == index;
+
+    await _playlist.removeAt(index);
+
+    if (index < _originalItems.length) {
+      _originalItems.removeAt(index);
+    }
+
+    if (io.Platform.isLinux) {
+      _broadcastLinuxQueue();
+    } else {
+      final newQueue = List<MediaItem>.from(queue.value);
+      if (index < newQueue.length) {
+        newQueue.removeAt(index);
+        queue.add(newQueue);
+      }
+    }
+
+    if (currentIdx != null && !isCurrent && index < currentIdx) {
+      await _player.seek(Duration.zero, index: currentIdx - 1);
+    }
+
+    if (isCurrent) {
+      await skipToNext();
+    }
   }  @override
   Future<void> updateQueue(List<MediaItem> items) async {
     _originalItems = List.from(items);

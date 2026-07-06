@@ -3865,7 +3865,26 @@ class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
                                   ),
                                   trailing: isCurrent 
                                     ? Icon(Icons.equalizer, color: Theme.of(context).colorScheme.primary) 
-                                    : const Icon(Icons.drag_handle, color: Colors.white24),
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () {
+                                              (audioHandler as MyAudioHandler).removeQueueItemAt(i);
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white10,
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Icon(Icons.close, size: 16, color: Colors.white54),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.drag_handle, color: Colors.white24),
+                                        ],
+                                      ),
                                   onTap: () {
                                     audioHandler.skipToQueueItem(i);
                                     Navigator.pop(context);
