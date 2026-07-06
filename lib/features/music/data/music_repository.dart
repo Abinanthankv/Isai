@@ -1284,7 +1284,16 @@ class MusicRepositoryImpl implements MusicRepository {
   Stream<ScraperResult> searchFLACStream(String query) async* {
     print('[MusicRepository] Beginning searchFLACStream for: "$query"');
     
-    // 1. Built-in active scrapers
+    // 1. Addons first (sorted by user priority from Addon Manager)
+    final addonScrapers = _pluginManager.prioritizedActiveAddons.map((addon) {
+      if (addon is JsPlugin) {
+        return JsPluginScraper(addon, _pluginManager) as MusicScraper;
+      } else {
+        return EclipseAddonScraper(addon as EclipseAddon, _pluginManager) as MusicScraper;
+      }
+    }).toList();
+
+    // 2. Built-in YouTube last (fallback)
     final builtInActive = _scrapers.where((scraper) {
       bool enabled = true;
       if (scraper is YouTubeScraper) enabled = _settings.isYouTubeScraperEnabled;
@@ -1292,17 +1301,7 @@ class MusicRepositoryImpl implements MusicRepository {
       return enabled;
     }).toList();
 
-    // 2. Dynamic JS scrapers
-    final dynamicActive = _pluginManager.activePlugins.map(
-      (plugin) => JsPluginScraper(plugin, _pluginManager)
-    ).toList();
-
-    // 3. Eclipse Addon scrapers
-    final eclipseActive = _pluginManager.activeEclipseAddons.map(
-      (addon) => EclipseAddonScraper(addon, _pluginManager)
-    ).toList();
-
-    final activeScrapers = [...builtInActive, ...dynamicActive, ...eclipseActive];
+    final activeScrapers = [...addonScrapers, ...builtInActive];
 
     if (activeScrapers.isEmpty) {
       print('[MusicRepository] No active scrapers found!');
