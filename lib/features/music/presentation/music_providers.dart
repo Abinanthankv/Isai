@@ -61,12 +61,7 @@ class SettingsState {
   final bool isValidating;
   final bool isValid;
   final String? error;
-  final bool enableArchiveScraper;
-  final bool enableTidalScraper;
-  final bool enableMassTamilanScraper;
   final bool enableYouTubeScraper;
-  final bool enableJioSaavnScraper;
-  final bool enableSoundcloudScraper;
   final List<String> downloadFolders;
   final String? selectedDownloadFolder;
   final String playerArtworkShape;
@@ -117,12 +112,7 @@ class SettingsState {
     this.isValidating = false,
     this.isValid = false,
     this.error,
-    this.enableArchiveScraper = false,
-    this.enableTidalScraper = false,
-    this.enableMassTamilanScraper = false,
     this.enableYouTubeScraper = true,
-    this.enableJioSaavnScraper = false,
-    this.enableSoundcloudScraper = false,
     this.downloadFolders = const [],
     this.selectedDownloadFolder,
     this.playerArtworkShape = 'circle',
@@ -171,12 +161,7 @@ class SettingsState {
     bool? isValidating, 
     bool? isValid, 
     String? error,
-    bool? enableArchiveScraper,
-    bool? enableTidalScraper,
-    bool? enableMassTamilanScraper,
     bool? enableYouTubeScraper,
-    bool? enableJioSaavnScraper,
-    bool? enableSoundcloudScraper,
     List<String>? downloadFolders,
     String? selectedDownloadFolder,
     String? playerArtworkShape,
@@ -224,12 +209,7 @@ class SettingsState {
       isValidating: isValidating ?? this.isValidating,
       isValid: isValid ?? this.isValid,
       error: error,
-      enableArchiveScraper: enableArchiveScraper ?? this.enableArchiveScraper,
-      enableTidalScraper: enableTidalScraper ?? this.enableTidalScraper,
-      enableMassTamilanScraper: enableMassTamilanScraper ?? this.enableMassTamilanScraper,
       enableYouTubeScraper: enableYouTubeScraper ?? this.enableYouTubeScraper,
-      enableJioSaavnScraper: enableJioSaavnScraper ?? this.enableJioSaavnScraper,
-      enableSoundcloudScraper: enableSoundcloudScraper ?? this.enableSoundcloudScraper,
       downloadFolders: downloadFolders ?? this.downloadFolders,
       selectedDownloadFolder: selectedDownloadFolder ?? this.selectedDownloadFolder,
       playerArtworkShape: playerArtworkShape ?? this.playerArtworkShape,
@@ -288,12 +268,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     return SettingsState(
       apiKey: _settings.apiKey ?? '',
       isValid: (_settings.apiKey ?? '').isNotEmpty,
-      enableArchiveScraper: _settings.isArchiveScraperEnabled,
-      enableTidalScraper: _settings.isTidalScraperEnabled,
-      enableMassTamilanScraper: _settings.isMassTamilanScraperEnabled,
       enableYouTubeScraper: _settings.isYouTubeScraperEnabled,
-      enableJioSaavnScraper: _settings.isJioSaavnScraperEnabled,
-      enableSoundcloudScraper: _settings.isSoundcloudScraperEnabled,
       downloadFolders: _settings.downloadFolders,
       selectedDownloadFolder: _settings.selectedDownloadFolder,
       playerArtworkShape: _settings.playerArtworkShape,
@@ -426,34 +401,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
     );
   }
 
-  Future<void> setArchiveScraperEnabled(bool enabled) async {
-    await _settings.setArchiveScraperEnabled(enabled);
-    state = state.copyWith(enableArchiveScraper: enabled);
-  }
-
-  Future<void> setTidalScraperEnabled(bool enabled) async {
-    await _settings.setTidalScraperEnabled(enabled);
-    state = state.copyWith(enableTidalScraper: enabled);
-  }
-
-  Future<void> setMassTamilanScraperEnabled(bool enabled) async {
-    await _settings.setMassTamilanScraperEnabled(enabled);
-    state = state.copyWith(enableMassTamilanScraper: enabled);
-  }
-
   Future<void> setYouTubeScraperEnabled(bool enabled) async {
     await _settings.setYouTubeScraperEnabled(enabled);
     state = state.copyWith(enableYouTubeScraper: enabled);
-  }
-
-  Future<void> setJioSaavnScraperEnabled(bool enabled) async {
-    await _settings.setJioSaavnScraperEnabled(enabled);
-    state = state.copyWith(enableJioSaavnScraper: enabled);
-  }
-
-  Future<void> setSoundcloudScraperEnabled(bool enabled) async {
-    await _settings.setSoundcloudScraperEnabled(enabled);
-    state = state.copyWith(enableSoundcloudScraper: enabled);
   }
 
   Future<void> addDownloadFolder(String path) async {
@@ -633,12 +583,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       isValidating: state.isValidating,
       isValid: state.isValid,
       error: state.error,
-      enableArchiveScraper: state.enableArchiveScraper,
-      enableTidalScraper: state.enableTidalScraper,
-      enableMassTamilanScraper: state.enableMassTamilanScraper,
       enableYouTubeScraper: state.enableYouTubeScraper,
-      enableJioSaavnScraper: state.enableJioSaavnScraper,
-      enableSoundcloudScraper: state.enableSoundcloudScraper,
       downloadFolders: state.downloadFolders,
       selectedDownloadFolder: state.selectedDownloadFolder,
       playerArtworkShape: state.playerArtworkShape,

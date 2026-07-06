@@ -357,41 +357,14 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   })
                 : Future<ScraperResult?>.value(null);
 
-            final enableSC = ref.read(settingsProvider).enableSoundcloudScraper;
-            final scFuture = enableSC
-                ? repo.searchSoundcloudMeta(query).then((results) {
-                    if (results.isNotEmpty) {
-                       final sc = results.first;
-                       // Convert ItunesMeta back to a ScraperResult-like structure for internal use
-                       return ScraperResult(
-                         title: sc.trackName ?? '',
-                         artist: sc.artistName ?? '',
-                         url: sc.id ?? '',
-                         size: 0,
-                         format: 'SoundCloud',
-                         source: 'SoundCloud',
-                         linkType: 'soundcloud',
-                         extras: {
-                           'track_id': sc.id,
-                           'track_authorization': sc.extras?['track_authorization'],
-                         },
-                       );
-                    }
-                    return null;
-                  }).catchError((e) => null)
-                : Future<ScraperResult?>.value(null);
-
-            // Wait for all, prefer FLAC Then SoundCloud
-            final results = await Future.wait([flacFuture, scFuture, ytFuture]);
+            // Wait for all, prefer FLAC then YouTube
+            final results = await Future.wait([flacFuture, ytFuture]);
             final flacResult = results[0];
-            final scResult = results[1];
-            final ytResult = results[2];
+            final ytResult = results[1];
             
-            ScraperResult? finalResult = flacResult ?? scResult ?? ytResult;
+            ScraperResult? finalResult = flacResult ?? ytResult;
             if (flacResult != null) {
               print('[NowPlayingScreen] Using FLAC source: ${flacResult.title}');
-            } else if (scResult != null) {
-              print('[NowPlayingScreen] Using SoundCloud source: ${scResult.title}');
             } else if (ytResult != null) {
               print('[NowPlayingScreen] Using YouTube fallback: ${ytResult.title}');
             }
@@ -1850,10 +1823,6 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
         source = 'Local Storage';
       } else if (linkType == 'youtube' || url.contains('youtube') || url.contains('googlevideo')) {
         source = 'YouTube';
-      } else if (linkType == 'soundcloud' || url.contains('soundcloud')) {
-        source = 'SoundCloud';
-      } else if (linkType == 'jiosaavn' || url.contains('jiosaavn')) {
-        source = 'JioSaavn';
       } else if (url.contains('lazy.flac.internal') || linkType == 'flac') {
         source = 'FLAC Scraper';
       } else if (item.extras?['torrentId'] != null && (item.extras?['torrentId'] as num) > 0) {
@@ -2364,19 +2333,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       final linkType = currentMedia.extras?['linkType'] as String?;
 
       // Handle SoundCloud resolution if needed
-      if (linkType == 'soundcloud') {
-        extension = '.mp3';
-        if (!url.startsWith('http')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Resolving SoundCloud source...')),
-          );
-          final repo = getIt<MusicRepository>();
-          final auth = currentMedia.extras?['track_authorization'] as String?;
-          url = await repo.getSoundcloudStreamUrl(url, trackAuthorization: auth);
-        }
-      } 
-      // Handle other lazy internal links
-      else if (url.contains('.internal')) {
+      // Handle lazy internal links
+      if (url.contains('.internal')) {
         // Here we could resolve TorBox lazy links if needed, 
         // but typically users download from the library for those.
         // For now, let's just alert the user if we can't resolve.

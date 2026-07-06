@@ -7,17 +7,12 @@ import 'package:injectable/injectable.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../settings/data/torbox_settings_repository.dart';
 import 'music_models.dart';
-import 'scrapers/archive_scraper.dart';
 import 'scrapers/music_scraper.dart';
-import 'scrapers/tidal_scraper.dart';
-import 'scrapers/masstamilan_scraper.dart';
 import 'scrapers/youtube_scraper.dart';
-import 'scrapers/jiosaavn_scraper.dart';
 import 'scrapers/last_fm_scraper.dart';
 import 'musicbrainz_service.dart';
 import 'itunes_metadata_service.dart';
 import 'deezer_service.dart';
-import 'scrapers/soundcloud_scraper.dart';
 import 'plugins/plugin_manager.dart';
 import 'scrapers/js_plugin_scraper.dart';
 import 'scrapers/eclipse_addon_scraper.dart';
@@ -85,9 +80,6 @@ abstract class MusicRepository {
   
   // Metadata Research
   Future<List<ItunesMeta>> searchDeezerMeta(String query);
-  Future<List<ItunesMeta>> searchJioSaavnMeta(String query);
-  Future<List<ItunesMeta>> searchSoundcloudMeta(String query);
-  Future<String?> getSoundcloudStreamUrl(String trackId, {String? trackAuthorization});
   
   // Deezer Charts
   // New recommendation methods using Deezer API
@@ -105,7 +97,6 @@ class MusicRepositoryImpl implements MusicRepository {
   final AppDatabase _db;
   final MusicBrainzService _mb;
   final DeezerService _deezer;
-  late final SoundcloudScraper _soundcloud;
   final LastFmService _lastFmService;
   final PluginManager _pluginManager;
   final _yt = YoutubeExplode();
@@ -127,14 +118,8 @@ class MusicRepositoryImpl implements MusicRepository {
     this._lastFmService,
     this._pluginManager,
   ) {
-    _soundcloud = SoundcloudScraper(_dio);
     _scrapers = [
-      InternetArchiveScraper(_dio),
-      TidalSquidScraper(_dio),
-      MasstamilanScraper(_dio),
       YouTubeScraper(),
-      JioSaavnScraper(_dio),
-      _soundcloud,
     ];
   }
 
@@ -1302,13 +1287,7 @@ class MusicRepositoryImpl implements MusicRepository {
     // 1. Built-in active scrapers
     final builtInActive = _scrapers.where((scraper) {
       bool enabled = true;
-      if (scraper is InternetArchiveScraper) enabled = _settings.isArchiveScraperEnabled;
-      else if (scraper is TidalSquidScraper) enabled = _settings.isTidalScraperEnabled;
-      else if (scraper is MasstamilanScraper) enabled = _settings.isMassTamilanScraperEnabled;
-      else if (scraper is YouTubeScraper) enabled = _settings.isYouTubeScraperEnabled;
-      else if (scraper is JioSaavnScraper) enabled = _settings.isJioSaavnScraperEnabled;
-      else if (scraper is SoundcloudScraper) enabled = _settings.isSoundcloudScraperEnabled;
-      
+      if (scraper is YouTubeScraper) enabled = _settings.isYouTubeScraperEnabled;
       print('[MusicRepository] Built-in Scraper ${scraper.name} is ${enabled ? "ACTIVE" : "DISABLED"}');
       return enabled;
     }).toList();
@@ -1969,55 +1948,5 @@ class MusicRepositoryImpl implements MusicRepository {
       print('[MusicRepository] searchDeezerMeta error: $e');
       return [];
     }
-  }
-
-  @override
-  Future<List<ItunesMeta>> searchJioSaavnMeta(String query) async {
-    try {
-      final scraper = _scrapers.whereType<JioSaavnScraper>().first;
-      final results = await scraper.search(query);
-      return results.map((r) {
-        return ItunesMeta(
-          trackName: r.title,
-          artistName: r.artist,
-          artworkUrlLow: r.thumbnail,
-          artworkUrlHigh: r.thumbnail,
-          album: r.album,
-          // duration from scraper is "m:ss" string, we might need millis if possible
-          // but ItunesMeta uses trackTimeMillis. 
-          // Let's see if we can get it from extras if scraper puts it there.
-        );
-      }).toList();
-    } catch (e) {
-      print('[MusicRepository] searchJioSaavnMeta error: $e');
-      return [];
-    }
-  }
-
-  @override
-  Future<List<ItunesMeta>> searchSoundcloudMeta(String query) async {
-    try {
-      final results = await _soundcloud.search(query);
-      return results.map((r) {
-        return ItunesMeta(
-          trackName: r.title,
-          artistName: r.artist,
-          artworkUrlLow: r.thumbnail,
-          artworkUrlHigh: r.thumbnail?.replaceFirst('-t500x500.', '-original.'),
-          album: r.album,
-          trackTimeMillis: r.extras?['full_duration_ms'],
-          id: r.url,
-          extras: r.extras,
-        );
-      }).toList();
-    } catch (e) {
-      print('[MusicRepository] SoundCloud meta search error: $e');
-      return [];
-    }
-  }
-
-  @override
-  Future<String?> getSoundcloudStreamUrl(String trackId, {String? trackAuthorization}) async {
-    return _soundcloud.resolveStreamUrl(trackId, trackAuthorization: trackAuthorization);
   }
 }

@@ -13,7 +13,7 @@ import 'package:isai/main.dart';
 import '../../../core/di/injection.dart';
 import 'playlist_providers.dart';
 
-enum MetadataProvider { iTunes, jioSaavn, soundCloud }
+enum MetadataProvider { iTunes }
 
 class MetadataPickerSheet extends ConsumerStatefulWidget {
   final TorBoxFile file;
@@ -66,12 +66,6 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
       if (_selectedSource == MetadataProvider.iTunes) {
         print('[MetadataPicker] Searching iTunes: $query');
         results = await getIt<ItunesMetadataService>().searchMeta(query);
-      } else if (_selectedSource == MetadataProvider.jioSaavn) {
-        print('[MetadataPicker] Searching JioSaavn: $query');
-        results = await getIt<MusicRepository>().searchJioSaavnMeta(query);
-      } else if (_selectedSource == MetadataProvider.soundCloud) {
-        print('[MetadataPicker] Searching SoundCloud: $query');
-        results = await getIt<MusicRepository>().searchSoundcloudMeta(query);
       }
       print('[MetadataPicker] Found ${results.length} results');
 
@@ -144,10 +138,6 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
             child: Row(
               children: [
                 _buildSourceTab('iTunes', MetadataProvider.iTunes),
-                const SizedBox(width: 8),
-                _buildSourceTab('Saavn', MetadataProvider.jioSaavn),
-                const SizedBox(width: 8),
-                _buildSourceTab('SoundCloud', MetadataProvider.soundCloud),
               ],
             ),
           ),
@@ -159,7 +149,7 @@ class _MetadataPickerSheetState extends ConsumerState<MetadataPickerSheet> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search ${_selectedSource == MetadataProvider.iTunes ? 'iTunes' : _selectedSource == MetadataProvider.jioSaavn ? 'JioSaavn' : 'SoundCloud'}...',
+                hintText: 'Search iTunes...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.clear),

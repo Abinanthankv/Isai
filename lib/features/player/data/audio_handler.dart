@@ -1125,14 +1125,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         
         torrentId = -1;
         fileId = (item.extras?['fileId'] as num?)?.toInt() ?? (realUrl != null ? -realUrl.hashCode.abs() : -1);
-      } else if (linkType == 'soundcloud') {
-        final trackId = item.id;
-        final trackAuthorization = item.extras?['track_authorization'] as String?;
-        print('[AudioHandler] Resolving SoundCloud track: $trackId (auth=${trackAuthorization != null})');
-        realUrl = await repo.getSoundcloudStreamUrl(trackId, trackAuthorization: trackAuthorization);
-        resolvedLinkType = 'soundcloud';
-        torrentId = -1;
-        fileId = (item.extras?['fileId'] as num?)?.toInt() ?? -trackId.hashCode.abs();
       } else if (isFlac) {
         final title = uri.queryParameters['title'] ?? item.title;
         final artist = uri.queryParameters['artist'] ?? item.artist ?? '';

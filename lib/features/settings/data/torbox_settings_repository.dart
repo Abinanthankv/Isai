@@ -6,23 +6,8 @@ abstract class TorBoxSettingsRepository {
   String? get apiKey;
   bool get hasApiKey;
   
-  Future<void> setArchiveScraperEnabled(bool enabled);
-  bool get isArchiveScraperEnabled;
-  
-  Future<void> setTidalScraperEnabled(bool enabled);
-  bool get isTidalScraperEnabled;
-
-  Future<void> setMassTamilanScraperEnabled(bool enabled);
-  bool get isMassTamilanScraperEnabled;
-
   Future<void> setYouTubeScraperEnabled(bool enabled);
   bool get isYouTubeScraperEnabled;
-
-  Future<void> setJioSaavnScraperEnabled(bool enabled);
-  bool get isJioSaavnScraperEnabled;
-
-  Future<void> setSoundcloudScraperEnabled(bool enabled);
-  bool get isSoundcloudScraperEnabled;
 
   Future<void> setDownloadFolders(List<String> folders);
   List<String> get downloadFolders;
@@ -154,34 +139,9 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
   Future<void> setApiKey(String key) => _prefs.setString(_keyApiKey, key);
 
   @override
-  bool get isArchiveScraperEnabled => _prefs.getBool('enable_archive_scraper') ?? false; // Default false
-  @override
-  Future<void> setArchiveScraperEnabled(bool enabled) => _prefs.setBool('enable_archive_scraper', enabled);
-
-  @override
-  bool get isTidalScraperEnabled => _prefs.getBool('enable_tidal_scraper') ?? false; // Default false
-  @override
-  Future<void> setTidalScraperEnabled(bool enabled) => _prefs.setBool('enable_tidal_scraper', enabled);
-
-  @override
-  bool get isMassTamilanScraperEnabled => _prefs.getBool('enable_masstamilan_scraper') ?? false; // Default false
-  @override
-  Future<void> setMassTamilanScraperEnabled(bool enabled) => _prefs.setBool('enable_masstamilan_scraper', enabled);
-
-  @override
   bool get isYouTubeScraperEnabled => _prefs.getBool('enable_youtube_scraper') ?? true;
   @override
   Future<void> setYouTubeScraperEnabled(bool enabled) => _prefs.setBool('enable_youtube_scraper', enabled);
-
-  @override
-  bool get isJioSaavnScraperEnabled => _prefs.getBool('enable_jiosaavn_scraper') ?? false; // Default false
-  @override
-  Future<void> setJioSaavnScraperEnabled(bool enabled) => _prefs.setBool('enable_jiosaavn_scraper', enabled);
-
-  @override
-  bool get isSoundcloudScraperEnabled => _prefs.getBool('enable_soundcloud_scraper') ?? false; // Default false
-  @override
-  Future<void> setSoundcloudScraperEnabled(bool enabled) => _prefs.setBool('enable_soundcloud_scraper', enabled);
 
   @override
   List<String> get downloadFolders => _prefs.getStringList('download_folders') ?? [];
