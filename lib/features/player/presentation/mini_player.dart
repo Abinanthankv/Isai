@@ -349,21 +349,19 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                       },
                                     ),
                                     const SizedBox(width: 4),
-                                    GestureDetector(
-                                      onTap: () {},
-                                      behavior: HitTestBehavior.opaque,
-                                      child: GlassIconButton(
-                                        icon: (isAudiobook || isPodcast)
-                                            ? Icons.stop_rounded 
-                                            : Icons.skip_next_rounded,
-                                        size: 32,
-                                        onPressed: () {
-                                          HapticFeedback.mediumImpact();
-                                          if (isAudiobook || isPodcast) {
-                                            audioHandler.stop();
-                                          }
-                                        },
-                                      ),
+                                    GlassIconButton(
+                                      icon: (isAudiobook || isPodcast)
+                                          ? Icons.stop_rounded 
+                                          : Icons.skip_next_rounded,
+                                      size: 32,
+                                      onPressed: () {
+                                        HapticFeedback.mediumImpact();
+                                        if (isAudiobook || isPodcast) {
+                                          audioHandler.stop();
+                                        } else {
+                                          audioHandler.skipToNext();
+                                        }
+                                      },
                                     ),
                                   ],
                                 ),
