@@ -360,11 +360,18 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
       genre: Value(meta.genre),
     ));
 
-    // Refresh AudioHandler if this track is currently playing
-    // For playlists, we use the virtual fileId (negative trackId)
+    // Refresh AudioHandler if this track is currently playing (pass metadata directly)
     await audioHandler.customAction('refresh_metadata', {
       'torrentId': -1,
       'fileId': -trackId,
+      '_meta_title': meta.trackName,
+      '_meta_artist': meta.artistName,
+      '_meta_album': meta.album,
+      '_meta_genre': meta.genre,
+      '_meta_releaseYear': meta.releaseYear,
+      '_meta_trackTimeMillis': meta.trackTimeMillis,
+      '_meta_artworkHigh': meta.artworkUrlHigh,
+      '_meta_artworkLow': meta.artworkUrlLow,
     });
   }
 

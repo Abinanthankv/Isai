@@ -1695,15 +1695,16 @@ class LibraryNotifier extends Notifier<LibraryState> {
       final res = await _itunes.fetchMeta(dbMeta?.trackTitle ?? parsed.title, dbMeta?.artist ?? parsed.artist);
 
       if (res != null) {
+        final existingStateMeta = state.metadata[key];
         final meta = ItunesMeta(
-          trackName: dbMeta?.trackTitle ?? res.trackName ?? parsed.title,
-          artistName: dbMeta?.artist ?? res.artistName ?? parsed.artist,
-          artworkUrlLow: dbMeta?.artworkUrlLow ?? res.artworkUrlLow,
-          artworkUrlHigh: dbMeta?.artworkUrlHigh ?? res.artworkUrlHigh,
-          album: (dbMeta?.album == null || dbMeta!.album!.isEmpty) ? res.album : dbMeta.album,
-          genre: (dbMeta?.genre == null || dbMeta!.genre!.isEmpty) ? res.genre : dbMeta.genre,
-          releaseYear: dbMeta?.releaseYear ?? res.releaseYear,
-          trackTimeMillis: dbMeta?.trackTimeMillis ?? res.trackTimeMillis,
+          trackName: existingStateMeta?.trackName ?? dbMeta?.trackTitle ?? res.trackName ?? parsed.title,
+          artistName: existingStateMeta?.artistName ?? dbMeta?.artist ?? res.artistName ?? parsed.artist,
+          artworkUrlLow: existingStateMeta?.artworkUrlLow ?? dbMeta?.artworkUrlLow ?? res.artworkUrlLow,
+          artworkUrlHigh: existingStateMeta?.artworkUrlHigh ?? dbMeta?.artworkUrlHigh ?? res.artworkUrlHigh,
+          album: existingStateMeta?.album ?? (dbMeta?.album?.isNotEmpty == true ? dbMeta!.album : res.album),
+          genre: existingStateMeta?.genre ?? (dbMeta?.genre?.isNotEmpty == true ? dbMeta!.genre : res.genre),
+          releaseYear: existingStateMeta?.releaseYear ?? dbMeta?.releaseYear ?? res.releaseYear,
+          trackTimeMillis: existingStateMeta?.trackTimeMillis ?? dbMeta?.trackTimeMillis ?? res.trackTimeMillis,
         );
         final metaMap = Map<String, ItunesMeta>.from(state.metadata);
         metaMap[key] = meta;
@@ -1817,10 +1818,18 @@ class LibraryNotifier extends Notifier<LibraryState> {
       artworkUrlHigh: Value(meta.artworkUrlHigh),
     ));
 
-    // Refresh AudioHandler if this track is currently playing
+    // Refresh AudioHandler if this track is currently playing (pass metadata directly)
     await audioHandler.customAction('refresh_metadata', {
       'torrentId': file.torrentId,
       'fileId': file.id,
+      '_meta_title': meta.trackName,
+      '_meta_artist': meta.artistName,
+      '_meta_album': meta.album,
+      '_meta_genre': meta.genre,
+      '_meta_releaseYear': meta.releaseYear,
+      '_meta_trackTimeMillis': meta.trackTimeMillis,
+      '_meta_artworkHigh': meta.artworkUrlHigh,
+      '_meta_artworkLow': meta.artworkUrlLow,
     });
   }
 

@@ -1692,25 +1692,60 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       final currentFileId = (current.extras?['fileId'] as num?)?.toInt();
       
       if (currentTorrentId == torrentId && currentFileId == fileId) {
-        // Directly read fresh data from DB and broadcast immediately — bypasses enrichment lock
         try {
-          final db = getIt<AppDatabase>();
-          final libMeta = await db.getTrackMetadata(torrentId, fileId);
-          if (libMeta != null) {
-            final resolvedArtUri = (libMeta.artworkUrlHigh != null && libMeta.artworkUrlHigh!.isNotEmpty)
-                ? Uri.parse(libMeta.artworkUrlHigh!)
-                : (libMeta.artworkUrlLow != null && libMeta.artworkUrlLow!.isNotEmpty)
-                    ? Uri.parse(libMeta.artworkUrlLow!)
-                    : current.artUri;
+          String? title;
+          String? artist;
+          String? album;
+          String? genre;
+          int? releaseYear;
+          int? trackTimeMillis;
+          Uri? artUri;
 
+          // Use directly provided metadata if available (avoids DB re-read race)
+          if (extras?.containsKey('_meta_title') == true) {
+            title = extras!['_meta_title'] as String?;
+            artist = extras['_meta_artist'] as String?;
+            album = extras['_meta_album'] as String?;
+            genre = extras['_meta_genre'] as String?;
+            releaseYear = extras['_meta_releaseYear'] as int?;
+            trackTimeMillis = extras['_meta_trackTimeMillis'] as int?;
+            final artHigh = extras['_meta_artworkHigh'] as String?;
+            final artLow = extras['_meta_artworkLow'] as String?;
+            if (artHigh != null && artHigh.isNotEmpty) {
+              artUri = Uri.parse(artHigh);
+            } else if (artLow != null && artLow.isNotEmpty) {
+              artUri = Uri.parse(artLow);
+            } else {
+              artUri = current.artUri;
+            }
+          } else {
+            // Fallback: read from DB
+            final db = getIt<AppDatabase>();
+            final libMeta = await db.getTrackMetadata(torrentId, fileId);
+            if (libMeta != null) {
+              title = libMeta.trackTitle;
+              artist = libMeta.artist;
+              album = libMeta.album;
+              genre = libMeta.genre;
+              releaseYear = libMeta.releaseYear;
+              trackTimeMillis = libMeta.trackTimeMillis;
+              artUri = (libMeta.artworkUrlHigh != null && libMeta.artworkUrlHigh!.isNotEmpty)
+                  ? Uri.parse(libMeta.artworkUrlHigh!)
+                  : (libMeta.artworkUrlLow != null && libMeta.artworkUrlLow!.isNotEmpty)
+                      ? Uri.parse(libMeta.artworkUrlLow!)
+                      : current.artUri;
+            }
+          }
+
+          if (title != null || artist != null || album != null) {
             final refreshed = current.copyWith(
-              title: libMeta.trackTitle ?? current.title,
-              artist: libMeta.artist ?? current.artist,
-              album: libMeta.album ?? current.album,
-              artUri: resolvedArtUri,
+              title: title ?? current.title,
+              artist: artist ?? current.artist,
+              album: album ?? current.album,
+              artUri: artUri ?? current.artUri,
               extras: {
                 if (current.extras != null) ...current.extras!,
-                if (libMeta.genre != null) 'genre': libMeta.genre,
+                if (genre != null) 'genre': genre,
               },
             );
             mediaItem.add(refreshed);
@@ -1722,10 +1757,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 newQueue[index] = refreshed;
                 queue.add(newQueue);
               }
-              // Force re-enrichment of adjacent tracks
               _metadataEnrichingIndices.remove(index);
             }
-            print('[AudioHandler] refresh_metadata: broadcasted fresh data for "${refreshed.title}" | art=${refreshed.artUri != null}');
           }
         } catch (e) {
           print('[AudioHandler] refresh_metadata error: $e');
