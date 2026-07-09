@@ -249,22 +249,39 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     final library = ref.read(libraryProvider);
     final currentMedia = audioHandler.mediaItem.value;
     
-    // Priority 1: Check if song exists in library
+    // If this track is already active in the player, return early.
+    if (currentMedia != null && (
+        currentMedia.extras?['fileId'] == widget.file.id && 
+        currentMedia.extras?['torrentId'] == widget.file.torrentId
+    )) {
+      print('[NowPlayingScreen] Already active, returning early.');
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    // Priority 1: Check if song exists in library (only if not already playing)
     TorBoxFile activeFile = widget.file;
     if (activeFile.torrentId == -1) {
       final parsed = parseFilename(activeFile.displayName);
       final matched = library.findMatchingTrack(parsed.title, parsed.artist);
       if (matched != null) {
+        // Re-check with matched file
+        if (currentMedia != null &&
+            currentMedia.extras?['fileId'] == matched.id &&
+            currentMedia.extras?['torrentId'] == matched.torrentId) {
+          print('[NowPlayingScreen] Already active (matched library track), returning early.');
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
         print('[NowPlayingScreen] Virtual track matched with library: ${matched.displayName}');
         activeFile = matched;
       }
     }
 
-    // If this track is already active in the player, don't show full-screen loader.
-    // We check both the matched library version and the original widget file version.
+    // Check again with the (possibly matched) activeFile
     final isAlreadyActive = currentMedia != null && (
-        (currentMedia.extras?['fileId'] == activeFile.id && currentMedia.extras?['torrentId'] == activeFile.torrentId) ||
-        (currentMedia.extras?['fileId'] == widget.file.id && currentMedia.extras?['torrentId'] == widget.file.torrentId)
+        currentMedia.extras?['fileId'] == activeFile.id && 
+        currentMedia.extras?['torrentId'] == activeFile.torrentId
     );
 
     if (!mounted) return;
@@ -274,7 +291,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     });
 
     if (isAlreadyActive) {
-       print('[NowPlayingScreen] Already active (Raw matches: ${currentMedia?.extras?['fileId'] == widget.file.id}), returning early.');
+       print('[NowPlayingScreen] Already active, returning early.');
        return;
     }
 
