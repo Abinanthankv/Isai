@@ -8,8 +8,8 @@ abstract class LyricsScraper {
 class LrclibScraper implements LyricsScraper {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://lrclib.net',
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
   ));
 
   @override
@@ -105,8 +105,8 @@ class LrclibScraper implements LyricsScraper {
 class LyricsOvhScraper implements LyricsScraper {
   final Dio _dio = Dio(BaseOptions(
     baseUrl: 'https://api.lyrics.ovh',
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 10),
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
   ));
 
   @override

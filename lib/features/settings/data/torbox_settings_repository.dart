@@ -45,6 +45,21 @@ abstract class TorBoxSettingsRepository {
   Future<void> setPlayerControlLayout(String layout);
   String get playerControlLayout;
 
+  Future<void> setPlayerButtonStyle(String style);
+  String get playerButtonStyle;
+
+  Future<void> setPlayerMinimalistShowSource(bool show);
+  bool get playerMinimalistShowSource;
+
+  Future<void> setPlayerMinimalistShowLyrics(bool show);
+  bool get playerMinimalistShowLyrics;
+
+  Future<void> setPlayerMinimalistShowSleep(bool show);
+  bool get playerMinimalistShowSleep;
+
+  Future<void> setPlayerMinimalistShowQueue(bool show);
+  bool get playerMinimalistShowQueue;
+
   Future<void> setPlayerSpotifyCanvasEnabled(bool enabled);
   bool get playerSpotifyCanvasEnabled;
 
@@ -217,6 +232,36 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setPlayerControlLayout(String layout) => _prefs.setString('player_control_layout', layout);
+
+  @override
+  String get playerButtonStyle => _prefs.getString('player_button_style') ?? 'theme';
+
+  @override
+  Future<void> setPlayerButtonStyle(String style) => _prefs.setString('player_button_style', style);
+
+  @override
+  bool get playerMinimalistShowSource => _prefs.getBool('player_minimalist_show_source') ?? false;
+
+  @override
+  Future<void> setPlayerMinimalistShowSource(bool show) => _prefs.setBool('player_minimalist_show_source', show);
+
+  @override
+  bool get playerMinimalistShowLyrics => _prefs.getBool('player_minimalist_show_lyrics') ?? false;
+
+  @override
+  Future<void> setPlayerMinimalistShowLyrics(bool show) => _prefs.setBool('player_minimalist_show_lyrics', show);
+
+  @override
+  bool get playerMinimalistShowSleep => _prefs.getBool('player_minimalist_show_sleep') ?? false;
+
+  @override
+  Future<void> setPlayerMinimalistShowSleep(bool show) => _prefs.setBool('player_minimalist_show_sleep', show);
+
+  @override
+  bool get playerMinimalistShowQueue => _prefs.getBool('player_minimalist_show_queue') ?? false;
+
+  @override
+  Future<void> setPlayerMinimalistShowQueue(bool show) => _prefs.setBool('player_minimalist_show_queue', show);
 
   @override
   bool get playerSpotifyCanvasEnabled => _prefs.getBool('player_spotify_canvas_enabled') ?? false;

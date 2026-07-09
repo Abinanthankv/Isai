@@ -213,7 +213,7 @@ class _InteractiveControlsState extends State<InteractiveControls> with TickerPr
             onTap: widget.onPrevious,
             child: const Padding(
               padding: EdgeInsets.all(12),
-              child: Icon(Icons.skip_previous_rounded, color: Colors.white, size: 36),
+              child: Icon(Icons.fast_rewind_rounded, color: Colors.white, size: 38),
             ),
           ),
         ),
@@ -232,24 +232,12 @@ class _InteractiveControlsState extends State<InteractiveControls> with TickerPr
                 child: child,
               );
             },
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Icon(
                 widget.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: 40,
-                color: Colors.black,
+                size: 54,
+                color: Colors.white,
               ),
             ),
           ),
@@ -271,7 +259,7 @@ class _InteractiveControlsState extends State<InteractiveControls> with TickerPr
             onTap: widget.onNext,
             child: const Padding(
               padding: EdgeInsets.all(12),
-              child: Icon(Icons.skip_next_rounded, color: Colors.white, size: 36),
+              child: Icon(Icons.fast_forward_rounded, color: Colors.white, size: 38),
             ),
           ),
         ),

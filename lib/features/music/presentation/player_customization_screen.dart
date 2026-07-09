@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'player_visuals.dart';
@@ -387,7 +388,7 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                       children: [
                         _LayoutOption(
                           title: 'Standard',
-                          subtitle: 'Full controls and volume bar',
+                          subtitle: 'Full controls and bottom bar',
                           isSelected: settings.playerControlLayout == 'standard',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerControlLayout('standard'),
                         ),
@@ -397,6 +398,82 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           subtitle: 'Clean, artwork-focused view',
                           isSelected: settings.playerControlLayout == 'minimalist',
                           onTap: () => ref.read(settingsProvider.notifier).setPlayerControlLayout('minimalist'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+
+                  // --- Minimalist Icons Toggles ---
+                  if (settings.playerControlLayout == 'minimalist') ...[
+                    AppleMusicSectionHeader(title: 'Minimalist Layout Icons'),
+                    GlassCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          _CustomizationSwitchTile(
+                            icon: Icons.alt_route_rounded,
+                            title: 'Show Source Button',
+                            subtitle: 'Toggle stream source selection button',
+                            value: settings.playerMinimalistShowSource,
+                            onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerMinimalistShowSource(val),
+                          ),
+                          const Divider(height: 1, indent: 16),
+                          _CustomizationSwitchTile(
+                            icon: CupertinoIcons.quote_bubble_fill,
+                            title: 'Show Lyrics Button',
+                            subtitle: 'Toggle fullscreen lyrics screen overlay button',
+                            value: settings.playerMinimalistShowLyrics,
+                            onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerMinimalistShowLyrics(val),
+                          ),
+                          const Divider(height: 1, indent: 16),
+                          _CustomizationSwitchTile(
+                            icon: Icons.bedtime_outlined,
+                            title: 'Show Sleep Timer Button',
+                            subtitle: 'Toggle sleep timer setup overlay button',
+                            value: settings.playerMinimalistShowSleep,
+                            onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerMinimalistShowSleep(val),
+                          ),
+                          const Divider(height: 1, indent: 16),
+                          _CustomizationSwitchTile(
+                            icon: Icons.list_rounded,
+                            title: 'Show Up Next Queue Button',
+                            subtitle: 'Toggle playlist queue view button',
+                            value: settings.playerMinimalistShowQueue,
+                            onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerMinimalistShowQueue(val),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // --- Button Style ---
+                  AppleMusicSectionHeader(title: 'Button Theme Style'),
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _LayoutOption(
+                          title: 'Follow App Theme',
+                          subtitle: 'Buttons style matches selected overall app theme',
+                          isSelected: settings.playerButtonStyle == 'theme',
+                          onTap: () => ref.read(settingsProvider.notifier).setPlayerButtonStyle('theme'),
+                        ),
+                        const Divider(height: 1, indent: 16),
+                        _LayoutOption(
+                          title: 'Apple Music Style',
+                          subtitle: 'Simple raw icons play controls (double arrow next/prev)',
+                          isSelected: settings.playerButtonStyle == 'apple',
+                          onTap: () => ref.read(settingsProvider.notifier).setPlayerButtonStyle('apple'),
+                        ),
+                        const Divider(height: 1, indent: 16),
+                        _LayoutOption(
+                          title: 'Material 3 Style',
+                          subtitle: 'Capsule play/pause and rounded square control backgrounds',
+                          isSelected: settings.playerButtonStyle == 'm3',
+                          onTap: () => ref.read(settingsProvider.notifier).setPlayerButtonStyle('m3'),
                         ),
                       ],
                     ),
@@ -557,9 +634,27 @@ class _PlayerPreview extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       Icon(Icons.shuffle, color: theme.colorScheme.onSurface.withValues(alpha: 0.3), size: 20),
-                      Icon(Icons.skip_previous_rounded, color: theme.colorScheme.onSurface, size: 32),
-                      Icon(Icons.play_circle_fill_rounded, color: theme.colorScheme.onSurface, size: 48),
-                      Icon(Icons.skip_next_rounded, color: theme.colorScheme.onSurface, size: 32),
+                      Icon(
+                        (settings.playerButtonStyle == 'theme' ? settings.appThemeStyle == 'material3' : settings.playerButtonStyle == 'm3')
+                            ? Icons.skip_previous_rounded
+                            : Icons.fast_rewind_rounded,
+                        color: theme.colorScheme.onSurface,
+                        size: 32,
+                      ),
+                      Icon(
+                        (settings.playerButtonStyle == 'theme' ? settings.appThemeStyle == 'material3' : settings.playerButtonStyle == 'm3')
+                            ? Icons.play_circle_fill_rounded
+                            : Icons.play_arrow_rounded,
+                        color: theme.colorScheme.onSurface,
+                        size: 48,
+                      ),
+                      Icon(
+                        (settings.playerButtonStyle == 'theme' ? settings.appThemeStyle == 'material3' : settings.playerButtonStyle == 'm3')
+                            ? Icons.skip_next_rounded
+                            : Icons.fast_forward_rounded,
+                        color: theme.colorScheme.onSurface,
+                        size: 32,
+                      ),
                       Icon(
                         settings.playerLikeIcon == 'heart' ? Icons.favorite : 
                         (settings.playerLikeIcon == 'thumb' ? Icons.thumb_up : Icons.card_giftcard),

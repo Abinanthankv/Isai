@@ -74,6 +74,11 @@ class SettingsState {
   final double playerLyricsFontSize;
   final String playerLyricsAlignment;
   final String playerControlLayout;
+  final String playerButtonStyle;
+  final bool playerMinimalistShowSource;
+  final bool playerMinimalistShowLyrics;
+  final bool playerMinimalistShowSleep;
+  final bool playerMinimalistShowQueue;
   // Visualizer
   final bool visualizerEnabled;
   final bool visualizerShowNowPlaying;
@@ -125,6 +130,11 @@ class SettingsState {
     this.playerLyricsFontSize = 18.0,
     this.playerLyricsAlignment = 'center',
     this.playerControlLayout = 'standard',
+    this.playerButtonStyle = 'theme',
+    this.playerMinimalistShowSource = false,
+    this.playerMinimalistShowLyrics = false,
+    this.playerMinimalistShowSleep = false,
+    this.playerMinimalistShowQueue = false,
     this.visualizerEnabled = false,
     this.visualizerShowNowPlaying = true,
     this.visualizerShowMiniPlayer = true,
@@ -174,6 +184,11 @@ class SettingsState {
     double? playerLyricsFontSize,
     String? playerLyricsAlignment,
     String? playerControlLayout,
+    String? playerButtonStyle,
+    bool? playerMinimalistShowSource,
+    bool? playerMinimalistShowLyrics,
+    bool? playerMinimalistShowSleep,
+    bool? playerMinimalistShowQueue,
     bool? visualizerEnabled,
     bool? visualizerShowNowPlaying,
     bool? visualizerShowMiniPlayer,
@@ -222,6 +237,11 @@ class SettingsState {
       playerLyricsFontSize: playerLyricsFontSize ?? this.playerLyricsFontSize,
       playerLyricsAlignment: playerLyricsAlignment ?? this.playerLyricsAlignment,
       playerControlLayout: playerControlLayout ?? this.playerControlLayout,
+      playerButtonStyle: playerButtonStyle ?? this.playerButtonStyle,
+      playerMinimalistShowSource: playerMinimalistShowSource ?? this.playerMinimalistShowSource,
+      playerMinimalistShowLyrics: playerMinimalistShowLyrics ?? this.playerMinimalistShowLyrics,
+      playerMinimalistShowSleep: playerMinimalistShowSleep ?? this.playerMinimalistShowSleep,
+      playerMinimalistShowQueue: playerMinimalistShowQueue ?? this.playerMinimalistShowQueue,
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
       visualizerShowNowPlaying: visualizerShowNowPlaying ?? this.visualizerShowNowPlaying,
       visualizerShowMiniPlayer: visualizerShowMiniPlayer ?? this.visualizerShowMiniPlayer,
@@ -281,6 +301,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
       playerLyricsFontSize: _settings.playerLyricsFontSize,
       playerLyricsAlignment: _settings.playerLyricsAlignment,
       playerControlLayout: _settings.playerControlLayout,
+      playerButtonStyle: _settings.playerButtonStyle,
+      playerMinimalistShowSource: _settings.playerMinimalistShowSource,
+      playerMinimalistShowLyrics: _settings.playerMinimalistShowLyrics,
+      playerMinimalistShowSleep: _settings.playerMinimalistShowSleep,
+      playerMinimalistShowQueue: _settings.playerMinimalistShowQueue,
       visualizerEnabled: _settings.visualizerEnabled,
       visualizerShowNowPlaying: _settings.visualizerShowNowPlaying,
       visualizerShowMiniPlayer: _settings.visualizerShowMiniPlayer,
@@ -487,6 +512,31 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setPlayerControlLayout(String layout) async {
     await _settings.setPlayerControlLayout(layout);
     state = state.copyWith(playerControlLayout: layout);
+  }
+
+  Future<void> setPlayerButtonStyle(String style) async {
+    await _settings.setPlayerButtonStyle(style);
+    state = state.copyWith(playerButtonStyle: style);
+  }
+
+  Future<void> setPlayerMinimalistShowSource(bool show) async {
+    await _settings.setPlayerMinimalistShowSource(show);
+    state = state.copyWith(playerMinimalistShowSource: show);
+  }
+
+  Future<void> setPlayerMinimalistShowLyrics(bool show) async {
+    await _settings.setPlayerMinimalistShowLyrics(show);
+    state = state.copyWith(playerMinimalistShowLyrics: show);
+  }
+
+  Future<void> setPlayerMinimalistShowSleep(bool show) async {
+    await _settings.setPlayerMinimalistShowSleep(show);
+    state = state.copyWith(playerMinimalistShowSleep: show);
+  }
+
+  Future<void> setPlayerMinimalistShowQueue(bool show) async {
+    await _settings.setPlayerMinimalistShowQueue(show);
+    state = state.copyWith(playerMinimalistShowQueue: show);
   }
 
   Future<void> setPlayerSpotifyCanvasEnabled(bool enabled) async {
