@@ -1909,6 +1909,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             await _player.seek(position, index: targetIndex + 1);
             await _playlist.removeAt(targetIndex);
             mediaItem.add(item);
+            // Resolve lazy URLs after source swap so duration updates properly
+            if (url != null && (url.contains('lazy.') || item.id.contains('lazy.'))) {
+              await _resolveTrack(targetIndex);
+            }
           } else {
             await _playlist.insert(targetIndex + 1, newSource);
             await _playlist.removeAt(targetIndex);
