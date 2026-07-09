@@ -128,15 +128,18 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       duration: const Duration(seconds: 8),
     ); */
     _loadAndPlay();
-    // Ensure metadata is fetched if missing, but only if we don't already have it fully
-    final existingMeta = ref.read(libraryProvider).metadata['${widget.file.torrentId}-${widget.file.id}'];
-    final hasArtwork = existingMeta?.artworkUrlHigh != null && existingMeta!.artworkUrlHigh!.isNotEmpty;
-    if (existingMeta == null || !hasArtwork || (existingMeta.genre == null && existingMeta.album == null)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ref.read(libraryProvider.notifier).enrichTrack(widget.file);
-        }
-      });
+    // Only enrich library tracks (torrentId != -1) — virtual/scraper tracks already have
+    // correct title/artist/artwork from the play action and don't need iTunes enrichment.
+    if (widget.file.torrentId != -1) {
+      final existingMeta = ref.read(libraryProvider).metadata['${widget.file.torrentId}-${widget.file.id}'];
+      final hasArtwork = existingMeta?.artworkUrlHigh != null && existingMeta!.artworkUrlHigh!.isNotEmpty;
+      if (existingMeta == null || !hasArtwork || (existingMeta.genre == null && existingMeta.album == null)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(libraryProvider.notifier).enrichTrack(widget.file);
+          }
+        });
+      }
     }
     
     // Listen for metadata changes to update audio handler if needed
