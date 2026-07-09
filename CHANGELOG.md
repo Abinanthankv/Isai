@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.8] - July 2026
+
+### Added
+- **Player Customization Screen**: New button style selector (Follow App Theme / Apple Music pink accent), toggle individual icons in minimalist layout (Source, Lyrics, Sleep Timer, Up Next Queue).
+- **Auto-Play from Scrapers**: Tapping Global Hot Tracks / Trending songs on Discover or For You pages now auto-resolves via installed addons and plays directly — source picker only shown if no addon finds a result.
+- **Queue Song Removal**: Remove individual songs from the Now Playing queue via the close button.
+- **Built-in Scraper Toggles**: Enable/disable individual built-in scrapers from the Addon Manager.
+- **Lyrics.ovh Provider**: Replaced dead Unison lyrics provider with lyrics.ovh free API.
+
+### Changed
+- **Now Playing UI**: Redesigned layout with full-screen lyrics toggle, redesigned transport controls (Apple Music-style play/pause, fast-forward/rewind icons), and configurable minimalist icon set.
+- **Metadata Fix Reliability**: Fixed metadata now immediately reflects in the Now Playing screen for both library and playlist tracks by passing data directly to the audio handler instead of re-reading from DB.
+- **Miniplayer Next Button**: Fixed blocking GestureDetector that prevented skip button from working; restored missing `skipToNext()` call for music tracks.
+- **Moved YouTube scraper to last**: Addons are now searched before YouTube, matching user priority from Addon Manager.
+- **Removed built-in scrapers (except YouTube)**: Decluttered default scraper list; remaining scrapers managed via Addon Manager.
+
+### Fixed
+- **Metadata Overwrite in enrichTrack**: iTunes results no longer overwrite existing correct artist/title/artwork — only used to fill missing genre/album.
+- **Miniplayer Next Button**: Two bugs fixed — wrapping GestureDetector blocking taps and missing `skipToNext()` call.
+- **Metadata Changes Not Reflecting**: Race condition between Riverpod listener and DB re-read eliminated by passing metadata directly to `customAction('refresh_metadata')`.
+- **Addon Search Order**: Addons now take priority over YouTube in search results.
+
 ## [1.0.7] - July 2026
 
 ### Added
