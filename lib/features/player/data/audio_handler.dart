@@ -1170,7 +1170,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           print('[AudioHandler] Using persistent local file: $localPath');
           final newItem = item.copyWith(
             id: Uri.file(localPath).toString(), 
-            duration: item.duration,
+            duration: _player.duration ?? mediaItem.value?.duration ?? item.duration,
             extras: {
               ...?item.extras,
               'torrentId': torrentId,
@@ -1248,7 +1248,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
         final newItem = item.copyWith(
           id: realUrl, 
-          duration: item.duration,
+          duration: _player.duration ?? mediaItem.value?.duration ?? item.duration,
           extras: {
             ...?item.extras,
             'torrentId': torrentId,
