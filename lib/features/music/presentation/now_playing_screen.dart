@@ -480,6 +480,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           'title': meta?.trackName ?? parsed.title,
           'artist': meta?.artistName ?? (parsed.artist.isNotEmpty ? parsed.artist : 'TorBox'),
           'artworkUrl': artwork,
+          'duration': meta?.trackTimeMillis?.toString(),
           'extras': {
             'torrentId': file.torrentId,
             'fileId': file.id,
@@ -503,6 +504,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
         'title': currentMeta?.trackName ?? currentParsed.title,
         'artist': currentMeta?.artistName ?? (currentParsed.artist.isNotEmpty ? currentParsed.artist : 'TorBox'),
         'artworkUrl': currentMeta?.artworkUrlHigh ?? currentMeta?.artworkUrlLow ?? widget.initialArtwork ?? '',
+        'duration': currentMeta?.trackTimeMillis?.toString(),
         'index': currentIndex >= 0 ? currentIndex : 0,
         'extras': {
           'torrentId': activeFile.torrentId,
@@ -3486,6 +3488,7 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
         torrentId: file.torrentId,
         fileId: file.id,
         source: 'Library',
+        duration: meta?.trackTimeMillis?.toString(),
       ),
     );
   }
