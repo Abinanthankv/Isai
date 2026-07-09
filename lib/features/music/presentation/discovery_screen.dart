@@ -176,6 +176,12 @@ class DiscoveryScreen extends ConsumerWidget {
         'artist': meta?.artistName ?? track.artistName,
         'artworkUrl': initialArtwork,
         'forceReplace': true,
+        'extras': {
+          'torrentId': matchingFile.torrentId,
+          'fileId': matchingFile.id,
+          'size': matchingFile.size,
+          'localPath': matchingFile.localPath,
+        },
       });
 
       if (context.mounted) {

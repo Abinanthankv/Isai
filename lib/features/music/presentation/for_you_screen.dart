@@ -1054,6 +1054,12 @@ class ForYouScreen extends ConsumerWidget {
         'artist': meta?.artistName ?? track.artistName,
         'artworkUrl': meta?.artworkUrlHigh ?? meta?.artworkUrlLow ?? track.artworkUrl,
         'forceReplace': true,
+        'extras': {
+          'torrentId': matchingFile.torrentId,
+          'fileId': matchingFile.id,
+          'size': matchingFile.size,
+          'localPath': matchingFile.localPath,
+        },
       });
 
       if (context.mounted) {
