@@ -7,10 +7,13 @@ import 'music_providers.dart';
 import 'music_search_screen.dart';
 import 'now_playing_screen.dart';
 import '../data/music_models.dart';
+import '../data/music_repository.dart';
 import 'album_screen.dart';
+import 'package:isai/core/di/injection.dart';
 import 'package:isai/core/theme/apple_music_theme.dart';
 import 'package:isai/core/theme/glassmorphism.dart';
 import 'package:isai/core/theme/apple_music_components.dart';
+import 'package:isai/core/utils/string_utils.dart';
 import 'downloads_screen.dart';
 import 'mood_details_screen.dart';
 import 'artist_screen.dart';
@@ -187,6 +190,59 @@ class DiscoveryScreen extends ConsumerWidget {
         );
       }
     } else {
+      // Try to auto-resolve via scrapers before showing source picker
+      final repo = getIt<MusicRepository>();
+      final cleanT = StringUtils.unescapeHtml(track.trackName);
+      final cleanA = StringUtils.unescapeHtml(track.artistName);
+      final query = '$cleanA $cleanT'.trim();
+
+      ScraperResult? autoResult;
+      try {
+        autoResult = await repo.searchFLACStream(query).first.timeout(
+          const Duration(seconds: 8),
+        );
+      } catch (_) {}
+
+      if (autoResult != null && context.mounted) {
+        final dummyFile = TorBoxFile(
+          id: -autoResult.url.hashCode.abs(),
+          torrentId: -1,
+          size: autoResult.size,
+          name: autoResult.title,
+          localPath: null,
+        );
+        final artwork = track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000');
+        await audioHandler.customAction('play', {
+          'url': autoResult.url,
+          'title': track.trackName,
+          'artist': track.artistName,
+          'artworkUrl': artwork,
+          'forceReplace': true,
+          'extras': {
+            'torrentId': dummyFile.torrentId,
+            'fileId': dummyFile.id,
+            'size': autoResult.size,
+            'localPath': null,
+            'source': autoResult.source,
+            'linkType': autoResult.linkType,
+            'format': autoResult.format,
+          },
+        });
+        if (context.mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => NowPlayingScreen(
+                file: dummyFile,
+                customQueue: [dummyFile],
+                initialArtwork: artwork,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
