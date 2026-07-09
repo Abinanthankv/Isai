@@ -11,6 +11,7 @@ import '../../music/data/plugins/js_plugin.dart';
 import '../../music/data/plugins/eclipse_addon.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/database/database.dart';
+import '../../settings/data/torbox_settings_repository.dart';
 import '../../music/data/music_models.dart';
 import '../../music/data/itunes_metadata_service.dart';
 import '../../youtube/data/youtube_video_service.dart';
@@ -2177,6 +2178,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
       final cacheFile = io.File('$_cachePath/${torrentId}_$fileId$ext');
       print('[AudioHandler] Using LockCachingAudioSource for ${item.title}. Cache exists: ${cacheFile.existsSync()}');
+      unawaited(_enforceSongCacheLimit());
       return LockCachingAudioSource(
         uri,
         cacheFile: cacheFile,
@@ -2191,6 +2193,39 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       tag: item,
       headers: commonHeaders,
     );
+  }
+
+  Future<void> _enforceSongCacheLimit() async {
+    try {
+      final settings = getIt<TorBoxSettingsRepository>();
+      final maxSizeMb = settings.maxSongCacheSize;
+      if (maxSizeMb == -1) return; // unlimited
+
+      final dir = io.Directory(_cachePath);
+      if (!await dir.exists()) return;
+
+      final entities = await dir.list(recursive: true, followLinks: false).toList();
+      int totalBytes = 0;
+      final files = <io.File>[];
+      for (final entity in entities) {
+        if (entity is io.File) {
+          totalBytes += await entity.length();
+          files.add(entity);
+        }
+      }
+
+      if (totalBytes > maxSizeMb * 1024 * 1024) {
+        print('[AudioHandler] Song cache ${(totalBytes / (1024 * 1024)).toStringAsFixed(1)}MB exceeds limit ${maxSizeMb}MB, clearing all cache files');
+        for (final file in files) {
+          try {
+            await file.delete();
+          } catch (_) {}
+        }
+        print('[AudioHandler] Song cache cleared');
+      }
+    } catch (e) {
+      print('[AudioHandler] Error enforcing song cache limit: $e');
+    }
   }
 
   AudioProcessingState _mapProcessingState(ProcessingState state) {
