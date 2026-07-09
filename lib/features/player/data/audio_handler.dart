@@ -1861,14 +1861,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
             artUri: parseArtworkUri(extras['artworkUrl'] as String?),
-            duration: extras['duration'] != null ? parseDuration(extras['duration']) : null,
-            extras: {
-              ...?requestedExtras,
-              if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
-            },
-          );
-          mediaItem.add(item);
-          await playMediaItem(item);
+        duration: extras['duration'] != null ? parseDuration(extras['duration']) : _player.duration,
+        extras: {
+          ...?requestedExtras,
+          if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
+        },
+      );
+      mediaItem.add(item);
+      await playMediaItem(item);
         }
         return;
       }
@@ -1895,7 +1895,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
             artUri: parseArtworkUri(extras['artworkUrl'] as String?),
-            duration: extras['duration'] != null ? parseDuration(extras['duration']) : currentQueue[targetIndex].duration,
+            duration: extras['duration'] != null ? parseDuration(extras['duration']) : (currentQueue[targetIndex].duration ?? _player.duration),
             extras: requestedExtras,
           );
 

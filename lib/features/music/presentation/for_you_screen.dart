@@ -1092,6 +1092,7 @@ class ForYouScreen extends ConsumerWidget {
           'title': track.trackName,
           'artist': track.artistName,
           'artworkUrl': artwork,
+          'duration': autoResult.duration,
           'forceReplace': true,
           'extras': {
             'torrentId': dummyFile.torrentId,

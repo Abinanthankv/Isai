@@ -189,7 +189,7 @@ class DiscoveryScreen extends ConsumerWidget {
           ),
         );
       }
-    } else {
+    } else if (context.mounted) {
       // Try to auto-resolve via scrapers before showing source picker
       final repo = getIt<MusicRepository>();
       final cleanT = StringUtils.unescapeHtml(track.trackName);
@@ -217,6 +217,7 @@ class DiscoveryScreen extends ConsumerWidget {
           'title': track.trackName,
           'artist': track.artistName,
           'artworkUrl': artwork,
+          'duration': autoResult.duration,
           'forceReplace': true,
           'extras': {
             'torrentId': dummyFile.torrentId,
