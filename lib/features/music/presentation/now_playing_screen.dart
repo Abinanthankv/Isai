@@ -2566,6 +2566,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       case LyricsProviderType.lrclib:
         providerLabel = 'LRCLIB';
         break;
+      case LyricsProviderType.kpoe:
+        providerLabel = 'KPoe';
+        break;
     }
 
     return Padding(
@@ -2654,8 +2657,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     Icons.auto_awesome,
                     color: currentProvider == LyricsProviderType.auto ? Theme.of(context).colorScheme.primary : Colors.white54,
                   ),
-                  title: Text('Auto (Priority Mirror Search)', style: TextStyle(color: Colors.white)),
-                  subtitle: Text('Searches lyrics.ovh first, falls back to LRCLIB', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                  title: Text('Auto (Best Match)', style: TextStyle(color: Colors.white)),
+                  subtitle: Text('KPoe word-synced → LRCLIB → Lyrics.ovh', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
                   trailing: currentProvider == LyricsProviderType.auto ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
                   onTap: () {
                     ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.auto, track, artist, album: album, durationMs: durationMs);
@@ -2685,6 +2688,19 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   trailing: currentProvider == LyricsProviderType.lrclib ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
                   onTap: () {
                     ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.lrclib, track, artist, album: album, durationMs: durationMs);
+                    Navigator.pop(context);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.waves,
+                    color: currentProvider == LyricsProviderType.kpoe ? Theme.of(context).colorScheme.primary : Colors.white54,
+                  ),
+                  title: Text('KPoe (Word-Synced)', style: TextStyle(color: Colors.white)),
+                  subtitle: Text('Apple Music / Spotify word-level lyrics via KPoe API', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,)),
+                  trailing: currentProvider == LyricsProviderType.kpoe ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
+                  onTap: () {
+                    ref.read(lyricsProvider.notifier).setProvider(LyricsProviderType.kpoe, track, artist, album: album, durationMs: durationMs);
                     Navigator.pop(context);
                   },
                 ),

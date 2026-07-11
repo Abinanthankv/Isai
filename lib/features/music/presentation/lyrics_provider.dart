@@ -6,6 +6,7 @@ enum LyricsProviderType {
   auto,
   lyricsOvh,
   lrclib,
+  kpoe,
 }
 
 class LyricsState {
@@ -39,6 +40,7 @@ class LyricsState {
 class LyricsNotifier extends Notifier<LyricsState> {
   final LyricsScraper _lyricsOvhScraper = LyricsOvhScraper();
   final LyricsScraper _lrclibScraper = LrclibScraper();
+  final LyricsScraper _kpoeScraper = KpoeScraper();
   String? _currentTrackKey;
   int _lastRequestId = 0;
   
@@ -87,11 +89,21 @@ class LyricsNotifier extends Notifier<LyricsState> {
 
     // Build the list of scrapers based on selected provider
     final scrapers = <MapEntry<LyricsProviderType, LyricsScraper>>[];
-    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.lyricsOvh) {
-      scrapers.add(MapEntry(LyricsProviderType.lyricsOvh, _lyricsOvhScraper));
-    }
-    if (state.selectedProvider == LyricsProviderType.auto || state.selectedProvider == LyricsProviderType.lrclib) {
+
+    if (state.selectedProvider == LyricsProviderType.auto) {
+      scrapers.add(MapEntry(LyricsProviderType.kpoe, _kpoeScraper));
       scrapers.add(MapEntry(LyricsProviderType.lrclib, _lrclibScraper));
+      scrapers.add(MapEntry(LyricsProviderType.lyricsOvh, _lyricsOvhScraper));
+    } else {
+      if (state.selectedProvider == LyricsProviderType.lyricsOvh) {
+        scrapers.add(MapEntry(LyricsProviderType.lyricsOvh, _lyricsOvhScraper));
+      }
+      if (state.selectedProvider == LyricsProviderType.lrclib) {
+        scrapers.add(MapEntry(LyricsProviderType.lrclib, _lrclibScraper));
+      }
+      if (state.selectedProvider == LyricsProviderType.kpoe) {
+        scrapers.add(MapEntry(LyricsProviderType.kpoe, _kpoeScraper));
+      }
     }
 
     try {
