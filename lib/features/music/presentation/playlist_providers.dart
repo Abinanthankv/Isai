@@ -95,13 +95,36 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
       _findTracksInJson(data, parsedTracks);
 
       // Fetch all remaining pages via continuation tokens
-      String? continuation = _extractContinuation(data);
-      while (continuation != null) {
-        final pageData = await _fetchYoutubeContinuationPage(continuation);
-        if (pageData == null) break;
-        _findTracksInJson(pageData, parsedTracks);
-        continuation = _extractContinuation(pageData);
+      String? continuation;
+      int pageCount = 0;
+      try {
+        continuation = _findContinuationToken(data);
+        print('[YoutubeImport] Initial tracks: ${parsedTracks.length}, continuation: ${continuation != null}');
+      } catch (e) {
+        print('[YoutubeImport] Error finding initial continuation: $e');
       }
+      while (continuation != null) {
+        pageCount++;
+        print('[YoutubeImport] Fetching continuation page $pageCount...');
+        final pageData = await _fetchYoutubeContinuationPage(continuation);
+        if (pageData == null) {
+          print('[YoutubeImport] Continuation page $pageCount returned null');
+          break;
+        }
+        final before = parsedTracks.length;
+        _findTracksInJson(pageData, parsedTracks);
+        print('[YoutubeImport] Page $pageCount: added ${parsedTracks.length - before} tracks (total: ${parsedTracks.length})');
+        try {
+          continuation = _findContinuationToken(pageData);
+        } catch (e) {
+          print('[YoutubeImport] Error finding continuation: $e');
+          break;
+        }
+        if (continuation == null) {
+          print('[YoutubeImport] No more continuation tokens');
+        }
+      }
+      print('[YoutubeImport] Total tracks fetched: ${parsedTracks.length} across ${pageCount + 1} pages');
 
       if (playlistArtwork == null && parsedTracks.isNotEmpty) {
         playlistArtwork = parsedTracks.first['artworkUrl'];
@@ -137,62 +160,79 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     }
   }
 
-  static String? _extractContinuation(dynamic data) {
+  static String? _findContinuationToken(dynamic data) {
     if (data is! Map) return null;
+    // First check the common continuationContents path (used in InnerTube browse responses)
     try {
-      final items = data['contents']?['twoColumnBrowseResultsRenderer']
-          ?['tabs']?[0]?['tabRenderer']?['content']
-          ?['sectionListRenderer']?['contents']?[0]
-          ?['itemSectionRenderer']?['contents']?[0]
-          ?['playlistVideoListRenderer']?['contents'] as List?;
-      if (items == null) {
-        // Try continuationContents path (for subsequent pages)
-        final contItems = data['continuationContents']
-            ?['playlistVideoListContinuation']?['contents'] as List?;
-        if (contItems == null) return null;
-        for (final item in contItems.reversed) {
-          if (item is Map && item.containsKey('continuationItemRenderer')) {
-            return item['continuationItemRenderer']
-                ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+      final contContents = data['continuationContents'] as Map?;
+      if (contContents != null) {
+        for (final entry in contContents.values) {
+          if (entry is Map && entry['contents'] is List) {
+            for (final item in (entry['contents'] as List).reversed) {
+              if (item is Map && item['continuationItemRenderer'] is Map) {
+                final token = item['continuationItemRenderer']
+                    ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+                if (token != null && token.isNotEmpty) return token;
+              }
+            }
           }
-        }
-        return null;
-      }
-      for (final item in items.reversed) {
-        if (item is Map && item.containsKey('continuationItemRenderer')) {
-          return item['continuationItemRenderer']
-              ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
         }
       }
     } catch (_) {}
+    // Recurse through entire tree to find any continuationItemRenderer
+    return _findContinuationRecursive(data);
+  }
+
+  static String? _findContinuationRecursive(dynamic node) {
+    if (node is Map) {
+      if (node.containsKey('continuationItemRenderer')) {
+        try {
+          final token = node['continuationItemRenderer']
+              ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+          if (token != null && token.isNotEmpty) return token;
+        } catch (_) {}
+      }
+      for (final val in node.values) {
+        final result = _findContinuationRecursive(val);
+        if (result != null) return result;
+      }
+    } else if (node is List) {
+      for (final val in node) {
+        final result = _findContinuationRecursive(val);
+        if (result != null) return result;
+      }
+    }
     return null;
   }
 
   static Future<Map<String, dynamic>?> _fetchYoutubeContinuationPage(String token) async {
+    final dio = Dio();
+    dio.options.headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Content-Type': 'application/json',
+    };
     try {
-      final client = io.HttpClient();
-      try {
-        final req = await client.postUrl(
-          Uri.parse('https://www.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc'),
-        );
-        req.headers.set('Content-Type', 'application/json');
-        req.add(utf8.encode(jsonEncode({
+      final response = await dio.post(
+        'https://www.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc',
+        data: {
           'context': {
             'client': {
               'clientName': 'WEB',
               'clientVersion': '2.20250331.10.00',
+              'hl': 'en',
+              'gl': 'US',
             },
           },
           'continuation': token,
-        })));
-        final resp = await req.close();
-        if (resp.statusCode != 200) return null;
-        final body = await resp.transform(utf8.decoder).join();
-        return jsonDecode(body) as Map<String, dynamic>;
-      } finally {
-        client.close();
+        },
+      );
+      if (response.statusCode != 200 || response.data == null) {
+        print('[YoutubeImport] Continuation API returned ${response.statusCode}');
+        return null;
       }
-    } catch (_) {
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      print('[YoutubeImport] Continuation API error: $e');
       return null;
     }
   }
