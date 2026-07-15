@@ -13,6 +13,89 @@ class SpotifyCanvasResolver {
     return s.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
   }
 
+  Future<List<String>> searchTrackIds(String artist, String track) async {
+    final results = await Future.wait([
+      _searchBrave(artist, track),
+      _searchDuckDuckGo(artist, track),
+    ]);
+    final seen = <String>{};
+    final ids = <String>[];
+    for (final batch in results) {
+      for (final id in batch) {
+        if (seen.add(id)) ids.add(id);
+      }
+    }
+    if (ids.isEmpty) {
+      final fallback = await _searchWithIsrcFallback(artist, track);
+      ids.addAll(fallback.where((id) => seen.add(id)));
+    }
+    return ids;
+  }
+
+  Future<List<String>> _searchBrave(String artist, String track) async {
+    try {
+      final response = await _dio.get(
+        'https://search.brave.com/search',
+        queryParameters: {'q': '"$artist" "$track" spotify'},
+        options: Options(headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+          'Accept': 'text/html',
+        }),
+      );
+      if (response.statusCode == 200) {
+        final html = response.data.toString();
+        return RegExp(r'/track/([a-zA-Z0-9]{22})')
+            .allMatches(html).map((m) => m.group(1)!).toSet().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<List<String>> _searchDuckDuckGo(String artist, String track) async {
+    try {
+      final response = await _dio.post(
+        'https://html.duckduckgo.com/html',
+        data: {'q': '"$artist" "$track" spotify'},
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+            'Accept': 'text/html',
+          },
+        ),
+      );
+      if (response.statusCode == 200) {
+        final html = response.data.toString();
+        return RegExp(r'/track/([a-zA-Z0-9]{22})')
+            .allMatches(html).map((m) => m.group(1)!).toSet().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<List<String>> _searchWithIsrcFallback(String artist, String track) async {
+    try {
+      String? isrc = await getIsrcFromUnison(artist, track);
+      isrc ??= await getIsrcFromMusicBrainz(artist, track);
+      if (isrc == null) return [];
+
+      final response = await _dio.post(
+        'https://html.duckduckgo.com/html',
+        data: {'q': '$isrc spotify'},
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {'User-Agent': 'Mozilla/5.0'},
+        ),
+      );
+      if (response.statusCode == 200) {
+        final html = response.data.toString();
+        return RegExp(r'/track/([a-zA-Z0-9]{22})')
+            .allMatches(html).map((m) => m.group(1)!).toSet().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
   Future<String?> getIsrcFromUnison(String artist, String track) async {
     try {
       final query = Uri.encodeComponent('$artist $track');
@@ -121,17 +204,11 @@ class SpotifyCanvasResolver {
   }
 
   Future<String?> resolveCanvas(String artist, String track) async {
-    String? isrc = await getIsrcFromUnison(artist, track);
-    if (isrc == null || isrc.isEmpty) {
-      isrc = await getIsrcFromMusicBrainz(artist, track);
+    final ids = await searchTrackIds(artist, track);
+    for (final id in ids) {
+      final url = await getCanvasVideo('https://open.spotify.com/track/$id');
+      if (url != null) return url;
     }
-    if (isrc == null || isrc.isEmpty) {
-      return null;
-    }
-    final spotifyUrl = await getSpotifyUrl(isrc);
-    if (spotifyUrl == null || spotifyUrl.isEmpty) {
-      return null;
-    }
-    return await getCanvasVideo(spotifyUrl);
+    return null;
   }
 }
