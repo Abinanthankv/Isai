@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart' show ScaffoldMessenger, SnackBar, SnackBarBehavior, Text;
-import 'package:youtube_explode_dart/youtube_explode_dart.dart' show YoutubeExplode;
+
 import 'package:drift/drift.dart' show Value;
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../database/database.dart';
@@ -282,6 +282,12 @@ class ShareHandlerService {
                     ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
                 if (token != null && token.isNotEmpty) return token;
               }
+              if (item is Map && item['continuationItemViewModel'] is Map) {
+                final token = item['continuationItemViewModel']
+                    ?['continuationCommand']?['innertubeCommand']
+                    ?['continuationCommand']?['token'] as String?;
+                if (token != null && token.isNotEmpty) return token;
+              }
             }
           }
         }
@@ -296,6 +302,14 @@ class ShareHandlerService {
         try {
           final token = node['continuationItemRenderer']
               ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+          if (token != null && token.isNotEmpty) return token;
+        } catch (_) {}
+      }
+      if (node.containsKey('continuationItemViewModel')) {
+        try {
+          final token = node['continuationItemViewModel']
+              ?['continuationCommand']?['innertubeCommand']
+              ?['continuationCommand']?['token'] as String?;
           if (token != null && token.isNotEmpty) return token;
         } catch (_) {}
       }

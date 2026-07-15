@@ -162,7 +162,6 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
   static String? _findContinuationToken(dynamic data) {
     if (data is! Map) return null;
-    // First check the common continuationContents path (used in InnerTube browse responses)
     try {
       final contContents = data['continuationContents'] as Map?;
       if (contContents != null) {
@@ -174,12 +173,17 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
                     ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
                 if (token != null && token.isNotEmpty) return token;
               }
+              if (item is Map && item['continuationItemViewModel'] is Map) {
+                final token = item['continuationItemViewModel']
+                    ?['continuationCommand']?['innertubeCommand']
+                    ?['continuationCommand']?['token'] as String?;
+                if (token != null && token.isNotEmpty) return token;
+              }
             }
           }
         }
       }
     } catch (_) {}
-    // Recurse through entire tree to find any continuationItemRenderer
     return _findContinuationRecursive(data);
   }
 
@@ -189,6 +193,14 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
         try {
           final token = node['continuationItemRenderer']
               ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+          if (token != null && token.isNotEmpty) return token;
+        } catch (_) {}
+      }
+      if (node.containsKey('continuationItemViewModel')) {
+        try {
+          final token = node['continuationItemViewModel']
+              ?['continuationCommand']?['innertubeCommand']
+              ?['continuationCommand']?['token'] as String?;
           if (token != null && token.isNotEmpty) return token;
         } catch (_) {}
       }
