@@ -2885,32 +2885,75 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
                       Widget textWidget;
                       if (line.words.isNotEmpty) {
-                        final spans = <TextSpan>[];
-                        for (int i = 0; i < line.words.length; i++) {
-                          final word = line.words[i];
-                          Color wordColor;
-                          
-                          if (adjustedPosition >= word.end) {
-                            wordColor = isActive ? Colors.white : Colors.white.withOpacity(0.2);
-                          } else if (adjustedPosition >= word.start && adjustedPosition < word.end) {
-                            wordColor = isActive ? Theme.of(context).colorScheme.primary : Colors.white.withOpacity(0.2);
-                          } else {
-                            wordColor = isActive ? Colors.white.withOpacity(0.3) : Colors.white.withOpacity(0.1);
+                        if (isActive) {
+                          final primaryColor = Theme.of(context).colorScheme.primary;
+                          textWidget = Wrap(
+                            alignment: WrapAlignment.center,
+                            runAlignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 4,
+                            children: line.words.map((word) {
+                              final isPast = adjustedPosition >= word.end;
+                              final isCurrent = !isPast && adjustedPosition >= word.start;
+                              final wordState = isPast ? 2 : (isCurrent ? 1 : 0);
+
+                              Color pastColor;
+                              if (isPast) {
+                                final elapsed = adjustedPosition - word.end;
+                                final fadeMs = elapsed.inMilliseconds;
+                                final fadeProgress = (fadeMs / 800.0).clamp(0.0, 1.0);
+                                pastColor = Color.lerp(primaryColor, Colors.white, fadeProgress)!;
+                              } else {
+                                pastColor = Colors.white;
+                              }
+
+                              return TweenAnimationBuilder<Color?>(
+                                key: ValueKey('${word.text}_$wordState'),
+                                tween: ColorTween(
+                                  begin: isPast ? primaryColor : Colors.white.withOpacity(0.3),
+                                  end: isPast ? pastColor : (isCurrent ? primaryColor : Colors.white.withOpacity(0.3)),
+                                ),
+                                duration: const Duration(milliseconds: 300),
+                                builder: (context, color, child) {
+                                  return Transform.scale(
+                                    scale: isCurrent ? 1.12 : 1.0,
+                                    child: Text(
+                                      word.text,
+                                      style: TextStyle(
+                                        fontSize: baseStyle.fontSize,
+                                        fontWeight: isCurrent ? FontWeight.bold : baseStyle.fontWeight,
+                                        color: color ?? Colors.white,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            }).toList(),
+                          );
+                        } else {
+                          final spans = <TextSpan>[];
+                          for (int i = 0; i < line.words.length; i++) {
+                            final word = line.words[i];
+                            final wordColor = adjustedPosition >= word.end
+                                ? Colors.white.withOpacity(0.2)
+                                : (adjustedPosition >= word.start
+                                    ? Colors.white.withOpacity(0.2)
+                                    : Colors.white.withOpacity(0.1));
+                            spans.add(TextSpan(
+                              text: word.text + (i < line.words.length - 1 ? ' ' : ''),
+                              style: baseStyle.copyWith(color: wordColor),
+                            ));
                           }
-                          
-                          spans.add(TextSpan(
-                            text: word.text + (i < line.words.length - 1 ? ' ' : ''),
-                            style: baseStyle.copyWith(color: wordColor),
-                          ));
+                          textWidget = RichText(
+                            text: TextSpan(children: spans),
+                            textAlign: settings.playerLyricsAlignment == 'left' 
+                                ? TextAlign.left 
+                                : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          );
                         }
-                        textWidget = RichText(
-                          text: TextSpan(children: spans),
-                          textAlign: settings.playerLyricsAlignment == 'left' 
-                              ? TextAlign.left 
-                              : (settings.playerLyricsAlignment == 'right' ? TextAlign.right : TextAlign.center),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        );
                       } else {
                         textWidget = AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 400),
