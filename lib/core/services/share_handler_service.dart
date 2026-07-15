@@ -115,21 +115,11 @@ class ShareHandlerService {
     final props = data['props'] as Map<String, dynamic>?;
     final pageProps = props?['pageProps'] as Map<String, dynamic>?;
     final stateData = pageProps?['state'] as Map<String, dynamic>?;
-    final apiData = stateData?['data'] as Map<String, dynamic>?;
-    final entity = apiData?['entity'] as Map<String, dynamic>?;
+    final entityData = stateData?['data'] as Map<String, dynamic>?;
+    final entity = entityData?['entity'] as Map<String, dynamic>?;
     if (entity == null) {
       throw Exception("This Spotify playlist could not be read. Please make sure the playlist is set to Public.");
     }
-
-    // Try to extract a session access token for paginated fetch
-    String? spotifyToken;
-    try {
-      final session = apiData?['session'] as Map?;
-      spotifyToken = session?['accessToken'] as String?;
-      if (spotifyToken == null) {
-        spotifyToken = stateData?['session']?['accessToken'] as String?;
-      }
-    } catch (_) {}
 
     final playlistName = entity['name'] as String? ?? 'Spotify Playlist';
     final sources = entity['coverArt']?['sources'] as List<dynamic>?;
@@ -145,26 +135,6 @@ class ShareHandlerService {
 
     final List<PlaylistTracksCompanion> tracksToInsert = [];
     final trackList = entity['trackList'] as List<dynamic>? ?? [];
-    final totalCount = entity['totalTrackCount'] as int? ?? entity['totalTracks'] as int? ?? trackList.length;
-
-    // Spotify embed only returns ~100 tracks. Try fetching remaining pages if total > received.
-    if (totalCount > trackList.length && spotifyToken != null) {
-      try {
-        final remaining = await _fetchSpotifyRemainingTracks(playlistIdStr, trackList.length, totalCount, spotifyToken);
-        for (final item in remaining) {
-          tracksToInsert.add(PlaylistTracksCompanion.insert(
-            playlistId: dbPlaylistId,
-            title: item['title'] ?? 'Unknown Track',
-            artist: item['artist'] ?? 'Unknown Artist',
-            youtubeId: '',
-            duration: Value(item['duration'] as int?),
-            artworkUrl: Value(artworkUrl),
-          ));
-        }
-      } catch (e) {
-        print("[ShareHandler] Failed to fetch more Spotify tracks: $e");
-      }
-    }
 
     for (var i = 0; i < trackList.length; i++) {
       final item = trackList[i];
@@ -463,40 +433,6 @@ class ShareHandlerService {
     } catch (e) {
       print('[ShareHandler] Background enrichment error: $e');
     }
-  }
-
-  static Future<List<Map<String, dynamic>>> _fetchSpotifyRemainingTracks(
-    String playlistId, int loadedCount, int totalCount, String token,
-  ) async {
-    final results = <Map<String, dynamic>>[];
-    final dio = Dio();
-    for (int offset = loadedCount; offset < totalCount; offset += 50) {
-      try {
-        final resp = await dio.get(
-          'https://api.spotify.com/v1/playlists/$playlistId/tracks',
-          queryParameters: {'offset': offset.toString(), 'limit': '50', 'market': 'from_token'},
-          options: Options(headers: {'Authorization': 'Bearer $token'}),
-        );
-        if (resp.statusCode != 200 || resp.data == null) break;
-        final items = resp.data['items'] as List<dynamic>? ?? [];
-        if (items.isEmpty) break;
-        for (final item in items) {
-          if (item is! Map) continue;
-          final track = item['track'] as Map?;
-          if (track == null) continue;
-          final durMs = track['duration_ms'];
-          results.add({
-            'title': track['name'] as String? ?? 'Unknown Track',
-            'artist': (track['artists'] as List?)?[0]?['name'] as String? ?? 'Unknown Artist',
-            'duration': durMs is int ? durMs ~/ 1000 : null,
-          });
-        }
-        if (items.length < 50) break;
-      } catch (_) {
-        break;
-      }
-    }
-    return results;
   }
 
   static Future<void> _processSpotifyTrack(String url) async {

@@ -327,23 +327,11 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
       final props = data['props'] as Map<String, dynamic>?;
       final pageProps = props?['pageProps'] as Map<String, dynamic>?;
       final stateData = pageProps?['state'] as Map<String, dynamic>?;
-      final apiData = stateData?['data'] as Map<String, dynamic>?;
-      final entity = apiData?['entity'] as Map<String, dynamic>?;
+      final entityData = stateData?['data'] as Map<String, dynamic>?;
+      final entity = entityData?['entity'] as Map<String, dynamic>?;
       if (entity == null) {
         throw Exception('This Spotify playlist could not be read. Please make sure the playlist is set to Public.');
       }
-
-      // Try to extract a session access token for paginated fetch
-      String? spotifyToken;
-      try {
-        final session = apiData?['session'] as Map?;
-        spotifyToken = session?['accessToken'] as String?;
-        if (spotifyToken == null) {
-          // Some layouts nest it differently
-          spotifyToken = stateData?['session']?['accessToken'] as String?;
-        }
-      } catch (_) {}
-      print('[SpotifyImport] Spotify session token found: ${spotifyToken != null}');
 
       final playlistName = entity['name'] as String? ?? 'Spotify Playlist';
       final sources = entity['coverArt']?['sources'] as List<dynamic>?;
@@ -359,33 +347,7 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
       final List<PlaylistTracksCompanion> tracksToInsert = [];
       final trackList = entity['trackList'] as List<dynamic>? ?? [];
-      final totalCount = entity['totalTrackCount'] as int? ?? entity['totalTracks'] as int? ?? trackList.length;
-      print('[SpotifyImport] Found ${trackList.length} tracks in trackList (total: $totalCount)');
-
-      // Spotify embed only returns ~100 tracks. Try fetching remaining pages if total > received.
-      if (totalCount > trackList.length) {
-        print('[SpotifyImport] Attempting to fetch remaining ${totalCount - trackList.length} tracks...');
-        try {
-          final remaining = await _fetchSpotifyRemainingTracks(playlistIdStr, trackList.length, totalCount);
-          for (final item in remaining) {
-            final title = item['title'] as String? ?? 'Unknown Track';
-            final subtitle = item['subtitle'] as String? ?? 'Unknown Artist';
-            final firstArtist = subtitle.split(',').first.trim();
-            final durationMs = item['duration'] as int?;
-            final durationSec = durationMs != null ? durationMs ~/ 1000 : null;
-            tracksToInsert.add(PlaylistTracksCompanion.insert(
-              playlistId: dbPlaylistId,
-              title: title,
-              artist: firstArtist,
-              youtubeId: '',
-              duration: Value(durationSec),
-              artworkUrl: Value(artworkUrl),
-            ));
-          }
-        } catch (e) {
-          print('[SpotifyImport] Failed to fetch more tracks: $e');
-        }
-      }
+      print('[SpotifyImport] Found ${trackList.length} tracks in trackList');
 
       for (var i = 0; i < trackList.length; i++) {
         final item = trackList[i];
@@ -422,52 +384,7 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _fetchSpotifyRemainingTracks(String playlistId, int loadedCount, int totalCount) async {
-    final results = <Map<String, dynamic>>[];
-    final dio = Dio();
 
-    // Try to get a fresh embed page token first
-    String? token;
-    try {
-      final resp = await dio.get('https://open.spotify.com/embed/playlist/$playlistId');
-      final page = resp.data as String;
-      final match = RegExp(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', dotAll: true).firstMatch(page);
-      if (match != null) {
-        final embedData = jsonDecode(match.group(1)!);
-        final session = embedData['props']?['pageProps']?['state']?['data']?['session'] as Map?;
-        token = session?['accessToken'] as String?;
-      }
-    } catch (_) {}
-
-    if (token == null) return results;
-
-    for (int offset = loadedCount; offset < totalCount; offset += 50) {
-      try {
-        final resp = await dio.get(
-          'https://api.spotify.com/v1/playlists/$playlistId/tracks',
-          queryParameters: {'offset': offset.toString(), 'limit': '50', 'market': 'from_token'},
-          options: Options(headers: {'Authorization': 'Bearer $token'}),
-        );
-        if (resp.statusCode != 200 || resp.data == null) break;
-        final items = resp.data['items'] as List<dynamic>? ?? [];
-        if (items.isEmpty) break;
-        for (final item in items) {
-          if (item is! Map) continue;
-          final track = item['track'] as Map?;
-          if (track == null) continue;
-          results.add({
-            'title': track['name'] as String? ?? 'Unknown Track',
-            'subtitle': (track['artists'] as List?)?[0]?['name'] as String? ?? 'Unknown Artist',
-            'duration': track['duration_ms'] as int?,
-          });
-        }
-        if (items.length < 50) break;
-      } catch (_) {
-        break;
-      }
-    }
-    return results;
-  }
 
   Future<void> _enrichPlaylistInBackground(int playlistId, {bool preserveTitleArtist = false}) async {
     print('[PlaylistNotifier] Starting background enrichment for playlist: $playlistId');
