@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'for_you_providers.dart';
+import 'track_action_sheet.dart';
 import 'music_providers.dart';
 import 'source_picker_sheet.dart';
 import 'now_playing_screen.dart';
@@ -730,6 +732,15 @@ class ForYouScreen extends ConsumerWidget {
                     padding: const EdgeInsets.all(8),
                     borderRadius: 12,
                     onTap: () => _handleTrackTap(context, ref, track),
+                    onLongPress: () {
+                      HapticFeedback.mediumImpact();
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => TrackActionSheet(track: track),
+                      );
+                    },
                     child: Row(
                       children: [
                         ClipRRect(
@@ -841,6 +852,15 @@ class ForYouScreen extends ConsumerWidget {
       padding: const EdgeInsets.only(right: 12),
       child: GestureDetector(
         onTap: () => _handleTrackTap(context, ref, track),
+        onLongPress: () {
+          HapticFeedback.mediumImpact();
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => TrackActionSheet(track: track),
+          );
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

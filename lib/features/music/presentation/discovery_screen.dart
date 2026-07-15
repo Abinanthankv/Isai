@@ -477,6 +477,14 @@ class DiscoveryScreen extends ConsumerWidget {
                     padding: const EdgeInsets.only(right: 12),
                     child: GestureDetector(
                       onTap: () => _handleTrackTap(context, ref, itunesTrack),
+                      onLongPress: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) => TrackActionSheet(track: itunesTrack),
+                        );
+                      },
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
