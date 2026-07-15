@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/injection.dart';
 import '../data/lastfm_service.dart';
 import '../data/itunes_metadata_service.dart';
+import '../data/music_models.dart';
 import '../../settings/data/lastfm_repository.dart';
 
 /// Provider for the global trending artists on Last.fm with iTunes image enrichment.
@@ -108,4 +110,122 @@ final lastfmUserRecentTracksProvider = FutureProvider<List<Map<String, dynamic>>
     
     return {...track, 'image_url': imageUrl};
   }));
+});
+
+/// Provider for Last.fm Recommended station playlists (one per page).
+final lastfmRecommendedProvider = FutureProvider<List<({String title, String subtitle, List<ItunesTrack> tracks, List<Color> colors})>>((ref) async {
+  final repository = getIt<LastfmRepository>();
+  final username = repository.username;
+  if (username == null || username.isEmpty) return [];
+
+  final service = getIt<LastFmService>();
+  final itunes = getIt<ItunesMetadataService>();
+
+  const gradients = [
+    [Color(0xFF8E2DE2), Color(0xFF4A00E0)],
+    [Color(0xFF00c6ff), Color(0xFF0072ff)],
+    [Color(0xFF11998e), Color(0xFF38ef7d)],
+    [Color(0xFFf12711), Color(0xFFf5af19)],
+  ];
+
+  final results = await Future.wait([1, 2, 3].map((page) async {
+    final tracks = await service.fetchStationPlaylist(username, 'recommended', page: page);
+    if (tracks.isEmpty) return null;
+
+    final itunesTracks = await Future.wait(tracks.asMap().entries.map((entry) async {
+      final idx = entry.key;
+      final track = entry.value;
+      final name = track['name'] as String;
+      final artist = track['artist'] as String;
+      String imageUrl = track['image_url'] as String? ?? '';
+
+      if (imageUrl.isEmpty) {
+        final itunesMeta = await itunes.fetchMeta(name, artist);
+        if (itunesMeta?.artworkUrlHigh != null) imageUrl = itunesMeta!.artworkUrlHigh!;
+      }
+
+      return ItunesTrack(
+        trackId: idx,
+        trackName: name,
+        artistName: artist,
+        collectionName: name,
+        artworkUrl: imageUrl,
+        trackTimeMillis: (track['duration'] as int? ?? 0) * 1000,
+      );
+    }));
+
+    if (itunesTracks.isEmpty) return null;
+
+    return (
+      title: 'Recommended Vol. $page',
+      subtitle: '${itunesTracks.length} songs',
+      tracks: itunesTracks,
+      colors: gradients[(page - 1) % gradients.length],
+    );
+  }));
+
+  final List<({String title, String subtitle, List<ItunesTrack> tracks, List<Color> colors})> playlists = [];
+  for (final r in results) {
+    if (r != null) playlists.add(r);
+  }
+  return playlists;
+});
+
+/// Provider for Last.fm Mix station playlists (one per page).
+final lastfmMixProvider = FutureProvider<List<({String title, String subtitle, List<ItunesTrack> tracks, List<Color> colors})>>((ref) async {
+  final repository = getIt<LastfmRepository>();
+  final username = repository.username;
+  if (username == null || username.isEmpty) return [];
+
+  final service = getIt<LastFmService>();
+  final itunes = getIt<ItunesMetadataService>();
+
+  const gradients = [
+    [Color(0xFF667eea), Color(0xFF764ba2)],
+    [Color(0xFFf093fb), Color(0xFFf5576c)],
+    [Color(0xFF4facfe), Color(0xFF00f2fe)],
+    [Color(0xFF43e97b), Color(0xFF38f9d7)],
+  ];
+
+  final results = await Future.wait([1, 2, 3].map((page) async {
+    final tracks = await service.fetchStationPlaylist(username, 'mix', page: page);
+    if (tracks.isEmpty) return null;
+
+    final itunesTracks = await Future.wait(tracks.asMap().entries.map((entry) async {
+      final idx = entry.key;
+      final track = entry.value;
+      final name = track['name'] as String;
+      final artist = track['artist'] as String;
+      String imageUrl = track['image_url'] as String? ?? '';
+
+      if (imageUrl.isEmpty) {
+        final itunesMeta = await itunes.fetchMeta(name, artist);
+        if (itunesMeta?.artworkUrlHigh != null) imageUrl = itunesMeta!.artworkUrlHigh!;
+      }
+
+      return ItunesTrack(
+        trackId: idx,
+        trackName: name,
+        artistName: artist,
+        collectionName: name,
+        artworkUrl: imageUrl,
+        trackTimeMillis: (track['duration'] as int? ?? 0) * 1000,
+      );
+    }));
+
+    if (itunesTracks.isEmpty) return null;
+
+    return (
+      title: 'Mix Vol. $page',
+      subtitle: '${itunesTracks.length} songs',
+      tracks: itunesTracks,
+      colors: gradients[(page - 1) % gradients.length],
+    );
+  }));
+
+  final List<({String title, String subtitle, List<ItunesTrack> tracks, List<Color> colors})> playlists = [];
+  for (final r in results) {
+    if (r != null) playlists.add(r);
+  }
+  return playlists;
 });

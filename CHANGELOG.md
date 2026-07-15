@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.9] - July 2026
+
+### Added
+- **Apple Music-Style Synced Lyrics**: Active lyric line renders as individual animated words with continuous glow transition — 150ms pre-glow fade-in, hold at full brightness, 600ms fade-out via `Color.lerp` per word.
+- **Last.fm Station Playlists on For You Page**: Recommended for You and Your Last.fm Mix sections now appear below top artists. Each fetches 3 pages from Last.fm's internal player API, enriched with iTunes artwork, displayed as gradient playlist cards (tap to open full track list).
+- **Long-Press Context Menu**: Discover and For You tracks now support long-press to show Play Next, Add to Queue, Add to Playlist, and Download options via `TrackActionSheet`.
+- **Haptic Feedback on Interactions**: Light impact on track taps, medium impact on long-press context menu triggers.
+- **KPoe Word-Synced Lyrics Scraper**: New scraper with BiniLyrics cache for synced lyric matching and timing.
+- **YouTube Playlist Continuation Pagination**: Playlist imports now paginate beyond the initial 200-track cap using continuation tokens.
+
+### Changed
+- **Spotify Canvas Resolution**: Replaced broken ISRC→MusicBrainz→Spotify URL pipeline with search engine scraping (Brave Search + DuckDuckGo) to find track IDs and resolve via canvasdownloader.com. Old ISRC methods preserved as fallback.
+
+### Fixed
+- **Lyrics Flicker Eliminated**: Removed `TweenAnimationBuilder` from lyrics — `AudioService.position` stream rebuilds are smooth enough; the tween was resetting on every frame and causing visible flicker.
+- **Fresh & Different Missing Artwork**: Tracks from Last.fm similar tracks API with empty `artworkUrl` now fall back to iTunes metadata lookup in parallel.
+- **YouTube Pagination for New Format**: Fixed handling of YouTube's new `continuationItemViewModel` format for playlist loading.
+- **Continuation Token Parsing**: Switched from hardcoded path to recursive JSON search for YouTube continuation tokens.
+
 ## [1.0.8] - July 2026
 
 ### Added

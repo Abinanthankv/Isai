@@ -421,6 +421,65 @@ class LastFmService {
     }
   }
 
+  // ─── Station API (internal Last.fm player API) ─────────────────────────────
+
+  /// Fetch tracks from a Last.fm station page (recommended, mix, etc.).
+  /// Uses the internal player API at www.last.fm (not the web service API).
+  Future<List<Map<String, dynamic>>> fetchStationPlaylist(String username, String stationType, {int page = 1}) async {
+    try {
+      final url = 'https://www.last.fm/player/station/user/$username/$stationType';
+      final response = await _dio.get(url, queryParameters: {
+        'page': page.toString(),
+        'ajax': '1',
+      });
+
+      final data = response.data;
+      final List<dynamic> playlist = data['playlist'] ?? [];
+
+      return playlist.map((item) {
+        final artists = item['artists'] as List<dynamic>? ?? [];
+        final artistName = artists.isNotEmpty ? (artists[0]['_name'] as String? ?? 'Unknown') : 'Unknown';
+
+        String? youtubeId;
+        final playlinks = item['_playlinks'] as List<dynamic>? ?? [];
+        for (final link in playlinks) {
+          if (link['affiliate'] == 'youtube') {
+            youtubeId = link['id'] as String?;
+            break;
+          }
+        }
+
+        final images = item['images'] as List<dynamic>? ?? [];
+        String? imageUrl;
+        if (images.isNotEmpty) {
+          for (final img in images.reversed) {
+            final sizes = img['sizes'] as Map<String, dynamic>? ?? {};
+            final sizeKeys = ['extralarge', 'large', 'medium', 'small'];
+            for (final key in sizeKeys) {
+              final val = sizes[key] as String?;
+              if (val != null && val.isNotEmpty) {
+                imageUrl = val;
+                break;
+              }
+            }
+            if (imageUrl != null && imageUrl.isNotEmpty) break;
+          }
+        }
+
+        return {
+          'name': item['_name'] as String? ?? 'Unknown Track',
+          'artist': artistName,
+          'duration': item['duration'] as int? ?? 0,
+          'image_url': imageUrl ?? '',
+          'youtube_id': youtubeId ?? '',
+        };
+      }).toList();
+    } catch (e) {
+      print('[LastFmService] fetchStationPlaylist($stationType) error: $e');
+      return [];
+    }
+  }
+
   // ─── Parsing Helpers ──────────────────────────────────────────────────────
 
   Map<String, dynamic> _parseArtist(dynamic a) {

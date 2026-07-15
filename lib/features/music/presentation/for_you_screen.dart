@@ -62,6 +62,8 @@ class ForYouScreen extends ConsumerWidget {
           ref.invalidate(newReleasesForYouProvider);
           ref.invalidate(outsideYourBubbleProvider);
           ref.invalidate(freshAndDifferentProvider);
+          ref.invalidate(lastfmRecommendedProvider);
+          ref.invalidate(lastfmMixProvider);
           
           // Wait for the main profile to at least start loading
           await ref.read(userMusicProfileProvider.future);
@@ -906,129 +908,190 @@ class ForYouScreen extends ConsumerWidget {
   }
 
   Widget _buildLastfmPersonalizedSection(BuildContext context, WidgetRef ref, bool isDark) {
-    final recentTracksAsync = ref.watch(lastfmUserRecentTracksProvider);
-    final topArtistsAsync = ref.watch(lastfmUserTopArtistsProvider);
+    final recentTracks = ref.watch(lastfmUserRecentTracksProvider).asData?.value;
+    final topArtists = ref.watch(lastfmUserTopArtistsProvider).asData?.value;
+    final recommended = ref.watch(lastfmRecommendedProvider).asData?.value;
+    final mixTracks = ref.watch(lastfmMixProvider).asData?.value;
 
-    return recentTracksAsync.when(
-      data: (tracks) {
-        if (tracks.isEmpty) return const SizedBox.shrink();
+    final hasRecent = recentTracks != null && recentTracks.isNotEmpty;
+    final hasArtists = topArtists != null && topArtists.isNotEmpty;
+    final hasRecommended = recommended != null && recommended.isNotEmpty;
+    final hasMix = mixTracks != null && mixTracks.isNotEmpty;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const AppleMusicSectionHeader(
-              title: 'Your Last.fm Activity',
-              subtitle: 'Recently played across all your devices',
-            ),
-            SizedBox(
-              height: 200,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: tracks.length,
-                itemBuilder: (context, index) {
-                  final t = tracks[index];
-                  final itunesTrack = ItunesTrack(
-                    trackId: index,
-                    trackName: t['name'] ?? '',
-                    artistName: t['artist'] ?? '',
-                    collectionName: t['album'] ?? '',
-                    artworkUrl: t['image_url'] ?? '',
-                  );
-                  return _buildTrackCard(context, ref, itunesTrack, isDark, width: 150, height: 150);
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            topArtistsAsync.when(
-              data: (artists) {
-                if (artists.isEmpty) return const SizedBox.shrink();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const AppleMusicSectionHeader(
-                      title: 'Last.fm Top Artists',
-                      subtitle: 'Your most played lately',
-                    ),
-                    SizedBox(
-                      height: 140,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: artists.length,
-                        itemBuilder: (context, index) {
-                          final artist = artists[index];
-                          final name = artist['name'] as String;
-                          final imageUrl = artist['image_url'] as String? ?? '';
+    if (!hasRecent && !hasArtists && !hasRecommended && !hasMix) {
+      return const SizedBox.shrink();
+    }
 
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 18),
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => ArtistScreen(artistName: name)),
-                                );
-                              },
-                              child: Column(
-                                children: [
-                                  Container(
-                                    width: 85,
-                                    height: 85,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.12),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 5),
-                                        ),
-                                      ],
-                                    ),
-                                    child: ClipOval(
-                                      child: imageUrl.isNotEmpty
-                                          ? CachedNetworkImage(
-                                              imageUrl: imageUrl,
-                                              fit: BoxFit.cover,
-                                              placeholder: (_, __) => Container(
-                                                color: isDark ? Colors.white10 : Colors.black12,
-                                              ),
-                                              errorWidget: (_, __, ___) => _buildArtistFallback(isDark),
-                                            )
-                                          : _buildArtistFallback(isDark),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  SizedBox(
-                                    width: 85,
-                                    child: Text(
-                                      name,
-                                      textAlign: TextAlign.center,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
-                                        color: isDark ? Colors.white : Colors.black,),
-                                    ),
-                                  ),
-                                ],
-                              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasRecent) _buildRecentTracksSection(context, ref, recentTracks, isDark),
+        if (hasArtists) _buildTopArtistsSection(context, ref, topArtists, isDark),
+        if (hasRecommended) _buildStationPlaylistSection(context, ref, recommended, isDark,
+          title: 'Recommended for You',
+          subtitle: 'Personalized picks from Last.fm',
+        ),
+        if (hasMix) _buildStationPlaylistSection(context, ref, mixTracks, isDark,
+          title: 'Your Last.fm Mix',
+          subtitle: 'A personalized mix from Last.fm',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentTracksSection(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> tracks, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AppleMusicSectionHeader(
+          title: 'Your Last.fm Activity',
+          subtitle: 'Recently played across all your devices',
+        ),
+        SizedBox(
+          height: 200,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: tracks.length,
+            itemBuilder: (context, index) {
+              final t = tracks[index];
+              final itunesTrack = ItunesTrack(
+                trackId: index,
+                trackName: t['name'] ?? '',
+                artistName: t['artist'] ?? '',
+                collectionName: t['album'] ?? '',
+                artworkUrl: t['image_url'] ?? '',
+              );
+              return _buildTrackCard(context, ref, itunesTrack, isDark, width: 150, height: 150);
+            },
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildTopArtistsSection(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> artists, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AppleMusicSectionHeader(
+          title: 'Last.fm Top Artists',
+          subtitle: 'Your most played lately',
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: artists.length,
+            itemBuilder: (context, index) {
+              final artist = artists[index];
+              final name = artist['name'] as String;
+              final imageUrl = artist['image_url'] as String? ?? '';
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 18),
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => ArtistScreen(artistName: name)),
+                    );
+                  },
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 85,
+                        height: 85,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.12),
+                              blurRadius: 12,
+                              offset: const Offset(0, 5),
                             ),
-                          );
-                        },
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: imageUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: imageUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => Container(
+                                    color: isDark ? Colors.white10 : Colors.black12,
+                                  ),
+                                  errorWidget: (_, __, ___) => _buildArtistFallback(isDark),
+                                )
+                              : _buildArtistFallback(isDark),
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              },
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-            ),
-          ],
-        );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: 85,
+                        child: Text(
+                          name,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black,),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildStationPlaylistSection(BuildContext context, WidgetRef ref,
+    List<({String title, String subtitle, List<ItunesTrack> tracks, List<Color> colors})> playlists, bool isDark, {
+    required String title,
+    required String subtitle,
+  }) {
+    if (playlists.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppleMusicSectionHeader(
+          title: title,
+          subtitle: subtitle,
+        ),
+        SizedBox(
+          height: 190,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: playlists.length,
+            itemBuilder: (context, index) {
+              final pl = playlists[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.85,
+                  child: _buildMixCard(
+                    context: context,
+                    tracks: pl.tracks,
+                    title: pl.title,
+                    subtitle: pl.subtitle,
+                    isDark: isDark,
+                    gradient: pl.colors,
+                    icon: Icons.auto_awesome_rounded,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 
