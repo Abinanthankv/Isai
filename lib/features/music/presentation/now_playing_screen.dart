@@ -2895,39 +2895,28 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             children: line.words.map((word) {
                               final isPast = adjustedPosition >= word.end;
                               final isCurrent = !isPast && adjustedPosition >= word.start;
-                              final wordState = isPast ? 2 : (isCurrent ? 1 : 0);
 
-                              Color pastColor;
+                              Color wordColor;
                               if (isPast) {
-                                final elapsed = adjustedPosition - word.end;
-                                final fadeMs = elapsed.inMilliseconds;
-                                final fadeProgress = (fadeMs / 800.0).clamp(0.0, 1.0);
-                                pastColor = Color.lerp(primaryColor, Colors.white, fadeProgress)!;
+                                final fadeProgress = ((adjustedPosition - word.end).inMilliseconds / 800.0).clamp(0.0, 1.0);
+                                wordColor = Color.lerp(primaryColor, Colors.white, fadeProgress)!;
+                              } else if (isCurrent) {
+                                wordColor = primaryColor;
                               } else {
-                                pastColor = Colors.white;
+                                wordColor = Colors.white.withOpacity(0.3);
                               }
 
-                              return TweenAnimationBuilder<Color?>(
-                                key: ValueKey('${word.text}_$wordState'),
-                                tween: ColorTween(
-                                  begin: isPast ? primaryColor : Colors.white.withOpacity(0.3),
-                                  end: isPast ? pastColor : (isCurrent ? primaryColor : Colors.white.withOpacity(0.3)),
+                              return Transform.scale(
+                                scale: isCurrent ? 1.12 : 1.0,
+                                child: Text(
+                                  word.text,
+                                  style: TextStyle(
+                                    fontSize: baseStyle.fontSize,
+                                    fontWeight: isCurrent ? FontWeight.bold : baseStyle.fontWeight,
+                                    color: wordColor,
+                                    height: 1.2,
+                                  ),
                                 ),
-                                duration: const Duration(milliseconds: 300),
-                                builder: (context, color, child) {
-                                  return Transform.scale(
-                                    scale: isCurrent ? 1.12 : 1.0,
-                                    child: Text(
-                                      word.text,
-                                      style: TextStyle(
-                                        fontSize: baseStyle.fontSize,
-                                        fontWeight: isCurrent ? FontWeight.bold : baseStyle.fontWeight,
-                                        color: color ?? Colors.white,
-                                        height: 1.2,
-                                      ),
-                                    ),
-                                  );
-                                },
                               );
                             }).toList(),
                           );
