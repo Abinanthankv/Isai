@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as io;
 import 'package:audio_service/audio_service.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart' show ScaffoldMessenger, SnackBar, SnackBarBehavior, Text;
@@ -114,11 +115,21 @@ class ShareHandlerService {
     final props = data['props'] as Map<String, dynamic>?;
     final pageProps = props?['pageProps'] as Map<String, dynamic>?;
     final stateData = pageProps?['state'] as Map<String, dynamic>?;
-    final entityData = stateData?['data'] as Map<String, dynamic>?;
-    final entity = entityData?['entity'] as Map<String, dynamic>?;
+    final apiData = stateData?['data'] as Map<String, dynamic>?;
+    final entity = apiData?['entity'] as Map<String, dynamic>?;
     if (entity == null) {
       throw Exception("This Spotify playlist could not be read. Please make sure the playlist is set to Public.");
     }
+
+    // Try to extract a session access token for paginated fetch
+    String? spotifyToken;
+    try {
+      final session = apiData?['session'] as Map?;
+      spotifyToken = session?['accessToken'] as String?;
+      if (spotifyToken == null) {
+        spotifyToken = stateData?['session']?['accessToken'] as String?;
+      }
+    } catch (_) {}
 
     final playlistName = entity['name'] as String? ?? 'Spotify Playlist';
     final sources = entity['coverArt']?['sources'] as List<dynamic>?;
@@ -134,6 +145,26 @@ class ShareHandlerService {
 
     final List<PlaylistTracksCompanion> tracksToInsert = [];
     final trackList = entity['trackList'] as List<dynamic>? ?? [];
+    final totalCount = entity['totalTrackCount'] as int? ?? entity['totalTracks'] as int? ?? trackList.length;
+
+    // Spotify embed only returns ~100 tracks. Try fetching remaining pages if total > received.
+    if (totalCount > trackList.length && spotifyToken != null) {
+      try {
+        final remaining = await _fetchSpotifyRemainingTracks(playlistIdStr, trackList.length, totalCount, spotifyToken);
+        for (final item in remaining) {
+          tracksToInsert.add(PlaylistTracksCompanion.insert(
+            playlistId: dbPlaylistId,
+            title: item['title'] ?? 'Unknown Track',
+            artist: item['artist'] ?? 'Unknown Artist',
+            youtubeId: '',
+            duration: Value(item['duration'] as int?),
+            artworkUrl: Value(artworkUrl),
+          ));
+        }
+      } catch (e) {
+        print("[ShareHandler] Failed to fetch more Spotify tracks: $e");
+      }
+    }
 
     for (var i = 0; i < trackList.length; i++) {
       final item = trackList[i];
@@ -203,6 +234,15 @@ class ShareHandlerService {
       final List<Map<String, dynamic>> parsedTracks = [];
       _findTracksInJson(data, parsedTracks);
 
+      // Fetch all remaining pages via continuation tokens
+      String? continuation = _extractContinuation(data);
+      while (continuation != null) {
+        final pageData = await _fetchYoutubeContinuationPage(continuation);
+        if (pageData == null) break;
+        _findTracksInJson(pageData, parsedTracks);
+        continuation = _extractContinuation(pageData);
+      }
+
       if (playlistArtwork == null && parsedTracks.isNotEmpty) {
         playlistArtwork = parsedTracks.first['artworkUrl'];
       }
@@ -237,6 +277,65 @@ class ShareHandlerService {
     } catch (e) {
       print("[ShareHandler] Error processing YouTube playlist: $e");
       _showStatus("Error importing: $e");
+    }
+  }
+
+  static String? _extractContinuation(dynamic data) {
+    if (data is! Map) return null;
+    try {
+      final items = data['contents']?['twoColumnBrowseResultsRenderer']
+          ?['tabs']?[0]?['tabRenderer']?['content']
+          ?['sectionListRenderer']?['contents']?[0]
+          ?['itemSectionRenderer']?['contents']?[0]
+          ?['playlistVideoListRenderer']?['contents'] as List?;
+      if (items == null) {
+        final contItems = data['continuationContents']
+            ?['playlistVideoListContinuation']?['contents'] as List?;
+        if (contItems == null) return null;
+        for (final item in contItems.reversed) {
+          if (item is Map && item.containsKey('continuationItemRenderer')) {
+            return item['continuationItemRenderer']
+                ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+          }
+        }
+        return null;
+      }
+      for (final item in items.reversed) {
+        if (item is Map && item.containsKey('continuationItemRenderer')) {
+          return item['continuationItemRenderer']
+              ?['continuationEndpoint']?['continuationCommand']?['token'] as String?;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> _fetchYoutubeContinuationPage(String token) async {
+    try {
+      final client = io.HttpClient();
+      try {
+        final req = await client.postUrl(
+          Uri.parse('https://www.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc'),
+        );
+        req.headers.set('Content-Type', 'application/json');
+        req.add(utf8.encode(jsonEncode({
+          'context': {
+            'client': {
+              'clientName': 'WEB',
+              'clientVersion': '2.20250331.10.00',
+            },
+          },
+          'continuation': token,
+        })));
+        final resp = await req.close();
+        if (resp.statusCode != 200) return null;
+        final body = await resp.transform(utf8.decoder).join();
+        return jsonDecode(body) as Map<String, dynamic>;
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      return null;
     }
   }
 
@@ -364,6 +463,40 @@ class ShareHandlerService {
     } catch (e) {
       print('[ShareHandler] Background enrichment error: $e');
     }
+  }
+
+  static Future<List<Map<String, dynamic>>> _fetchSpotifyRemainingTracks(
+    String playlistId, int loadedCount, int totalCount, String token,
+  ) async {
+    final results = <Map<String, dynamic>>[];
+    final dio = Dio();
+    for (int offset = loadedCount; offset < totalCount; offset += 50) {
+      try {
+        final resp = await dio.get(
+          'https://api.spotify.com/v1/playlists/$playlistId/tracks',
+          queryParameters: {'offset': offset.toString(), 'limit': '50', 'market': 'from_token'},
+          options: Options(headers: {'Authorization': 'Bearer $token'}),
+        );
+        if (resp.statusCode != 200 || resp.data == null) break;
+        final items = resp.data['items'] as List<dynamic>? ?? [];
+        if (items.isEmpty) break;
+        for (final item in items) {
+          if (item is! Map) continue;
+          final track = item['track'] as Map?;
+          if (track == null) continue;
+          final durMs = track['duration_ms'];
+          results.add({
+            'title': track['name'] as String? ?? 'Unknown Track',
+            'artist': (track['artists'] as List?)?[0]?['name'] as String? ?? 'Unknown Artist',
+            'duration': durMs is int ? durMs ~/ 1000 : null,
+          });
+        }
+        if (items.length < 50) break;
+      } catch (_) {
+        break;
+      }
+    }
+    return results;
   }
 
   static Future<void> _processSpotifyTrack(String url) async {
