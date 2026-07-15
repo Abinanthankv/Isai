@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'music_providers.dart';
@@ -159,6 +160,7 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   void _handleTrackTap(BuildContext context, WidgetRef ref, ItunesTrack track) async {
+    HapticFeedback.lightImpact();
     final libraryNotifier = ref.read(libraryProvider.notifier);
     final matchingFile = ref.read(libraryProvider).findMatchingTrack(track.trackName, track.artistName);
 
@@ -478,6 +480,7 @@ class DiscoveryScreen extends ConsumerWidget {
                     child: GestureDetector(
                       onTap: () => _handleTrackTap(context, ref, itunesTrack),
                       onLongPress: () {
+                        HapticFeedback.mediumImpact();
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
@@ -585,6 +588,7 @@ class DiscoveryScreen extends ConsumerWidget {
                     child: GestureDetector(
                       onTap: () => _handleTrackTap(context, ref, track),
                       onLongPress: () {
+                        HapticFeedback.mediumImpact();
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,

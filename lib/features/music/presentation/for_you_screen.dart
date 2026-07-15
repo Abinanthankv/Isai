@@ -1060,6 +1060,7 @@ class ForYouScreen extends ConsumerWidget {
   }
 
   void _handleTrackTap(BuildContext context, WidgetRef ref, ItunesTrack track) async {
+    HapticFeedback.lightImpact();
     final matchingFile = ref.read(libraryProvider).findMatchingTrack(track.trackName, track.artistName);
 
     if (matchingFile != null) {
