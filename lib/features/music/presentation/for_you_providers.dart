@@ -519,6 +519,23 @@ final freshAndDifferentProvider = FutureProvider<List<ItunesTrack>>((ref) async 
     }
   }
 
+  // Fill missing artwork via iTunes
+  final itunes = getIt<ItunesMetadataService>();
+  final artworkFixes = <int>{};
+  for (int i = 0; i < results.length; i++) {
+    if (results[i].artworkUrl.isEmpty) artworkFixes.add(i);
+  }
+  await Future.wait(artworkFixes.map((i) async {
+    try {
+      final meta = await itunes.fetchMeta(results[i].trackName, results[i].artistName);
+      if (meta?.artworkUrlHigh != null || meta?.artworkUrlLow != null) {
+        results[i] = results[i].copyWith(
+          artworkUrl: meta!.artworkUrlHigh ?? meta.artworkUrlLow ?? '',
+        );
+      }
+    } catch (_) {}
+  }));
+
   return results;
 });
 
