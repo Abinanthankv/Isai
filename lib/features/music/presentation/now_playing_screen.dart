@@ -119,6 +119,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   bool _sleepAtEndOfTrack = false;
   String? _sleepTimerTrackId;
   Duration _lyricsOffset = Duration.zero;
+  bool _canvasControlsMinimized = false;
 
   @override
   void initState() {
@@ -722,20 +723,29 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final isWideScreen = constraints.maxWidth > 720;
+
                     if (isWideScreen) {
                       return Row(
                         children: [
                           // Left side: Album Art
                           Expanded(
                             flex: 5,
-                            child: showCanvas 
-                                ? const SizedBox() 
-                                : _buildAlbumArt(hasArtwork, displayArtwork),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => setState(() => _canvasControlsMinimized = !_canvasControlsMinimized),
+                              child: showCanvas 
+                                  ? const SizedBox.expand()
+                                  : _buildAlbumArt(hasArtwork, displayArtwork),
+                            ),
                           ),
                           // Right side: Header, Lyrics / Controls
                           Expanded(
                             flex: 6,
-                            child: Column(
+                            child: showCanvas && _canvasControlsMinimized
+                                ? _buildCanvasMinimizedLayout(
+                                    displayTitle, displayArtist, displayArtwork, hasArtwork,
+                                  )
+                                : Column(
                               children: [
                                 _buildHeader(context),
                                 if (_showLyrics) ...[
@@ -862,7 +872,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                       );
                     }
                     
-                    // Portrait Mobile Layout (original)
+                    // Portrait Mobile Layout
                     if (_showLyrics) {
                       return _buildLyricsToggledLayout(
                         hasArtwork,
@@ -874,59 +884,79 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                       );
                     }
 
+                    final isMinimized = showCanvas && _canvasControlsMinimized;
+
                     return Column(
                       children: [
-                        // Drag handle + header
-                        _buildHeader(context),
+                        // Header - hidden when minimized with canvas
+                        if (!isMinimized) _buildHeader(context),
 
-                        const SizedBox(height: 12),
+                        if (!isMinimized) const SizedBox(height: 12),
 
-                        // Album art (vinyl-style spinning)
+                        // Album art / tappable canvas area
                         Expanded(
-                          child: showCanvas ? const SizedBox() : _buildAlbumArt(hasArtwork, displayArtwork),
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              if (showCanvas) {
+                                setState(() => _canvasControlsMinimized = !_canvasControlsMinimized);
+                              }
+                            },
+                            child: Container(
+                              color: Colors.transparent,
+                              child: showCanvas
+                                  ? const SizedBox.expand()
+                                  : _buildAlbumArt(hasArtwork, displayArtwork),
+                            ),
+                          ),
                         ),
 
-                        const SizedBox(height: 32),
+                        // Controls (normal) or minimized bar
+                        if (isMinimized)
+                          _buildCanvasMinimizedControls(displayTitle, displayArtist, displayArtwork, hasArtwork)
+                        else ...[
+                          const SizedBox(height: 32),
 
-                        // Track info + controls
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28),
-                           child: Column(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildCurrentLyricsLine(),
-                                _buildTrackInfo(displayTitle, displayArtist),
-                                const SizedBox(height: 20),
-                               StreamBuilder<PlaybackState>(
-                                 stream: audioHandler.playbackState,
-                                 builder: (context, stateSnap) {
-                                   if (_error != null) {
-                                     return _buildError();
-                                   }
+                          // Track info + controls
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 28),
+                             child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildCurrentLyricsLine(),
+                                  _buildTrackInfo(displayTitle, displayArtist),
+                                  const SizedBox(height: 20),
+                                  StreamBuilder<PlaybackState>(
+                                    stream: audioHandler.playbackState,
+                                    builder: (context, stateSnap) {
+                                      if (_error != null) {
+                                        return _buildError();
+                                      }
 
-                                   return Column(
-                                     children: [
-                                       _buildSeekBar(),
-                                       const SizedBox(height: 16),
-                                       _buildTransportControls(),
-                                     ],
-                                   );
-                                 },
-                               ),
-                             ],
-                           ),
-                         ),
+                                      return Column(
+                                        children: [
+                                          _buildSeekBar(),
+                                          const SizedBox(height: 16),
+                                          _buildTransportControls(),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
 
-                         if (settings.playerControlLayout != 'minimalist') ...[
-                           const SizedBox(height: 24),
-                           // Bottom icons
-                           _buildBottomBar(),
-                         ] else ...[
-                           _buildBottomBar(),
-                           const SizedBox(height: 24),
-                         ],
-                       ],
-                     );
+                            if (settings.playerControlLayout != 'minimalist') ...[
+                              const SizedBox(height: 24),
+                              // Bottom icons
+                              _buildBottomBar(),
+                            ] else ...[
+                              _buildBottomBar(),
+                              const SizedBox(height: 24),
+                            ],
+                          ],
+                        ],
+                      );
                   },
                 ),
               ),
@@ -1665,6 +1695,158 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       color: const Color(0xFF2D2D3F),
       child: Center(
         child: Icon(Icons.music_note, size: iconSize, color: Colors.white24),
+      ),
+    );
+  }
+
+  Widget _buildCanvasMinimizedLayout(String title, String artist, String artworkUrl, bool hasArtwork) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 28),
+                ),
+              ),
+              const Spacer(),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => setState(() => _canvasControlsMinimized = !_canvasControlsMinimized),
+            child: Container(
+              color: Colors.transparent,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        _buildCanvasMinimizedControls(title, artist, artworkUrl, hasArtwork),
+      ],
+    );
+  }
+
+  Widget _buildCanvasMinimizedControls(String title, String artist, String artworkUrl, bool hasArtwork) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: hasArtwork
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: artworkUrl,
+                            fit: BoxFit.cover,
+                            width: 48,
+                            height: 48,
+                          ),
+                        )
+                      : const Icon(Icons.music_note, color: Colors.white38, size: 24),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(artist,
+                      style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              StreamBuilder<PlaybackState>(
+                stream: audioHandler.playbackState,
+                builder: (context, snap) {
+                  final playing = snap.data?.playing ?? false;
+                  return IconButton(
+                    icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 32),
+                    onPressed: () => playing ? audioHandler.pause() : audioHandler.play(),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _buildCurrentLyricsLine(),
+          const SizedBox(height: 6),
+          StreamBuilder<PlaybackState>(
+            stream: audioHandler.playbackState,
+            builder: (context, _) {
+              return StreamBuilder<Duration>(
+                stream: AudioService.position,
+                builder: (context, posSnap) {
+                  final position = posSnap.data ?? Duration.zero;
+                  final item = audioHandler.mediaItem.value;
+                  final duration = item?.duration ?? Duration.zero;
+                  final value = duration.inMilliseconds > 0 ? position.inMilliseconds / duration.inMilliseconds : 0.0;
+
+                  return Row(
+                    children: [
+                      Text(_formatDuration(position), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: SliderTheme(
+                            data: const SliderThemeData(
+                              trackHeight: 3,
+                              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 5),
+                              overlayShape: RoundSliderOverlayShape(overlayRadius: 12),
+                              activeTrackColor: Colors.white,
+                              inactiveTrackColor: Colors.white24,
+                              thumbColor: Colors.white,
+                            ),
+                            child: Slider(
+                              value: value.clamp(0.0, 1.0),
+                              onChanged: (v) {
+                                final pos = Duration(milliseconds: (v * duration.inMilliseconds).round());
+                                audioHandler.seek(pos);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      Text(_formatDuration(duration), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
