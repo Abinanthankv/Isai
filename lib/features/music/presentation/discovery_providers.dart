@@ -7,6 +7,8 @@ import '../../../core/database/database.dart';
 import '../data/deezer_service.dart';
 import '../data/itunes_metadata_service.dart';
 import '../data/recommendation_engine.dart';
+import '../data/music_models.dart';
+import 'music_providers.dart';
 
 class DiscoveryTrack {
   final String id;
@@ -472,4 +474,52 @@ class DiscoveryNotifier extends Notifier<DiscoveryState> {
 
 final discoveryProvider = NotifierProvider<DiscoveryNotifier, DiscoveryState>(() {
   return DiscoveryNotifier();
+});
+
+/// Memoized categorization of Apple Music playlists by region.
+/// Only recalculates when the underlying playlist data changes.
+final appleMusicCategorizedProvider = Provider.family<({List<AppleMusicPlaylist> mood, List<AppleMusicPlaylist> language, List<AppleMusicPlaylist> hits}), String>((ref, region) {
+  final playlists = ref.watch(regionalPlaylistsProvider(region)).asData?.value ?? [];
+
+  final mood = <AppleMusicPlaylist>[];
+  final language = <AppleMusicPlaylist>[];
+  final hits = <AppleMusicPlaylist>[];
+
+  for (final playlist in playlists) {
+    final nameLower = playlist.name.toLowerCase();
+
+    if (nameLower.contains('tamil') ||
+        nameLower.contains('telugu') ||
+        nameLower.contains('hindi') ||
+        nameLower.contains('bollywood') ||
+        nameLower.contains('punjabi') ||
+        nameLower.contains('malayalam') ||
+        nameLower.contains('kannada') ||
+        nameLower.contains('k-pop') ||
+        nameLower.contains('j-pop') ||
+        nameLower.contains('indie') ||
+        nameLower.contains('english')) {
+      language.add(playlist);
+    } else if (nameLower.contains('chill') ||
+        nameLower.contains('relax') ||
+        nameLower.contains('lo-fi') ||
+        nameLower.contains('lofi') ||
+        nameLower.contains('study') ||
+        nameLower.contains('focus') ||
+        nameLower.contains('workout') ||
+        nameLower.contains('energy') ||
+        nameLower.contains('party') ||
+        nameLower.contains('dance') ||
+        nameLower.contains('sad') ||
+        nameLower.contains('acoustic') ||
+        nameLower.contains('sleep') ||
+        nameLower.contains('feel good') ||
+        nameLower.contains('vibes')) {
+      mood.add(playlist);
+    } else {
+      hits.add(playlist);
+    }
+  }
+
+  return (mood: mood, language: language, hits: hits);
 });

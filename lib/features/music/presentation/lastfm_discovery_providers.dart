@@ -6,62 +6,99 @@ import '../data/itunes_metadata_service.dart';
 import '../data/music_models.dart';
 import '../../settings/data/lastfm_repository.dart';
 
-/// Provider for the global trending artists on Last.fm with iTunes image enrichment.
-final lastfmGlobalTopArtistsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final service = getIt<LastFmService>();
-  final itunes = getIt<ItunesMetadataService>();
-  
-  final artists = await service.getGlobalTopArtists(limit: 15);
-  
-  return Future.wait(artists.map((artist) async {
-    final name = artist['name'] as String;
-    String imageUrl = artist['image_url'] as String? ?? '';
-    
-    if (LastFmService.isPlaceholderImage(imageUrl)) {
-      final itunesImage = await itunes.fetchArtistImage(name);
-      if (itunesImage != null) imageUrl = itunesImage;
-    }
-    
-    return {...artist, 'image_url': imageUrl};
-  }));
-});
+/// Provider for the global trending artists on Last.fm with lazy image enrichment.
+/// Shows raw data immediately, then fills in iTunes artwork in the background.
+final lastfmGlobalTopArtistsProvider = NotifierProvider<LastfmArtistsNotifier, AsyncValue<List<Map<String, dynamic>>>>(LastfmArtistsNotifier.new);
 
-/// Provider for the global trending tracks on Last.fm with iTunes image enrichment.
-final lastfmGlobalTopTracksProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final service = getIt<LastFmService>();
-  final itunes = getIt<ItunesMetadataService>();
-  
-  // Fetch more tracks so we have a diverse pool to filter from
-  final tracks = await service.getGlobalTopTracks(limit: 45);
-  
-  final List<Map<String, dynamic>> diverseTracks = [];
-  final Map<String, int> artistCounts = {};
-  
-  for (final track in tracks) {
-    final artist = track['artist'] as String? ?? 'Unknown';
-    final count = artistCounts[artist] ?? 0;
-    if (count < 2) {
-      diverseTracks.add(track);
-      artistCounts[artist] = count + 1;
-    }
-    if (diverseTracks.length >= 15) {
-      break;
+class LastfmArtistsNotifier extends Notifier<AsyncValue<List<Map<String, dynamic>>>> {
+  @override
+  AsyncValue<List<Map<String, dynamic>>> build() {
+    _load();
+    return const AsyncLoading();
+  }
+
+  Future<void> _load() async {
+    try {
+      final service = getIt<LastFmService>();
+      final itunes = getIt<ItunesMetadataService>();
+      final rawArtists = await service.getGlobalTopArtists(limit: 15);
+
+      // Emit raw data immediately — UI shows with placeholders
+      state = AsyncData(List.from(rawArtists));
+
+      // Background enrichment: replace placeholder images with iTunes artwork (parallel)
+      final enriched = await Future.wait(rawArtists.map((artist) async {
+        final name = artist['name'] as String;
+        String imageUrl = artist['image_url'] as String? ?? '';
+        if (LastFmService.isPlaceholderImage(imageUrl)) {
+          final img = await itunes.fetchArtistImage(name);
+          if (img != null) imageUrl = img.replaceAll(RegExp(r'\d+x\d+'), '100x100');
+        }
+        return {...artist, 'image_url': imageUrl};
+      }));
+
+      state = AsyncData(enriched);
+    } catch (e, st) {
+      state = AsyncError(e, st);
     }
   }
-  
-  return Future.wait(diverseTracks.map((track) async {
-    final name = track['name'] as String;
-    final artist = track['artist'] as String;
-    String imageUrl = track['image_url'] as String? ?? '';
-    
-    if (LastFmService.isPlaceholderImage(imageUrl)) {
-      final itunesMeta = await itunes.fetchMeta(name, artist);
-      if (itunesMeta?.artworkUrlHigh != null) imageUrl = itunesMeta!.artworkUrlHigh!;
+}
+
+/// Provider for the global trending tracks on Last.fm with lazy image enrichment.
+/// Shows raw data immediately, then fills in iTunes artwork in the background.
+final lastfmGlobalTopTracksProvider = NotifierProvider<LastfmTracksNotifier, AsyncValue<List<Map<String, dynamic>>>>(LastfmTracksNotifier.new);
+
+class LastfmTracksNotifier extends Notifier<AsyncValue<List<Map<String, dynamic>>>> {
+  @override
+  AsyncValue<List<Map<String, dynamic>>> build() {
+    _load();
+    return const AsyncLoading();
+  }
+
+  Future<void> _load() async {
+    try {
+      final service = getIt<LastFmService>();
+      final itunes = getIt<ItunesMetadataService>();
+
+      // Fetch more tracks so we have a diverse pool to filter from
+      final rawTracks = await service.getGlobalTopTracks(limit: 45);
+
+      final List<Map<String, dynamic>> diverseTracks = [];
+      final Map<String, int> artistCounts = {};
+
+      for (final track in rawTracks) {
+        final artist = track['artist'] as String? ?? 'Unknown';
+        final count = artistCounts[artist] ?? 0;
+        if (count < 2) {
+          diverseTracks.add(Map.from(track));
+          artistCounts[artist] = count + 1;
+        }
+        if (diverseTracks.length >= 15) {
+          break;
+        }
+      }
+
+      // Emit raw data immediately — UI shows with placeholders
+      state = AsyncData(List.from(diverseTracks));
+
+      // Background enrichment: replace placeholder images with iTunes artwork (parallel)
+      final enriched = await Future.wait(diverseTracks.map((track) async {
+        final name = track['name'] as String;
+        final artist = track['artist'] as String;
+        String imageUrl = track['image_url'] as String? ?? '';
+        if (LastFmService.isPlaceholderImage(imageUrl)) {
+          final meta = await itunes.fetchMeta(name, artist);
+          if (meta?.artworkUrlHigh != null) imageUrl = meta!.artworkUrlHigh!.replaceAll(RegExp(r'\d+x\d+'), '200x200');
+        }
+        return {...track, 'image_url': imageUrl};
+      }));
+
+      state = AsyncData(enriched);
+    } catch (e, st) {
+      state = AsyncError(e, st);
     }
-    
-    return {...track, 'image_url': imageUrl};
-  }));
-});
+  }
+}
 
 /// Provider for the user's personal top artists from Last.fm with enrichment.
 final lastfmUserTopArtistsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {

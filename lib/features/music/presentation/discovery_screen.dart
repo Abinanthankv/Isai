@@ -31,6 +31,8 @@ import 'package:isai/features/audiobooks/presentation/audiobooks_sub_screen.dart
 import 'package:isai/features/audiobooks/data/audiobook_models.dart';
 import 'package:isai/features/podcast/presentation/podcast_providers.dart';
 import 'package:isai/features/podcast/presentation/podcast_listing_screen.dart';
+import 'discovery_skeletons.dart';
+import 'discovery_cache_manager.dart';
 
 
 class DiscoveryScreen extends ConsumerWidget {
@@ -40,7 +42,6 @@ class DiscoveryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final topSongs = ref.watch(cachedTrendingSongsProvider);
     final selectedRegion = ref.watch(selectedRegionProvider);
-    final regionalSongs = ref.watch(regionalTrendingSongsProvider(RegionalChartParams(selectedRegion)));
     final isOffline = ref.watch(isOfflineProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final newReleases = ref.watch(newReleasesProvider(selectedRegion));
@@ -96,6 +97,7 @@ class DiscoveryScreen extends ConsumerWidget {
           }
         },
         child: CustomScrollView(
+          cacheExtent: 600,
           slivers: [
             _buildAppBar(context, ref, selectedRegion, isDark),
             
@@ -136,11 +138,9 @@ class DiscoveryScreen extends ConsumerWidget {
               ),
 
               SliverToBoxAdapter(
-                child: _buildAppleMusicPlaylistsSection(context, ref, playlists, isDark),
+                child: _buildAppleMusicPlaylistsSection(context, ref, isDark),
               ),
 
-
-              
               const SliverToBoxAdapter(child: SizedBox(height: 50)),
             ],
           ],
@@ -289,12 +289,7 @@ class DiscoveryScreen extends ConsumerWidget {
               },
             );
           },
-          loading: () => SizedBox(
-            height: 260,
-            child: Center(
-              child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
-            ),
-          ),
+          loading: () => trendingSongsSkeleton(context),
           error: (_, __) => const SizedBox.shrink(),
         ),
         const SizedBox(height: 12),
@@ -305,62 +300,66 @@ class DiscoveryScreen extends ConsumerWidget {
   Widget _buildVibeSwipeBanner(BuildContext context, WidgetRef ref, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const DiscoverySwipeScreen()),
-          );
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: ref.watch(settingsProvider).appThemeStyle == 'material3'
-                  ? [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary.withOpacity(0.7)]
-                  : [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Vibe Swipe',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Swipe through personalized 10s previews to find your new favorites.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70,),
-                    ),
-                  ],
+        child: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DiscoverySwipeScreen()),
+            );
+          },
+          child: Consumer(builder: (context, ref, _) {
+            final useMaterial3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
+            final gradientColors = useMaterial3
+                ? [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary.withOpacity(0.7)]
+                : [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple];
+            return Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradientColors,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.style_rounded, color: Colors.white, size: 28),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Vibe Swipe',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Swipe through personalized 10s previews to find your new favorites.',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70,),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.style_rounded, color: Colors.white, size: 28),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          }),
         ),
-      ),
     );
   }
 
@@ -413,9 +412,12 @@ class DiscoveryScreen extends ConsumerWidget {
                                 ),
                               ],
                             ),
-                            child: ClipOval(
+                              child: ClipOval(
                               child: imageUrl.isNotEmpty
                                   ? CachedNetworkImage(
+                                      cacheManager: DiscoveryCacheManager(),
+                                      memCacheWidth: 85,
+                                      memCacheHeight: 85,
                                       imageUrl: imageUrl,
                                       fit: BoxFit.cover,
                                       placeholder: (_, __) => Container(color: Colors.grey.withOpacity(0.1)),
@@ -443,7 +445,7 @@ class DiscoveryScreen extends ConsumerWidget {
               ),
             );
           },
-          loading: () => const SizedBox(height: 140, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+          loading: () => lastfmArtistsSkeleton(context),
           error: (_, __) => const SizedBox.shrink(),
         ),
         const SizedBox(height: 16),
@@ -495,6 +497,9 @@ class DiscoveryScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(16),
                             child: imageUrl.isNotEmpty
                                 ? CachedNetworkImage(
+                                    cacheManager: DiscoveryCacheManager(),
+                                    memCacheWidth: 150,
+                                    memCacheHeight: 150,
                                     imageUrl: imageUrl,
                                     width: 150,
                                     height: 150,
@@ -521,7 +526,7 @@ class DiscoveryScreen extends ConsumerWidget {
               ),
             );
           },
-          loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+          loading: () => lastfmTracksSkeleton(context),
           error: (_, __) => const SizedBox.shrink(),
         ),
         const SizedBox(height: 24),
@@ -557,19 +562,21 @@ class DiscoveryScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: ref.watch(settingsProvider).appThemeStyle == 'material3'
-                            ? [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary.withOpacity(0.8)]
-                            : [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
+                  children: [
+                  Consumer(builder: (context, ref, _) {
+                    final useMaterial3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
+                    final badgeColors = useMaterial3
+                        ? [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary.withOpacity(0.8)]
+                        : [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: badgeColors),
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('NEW', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                  ),
+                      child: Text('NEW', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    );
+                  }),
                   const SizedBox(width: 8),
                   Text('Fresh Releases', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
                 ],
@@ -609,6 +616,9 @@ class DiscoveryScreen extends ConsumerWidget {
                             fit: StackFit.expand,
                             children: [
                               CachedNetworkImage(
+                                cacheManager: DiscoveryCacheManager(),
+                                memCacheWidth: 300,
+                                memCacheHeight: 220,
                                 imageUrl: artworkHi,
                                 fit: BoxFit.cover,
                                 errorWidget: (_, __, ___) => Container(
@@ -685,7 +695,7 @@ class DiscoveryScreen extends ConsumerWidget {
           ],
         );
       },
-      loading: () => SizedBox(height: 220, child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary))),
+      loading: () => newReleasesSkeleton(context),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
@@ -787,60 +797,30 @@ class DiscoveryScreen extends ConsumerWidget {
           ],
         );
       },
-      loading: () => const SizedBox.shrink(),
+      loading: () => genreBrowseSkeleton(context),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
 
   // ─── APPLE MUSIC PLAYLISTS ──────────────────────────────────────
-  Widget _buildAppleMusicPlaylistsSection(BuildContext context, WidgetRef ref, AsyncValue<List<AppleMusicPlaylist>> playlistsAsync, bool isDark) {
-    return playlistsAsync.when(
-      data: (playlists) {
-        if (playlists.isEmpty) return const SizedBox.shrink();
-        
-        final moodPlaylists = <AppleMusicPlaylist>[];
-        final languagePlaylists = <AppleMusicPlaylist>[];
-        final hitsPlaylists = <AppleMusicPlaylist>[];
-        
-        for (final playlist in playlists) {
-          final nameLower = playlist.name.toLowerCase();
-          
-          if (nameLower.contains('tamil') || 
-              nameLower.contains('telugu') || 
-              nameLower.contains('hindi') || 
-              nameLower.contains('bollywood') || 
-              nameLower.contains('punjabi') || 
-              nameLower.contains('malayalam') || 
-              nameLower.contains('kannada') || 
-              nameLower.contains('k-pop') || 
-              nameLower.contains('j-pop') || 
-              nameLower.contains('indie') || 
-              nameLower.contains('english')) {
-            languagePlaylists.add(playlist);
-          } else if (nameLower.contains('chill') || 
-                   nameLower.contains('relax') || 
-                   nameLower.contains('lo-fi') || 
-                   nameLower.contains('lofi') || 
-                   nameLower.contains('study') || 
-                   nameLower.contains('focus') || 
-                   nameLower.contains('workout') || 
-                   nameLower.contains('energy') || 
-                   nameLower.contains('party') || 
-                   nameLower.contains('dance') || 
-                   nameLower.contains('sad') || 
-                   nameLower.contains('acoustic') || 
-                   nameLower.contains('sleep') || 
-                   nameLower.contains('feel good') || 
-                   nameLower.contains('vibes')) {
-            moodPlaylists.add(playlist);
-          } else {
-            hitsPlaylists.add(playlist);
-          }
-        }
+  Widget _buildAppleMusicPlaylistsSection(BuildContext context, WidgetRef ref, bool isDark) {
+    final region = ref.watch(selectedRegionProvider);
+    final categorized = ref.watch(appleMusicCategorizedProvider(region));
+    final loading = ref.watch(regionalPlaylistsProvider(region)).isLoading;
 
-        Widget _buildCategoryRow(String title, List<AppleMusicPlaylist> items, IconData icon) {
-          if (items.isEmpty) return const SizedBox.shrink();
-          return Column(
+    if (loading) return appleMusicPlaylistsSkeleton(context);
+
+    final moodPlaylists = categorized.mood;
+    final languagePlaylists = categorized.language;
+    final hitsPlaylists = categorized.hits;
+
+    if (moodPlaylists.isEmpty && languagePlaylists.isEmpty && hitsPlaylists.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    Widget _buildCategoryRow(String title, List<AppleMusicPlaylist> items, IconData icon) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
@@ -930,6 +910,9 @@ class DiscoveryScreen extends ConsumerWidget {
                                   children: [
                                     playlist.artworkUrl.isNotEmpty
                                         ? CachedNetworkImage(
+                                            cacheManager: DiscoveryCacheManager(),
+                                            memCacheWidth: 120,
+                                            memCacheHeight: 120,
                                             imageUrl: playlist.artworkUrl,
                                             fit: BoxFit.cover,
                                             errorWidget: (_, __, ___) => Container(
@@ -1000,10 +983,6 @@ class DiscoveryScreen extends ConsumerWidget {
             const SizedBox(height: 24),
           ],
         );
-      },
-      loading: () => SizedBox(height: 200, child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary))),
-      error: (_, __) => const SizedBox.shrink(),
-    );
   }
 
   Widget _buildAppBar(BuildContext context, WidgetRef ref, String selectedRegion, bool isDark) {
@@ -1300,6 +1279,9 @@ class DiscoveryScreen extends ConsumerWidget {
                                 children: [
                                   playlist.artworkUrl.isNotEmpty
                                       ? CachedNetworkImage(
+                                          cacheManager: DiscoveryCacheManager(),
+                                          memCacheWidth: 120,
+                                          memCacheHeight: 120,
                                           imageUrl: playlist.artworkUrl,
                                           fit: BoxFit.cover,
                                           errorWidget: (_, __, ___) => Container(
@@ -1349,12 +1331,7 @@ class DiscoveryScreen extends ConsumerWidget {
                 },
               );
             },
-            loading: () => Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+            loading: () => jioSaavnPlaylistsSkeleton(context),
             error: (err, __) => Center(
               child: Text(
                 'Failed to load playlists.',
@@ -1413,6 +1390,9 @@ class _ArtistAvatar extends ConsumerWidget {
                 child: imageAsync.when(
                   data: (url) => url != null
                       ? CachedNetworkImage(
+                          cacheManager: DiscoveryCacheManager(),
+                          memCacheWidth: 80,
+                          memCacheHeight: 80,
                           imageUrl: url,
                           fit: BoxFit.cover,
                           placeholder: (_, __) => Container(
@@ -1496,6 +1476,9 @@ class _SongGridItem extends ConsumerWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
+                cacheManager: DiscoveryCacheManager(),
+                memCacheWidth: 54,
+                memCacheHeight: 54,
                 imageUrl: track.artworkUrl,
                 width: 54,
                 height: 54,
@@ -1632,6 +1615,9 @@ class _TrendingSongsCarouselState extends State<TrendingSongsCarousel> {
                     fit: StackFit.expand,
                     children: [
                       CachedNetworkImage(
+                        cacheManager: DiscoveryCacheManager(),
+                        memCacheWidth: 260,
+                        memCacheHeight: 260,
                         imageUrl: artworkHi,
                         fit: BoxFit.cover,
                         errorWidget: (_, __, ___) => Container(

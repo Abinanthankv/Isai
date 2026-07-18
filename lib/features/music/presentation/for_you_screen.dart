@@ -238,7 +238,6 @@ class ForYouScreen extends ConsumerWidget {
         SliverToBoxAdapter(
           child: _buildSimilarArtistsSection(context, ref, similarArtists, isDark),
         ),
-
         // Time-based Mix
         SliverToBoxAdapter(
           child: _buildTimeBasedMixSection(context, ref, timeBasedMix, isDark),

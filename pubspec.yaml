@@ -84,6 +84,8 @@ dependencies:
   archive: ^3.6.1
   xml: ^6.5.0
   flutter_displaymode: ^0.6.0
+  shimmer: ^3.0.0
+  flutter_cache_manager: ^3.4.1
 
 
 dev_dependencies:
