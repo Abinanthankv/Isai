@@ -103,6 +103,7 @@ class SettingsState {
   final bool miniPlayerSwipeEnabled;
   final double miniPlayerSwipeSensitivity;
   final bool playerSpotifyCanvasEnabled;
+  final bool playerShowCurrentLyrics;
   final String? audiobookFolder;
   final String hardcoverApiKey;
   final bool hardcoverIsValid;
@@ -158,6 +159,7 @@ class SettingsState {
     this.miniPlayerSwipeEnabled = true,
     this.miniPlayerSwipeSensitivity = 40.0,
     this.playerSpotifyCanvasEnabled = true,
+    this.playerShowCurrentLyrics = false,
     this.audiobookFolder,
     this.hardcoverApiKey = '',
     this.hardcoverIsValid = false,
@@ -212,6 +214,7 @@ class SettingsState {
     bool? miniPlayerSwipeEnabled,
     double? miniPlayerSwipeSensitivity,
     bool? playerSpotifyCanvasEnabled,
+    bool? playerShowCurrentLyrics,
     String? audiobookFolder,
     String? hardcoverApiKey,
     bool? hardcoverIsValid,
@@ -265,6 +268,7 @@ class SettingsState {
       miniPlayerSwipeEnabled: miniPlayerSwipeEnabled ?? this.miniPlayerSwipeEnabled,
       miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
+      playerShowCurrentLyrics: playerShowCurrentLyrics ?? this.playerShowCurrentLyrics,
       audiobookFolder: audiobookFolder ?? this.audiobookFolder,
       hardcoverApiKey: hardcoverApiKey ?? this.hardcoverApiKey,
       hardcoverIsValid: hardcoverIsValid ?? this.hardcoverIsValid,
@@ -329,6 +333,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       miniPlayerSwipeEnabled: _settings.miniPlayerSwipeEnabled,
       miniPlayerSwipeSensitivity: _settings.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: _settings.playerSpotifyCanvasEnabled,
+      playerShowCurrentLyrics: _settings.playerShowCurrentLyrics,
       audiobookFolder: _settings.audiobookFolder,
       hardcoverApiKey: _hardcoverSettings.apiKey ?? '',
       hardcoverIsValid: (_hardcoverSettings.apiKey ?? '').isNotEmpty,
@@ -542,6 +547,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setPlayerSpotifyCanvasEnabled(bool enabled) async {
     await _settings.setPlayerSpotifyCanvasEnabled(enabled);
     state = state.copyWith(playerSpotifyCanvasEnabled: enabled);
+  }
+
+  Future<void> setPlayerShowCurrentLyrics(bool show) async {
+    await _settings.setPlayerShowCurrentLyrics(show);
+    state = state.copyWith(playerShowCurrentLyrics: show);
   }
 
   // ── Visualizer Setters ──────────────────────────────────────────────────

@@ -893,9 +893,10 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           padding: const EdgeInsets.symmetric(horizontal: 28),
                            child: Column(
                              crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                               _buildTrackInfo(displayTitle, displayArtist),
-                               const SizedBox(height: 20),
+                              children: [
+                                _buildCurrentLyricsLine(),
+                                _buildTrackInfo(displayTitle, displayArtist),
+                                const SizedBox(height: 20),
                                StreamBuilder<PlaybackState>(
                                  stream: audioHandler.playbackState,
                                  builder: (context, stateSnap) {
@@ -1665,6 +1666,76 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       child: Center(
         child: Icon(Icons.music_note, size: iconSize, color: Colors.white24),
       ),
+    );
+  }
+
+  Widget _buildLetterByLetterWord(String text, Duration adjustedPosition, Duration wordStart, Duration wordEnd, TextStyle style, Color activeColor) {
+    final wordDuration = wordEnd - wordStart;
+    final progress = wordDuration.inMicroseconds > 0
+        ? ((adjustedPosition - wordStart).inMicroseconds / wordDuration.inMicroseconds).clamp(0.0, 1.0)
+        : 1.0;
+    final totalChars = text.length;
+
+    return Text.rich(
+      TextSpan(
+        children: List.generate(totalChars, (i) {
+          final revealThreshold = (i + 1) / totalChars;
+          Color charColor;
+          if (progress >= revealThreshold) {
+            charColor = activeColor;
+          } else if (progress > i / totalChars) {
+            final t = (progress - i / totalChars) * totalChars;
+            charColor = Color.lerp(Colors.white.withValues(alpha: 0.3), activeColor, t)!;
+          } else {
+            charColor = Colors.white.withValues(alpha: 0.3);
+          }
+          return TextSpan(
+            text: text[i],
+            style: style.copyWith(color: charColor),
+          );
+        }),
+      ),
+      softWrap: false,
+    );
+  }
+
+  Widget _buildCurrentLyricsLine() {
+    final settings = ref.watch(settingsProvider);
+    if (!settings.playerShowCurrentLyrics) return const SizedBox.shrink();
+
+    final lyricsState = ref.watch(lyricsProvider);
+    final lyrics = lyricsState.lyrics;
+    if (lyrics == null || !lyrics.hasSynced) return const SizedBox.shrink();
+
+    return StreamBuilder<Duration>(
+      stream: AudioService.position,
+      builder: (context, snapshot) {
+        final position = snapshot.data ?? Duration.zero;
+
+        String currentLine = '';
+        for (final line in lyrics.syncedLines) {
+          if (line.timestamp <= position) {
+            currentLine = line.text;
+          } else break;
+        }
+
+        if (currentLine.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            currentLine,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.85),
+              fontStyle: FontStyle.italic,
+              overflow: TextOverflow.ellipsis,
+            ),
+            maxLines: 1,
+          ),
+        );
+      },
     );
   }
 
@@ -2891,31 +2962,37 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             alignment: WrapAlignment.center,
                             runAlignment: WrapAlignment.center,
                             crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 4,
+                            spacing: 6,
                             children: line.words.map((word) {
                               final isPast = adjustedPosition >= word.end;
                               final isCurrent = !isPast && adjustedPosition >= word.start;
 
-                              Color wordColor;
+                              if (isCurrent) {
+                                return _buildLetterByLetterWord(
+                                  word.text,
+                                  adjustedPosition,
+                                  word.start,
+                                  word.end,
+                                  baseStyle.copyWith(fontWeight: FontWeight.bold),
+                                  primaryColor,
+                                );
+                              }
+
+                              final Color wordColor;
                               if (isPast) {
                                 final fadeProgress = ((adjustedPosition - word.end).inMilliseconds / 800.0).clamp(0.0, 1.0);
                                 wordColor = Color.lerp(primaryColor, Colors.white, fadeProgress)!;
-                              } else if (isCurrent) {
-                                wordColor = primaryColor;
                               } else {
                                 wordColor = Colors.white.withOpacity(0.3);
                               }
 
-                              return Transform.scale(
-                                scale: isCurrent ? 1.12 : 1.0,
-                                child: Text(
-                                  word.text,
-                                  style: TextStyle(
-                                    fontSize: baseStyle.fontSize,
-                                    fontWeight: isCurrent ? FontWeight.bold : baseStyle.fontWeight,
-                                    color: wordColor,
-                                    height: 1.2,
-                                  ),
+                              return Text(
+                                word.text,
+                                style: TextStyle(
+                                  fontSize: baseStyle.fontSize,
+                                  fontWeight: FontWeight.w600,
+                                  color: wordColor,
+                                  height: 1.2,
                                 ),
                               );
                             }).toList(),

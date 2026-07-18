@@ -130,6 +130,9 @@ abstract class TorBoxSettingsRepository {
   Future<void> setMiniPlayerSwipeSensitivity(double sensitivity);
   double get miniPlayerSwipeSensitivity;
 
+  Future<void> setPlayerShowCurrentLyrics(bool show);
+  bool get playerShowCurrentLyrics;
+
   Future<void> setAudiobookFolder(String? folder);
   String? get audiobookFolder;
 }
@@ -401,6 +404,12 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setMiniPlayerSwipeSensitivity(double sensitivity) => _prefs.setDouble('mini_player_swipe_sensitivity', sensitivity);
+
+  @override
+  bool get playerShowCurrentLyrics => _prefs.getBool('player_show_current_lyrics') ?? false;
+
+  @override
+  Future<void> setPlayerShowCurrentLyrics(bool show) => _prefs.setBool('player_show_current_lyrics', show);
 
   @override
   String? get audiobookFolder => _prefs.getString('audiobook_folder');
