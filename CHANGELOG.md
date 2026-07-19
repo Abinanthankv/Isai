@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.0.10] - July 2026
+
+### Added
+- **Next Up Preview**: Shows upcoming tracks as a horizontal scrollable list below the Now Playing controls. Collapsible with arrow toggle. Tap any track to skip to it. Customize in Player Customization — enable/disable, set count (0–10), and choose display style (Art + Name, Art Only, or Name Only).
+- **Lyrics Sync Offset Drag**: Long-press and drag vertically on synced lyrics to fine-tune timing — 1px = 50ms. Overlay shows the current offset.
+- **Font Style for Lyrics**: Player Customization now has Normal, Bold, Italic, and Bold Italic options for lyrics text, persisted across sessions.
+
+### Changed
+- **Artist Screen Redesign**: Section headers with icons + dividers, track numbers on popular songs, enlarged artwork, gradient overlays on albums, Deezer playlist cards in mixed sizes, expandable About section with icon rows and tag chips, enlarged similar artist circles (120px), and DOB with age calculation.
+- **Now Playing Wide Screen**: Artwork vertically centered and capped at 65% of screen height, controls centered on the right side, lyrics mode with close button and mini transport bar.
+- **Mood Details**: Songs now play directly instead of navigating to the search screen, with a loading spinner while resolving.
+- **Responsive Grids**: Library, Playlists, Search, and Category Detail screens now use adaptive column counts (2–6 columns) based on screen width.
+- **Search Fallback**: When iTunes returns fewer than 5 results, Deezer is used as a fuzzy/typo-tolerant fallback.
+- **Canvas Minimized**: Dark overlay removed when canvas is fullscreen, so the video is fully visible.
+
+### Fixed
+- **Lyrics Word Clipping**: Removed `softWrap: false` from letter-by-letter lyrics rendering so the last word is no longer hidden.
+- **withOpacity Deprecation**: Replaced all deprecated `withOpacity()` calls with `withValues(alpha:)` across Artist and Now Playing screens.
+- **Undefined Color Errors**: Fixed `Colors.black06` / `Colors.black08` references that caused build failures.
+
 ## [1.0.9] - July 2026
 
 ### Added
