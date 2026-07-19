@@ -121,6 +121,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   Duration _lyricsOffset = Duration.zero;
   bool _canvasControlsMinimized = false;
   bool _nextUpExpanded = false;
+  bool _isDraggingOffset = false;
+  double _dragOffsetStartY = 0;
+  Duration _dragOffsetStart = Duration.zero;
 
   @override
   void initState() {
@@ -707,11 +710,12 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
               if (showCanvas) ...[
                 SpotifyCanvasBackground(videoUrl: canvasState.canvasUrl!),
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black.withOpacity(0.55),
+                if (!_canvasControlsMinimized)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0.55),
+                    ),
                   ),
-                ),
               ],
 
               // ── Visualizer Overlay ───────────────────────────────────────
@@ -891,7 +895,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                                                                         _buildTransportControls(),
                                                                       ],
                                                                     );
-                                                          },
+          },
                                                         ),
                                                         if (settings.playerControlLayout != 'minimalist') ...[
                                                           const SizedBox(height: 20),
@@ -3364,7 +3368,27 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
               });
             }
 
-            return Stack(
+            return GestureDetector(
+              onLongPressStart: (details) {
+                setState(() {
+                  _isDraggingOffset = true;
+                  _dragOffsetStartY = details.globalPosition.dy;
+                  _dragOffsetStart = _lyricsOffset;
+                });
+                HapticFeedback.mediumImpact();
+              },
+              onLongPressMoveUpdate: (details) {
+                final delta = details.globalPosition.dy - _dragOffsetStartY;
+                final offsetMs = (delta * 50).round(); // 1px = 50ms
+                setState(() {
+                  _lyricsOffset = _dragOffsetStart + Duration(milliseconds: offsetMs);
+                });
+              },
+              onLongPressEnd: (_) {
+                setState(() => _isDraggingOffset = false);
+                HapticFeedback.lightImpact();
+              },
+              child: Stack(
               children: [
                 ShaderMask(
                   shaderCallback: (rect) {
@@ -3550,7 +3574,33 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     ),
                   ),
                 ),
+                if (_isDraggingOffset)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${_lyricsOffset.inMilliseconds >= 0 ? '+' : ''}${(_lyricsOffset.inMilliseconds / 1000).toStringAsFixed(1)}s',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
+            ),
             );
           },
         );
