@@ -76,8 +76,8 @@ class CategoryDetailScreen extends ConsumerWidget {
               return SliverPadding(
                 padding: const EdgeInsets.all(16),
                 sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: _gridCrossAxisCount(context),
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                     childAspectRatio: 0.8,
@@ -121,5 +121,14 @@ class CategoryDetailScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  int _gridCrossAxisCount(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w > 1200) return 6;
+    if (w > 900) return 5;
+    if (w > 700) return 4;
+    if (w > 500) return 3;
+    return 2;
   }
 }

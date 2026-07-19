@@ -187,7 +187,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         return GridView.count(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
+                          crossAxisCount: _gridCrossAxisCount(),
                           mainAxisSpacing: 16,
                           crossAxisSpacing: 16,
                           childAspectRatio: 1.1,
@@ -264,6 +264,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
       ),
     );
+  }
+
+  int _gridCrossAxisCount() {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 6;
+    if (width > 900) return 5;
+    if (width > 700) return 4;
+    if (width > 500) return 3;
+    return 2;
   }
 
   Widget _buildContentSlivers() {
@@ -358,7 +367,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             return GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
+              crossAxisCount: _gridCrossAxisCount(),
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
               childAspectRatio: 1.1,
@@ -494,8 +503,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         child: GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2, childAspectRatio: 0.7, crossAxisSpacing: 16, mainAxisSpacing: 16,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: _gridCrossAxisCount(), childAspectRatio: 0.7, crossAxisSpacing: 16, mainAxisSpacing: 16,
           ),
           itemCount: displayBooks.length,
           itemBuilder: (context, index) => _buildGridCard(context, displayBooks[index]),
@@ -1184,8 +1193,8 @@ class LibraryAlbumsScreen extends ConsumerWidget {
                     : SliverPadding(
                         padding: const EdgeInsets.all(20),
                         sliver: SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: _gridCrossAxisCount(context),
                             mainAxisSpacing: 20,
                             crossAxisSpacing: 20,
                             childAspectRatio: 0.8,
@@ -1212,6 +1221,15 @@ class LibraryAlbumsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  int _gridCrossAxisCount(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w > 1200) return 6;
+    if (w > 900) return 5;
+    if (w > 700) return 4;
+    if (w > 500) return 3;
+    return 2;
   }
 }
 

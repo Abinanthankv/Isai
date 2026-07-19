@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'music_providers.dart';
-import 'music_search_screen.dart';
+import 'source_picker_sheet.dart';
 import 'now_playing_screen.dart';
 import 'playlists_screen.dart';
 import '../data/music_models.dart';
@@ -283,11 +284,149 @@ class _MoodSongTile extends ConsumerStatefulWidget {
 class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
   TorBoxFile? _matchingFile;
   ItunesMeta? _meta;
+  bool _isCheckingSources = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkLibrary());
+  }
+
+  void _handleTap() async {
+    if (_matchingFile != null) {
+      final library = ref.read(libraryProvider);
+      final customQueue = widget.allSongs.map<TorBoxFile>((t) {
+        final match = library.findMatchingTrack(t.trackName, t.artistName);
+        if (match != null) return match;
+        return TorBoxFile(
+          id: -t.trackId,
+          torrentId: -1,
+          name: t.trackName,
+          size: 0,
+          localPath: null,
+        );
+      }).toList();
+
+      final startIndex = widget.allSongs.indexWhere((t) => t.trackId == widget.track.trackId);
+
+      final url = _matchingFile!.localPath != null
+          ? Uri.file(_matchingFile!.localPath!).toString()
+          : 'https://lazy.torbox.internal/${_matchingFile!.torrentId}/${_matchingFile!.id}';
+
+      await audioHandler.customAction('play', {
+        'url': url,
+        'title': widget.track.trackName,
+        'artist': widget.track.artistName,
+        'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
+        'forceReplace': true,
+        'queue': List.generate(customQueue.length, (i) {
+          final e = customQueue[i];
+          final qTrack = widget.allSongs[i];
+          String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
+          if (e.torrentId == -1) {
+            fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qTrack.trackName)}&artist=${Uri.encodeComponent(qTrack.artistName)}';
+          }
+          return {
+            'url': fUrl,
+            'title': qTrack.trackName,
+            'artist': qTrack.artistName,
+            'artworkUrl': qTrack.artworkUrl,
+            'extras': {
+              'torrentId': e.torrentId,
+              'fileId': e.id,
+              'size': e.size,
+              'localPath': e.localPath,
+            },
+          };
+        }),
+        'index': startIndex != -1 ? startIndex : 0,
+      });
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => NowPlayingScreen(
+              file: _matchingFile!,
+              customQueue: customQueue,
+            ),
+          ),
+        );
+      }
+    } else {
+      HapticFeedback.lightImpact();
+      setState(() => _isCheckingSources = true);
+      try {
+        final flacResult = await ref.read(flacSearchProvider.notifier).resolveDirectFlac(
+          widget.track.trackName,
+          widget.track.artistName,
+        );
+        if (!mounted) return;
+        setState(() => _isCheckingSources = false);
+
+        if (flacResult != null) {
+          final dummyFile = TorBoxFile(
+            id: -flacResult.url.hashCode.abs(),
+            torrentId: -1,
+            size: flacResult.size,
+            name: flacResult.title,
+            localPath: null,
+          );
+
+          await audioHandler.customAction('play', {
+            'url': flacResult.url,
+            'title': widget.track.trackName,
+            'artist': widget.track.artistName,
+            'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
+            'forceReplace': false,
+            'extras': {
+              'torrentId': dummyFile.torrentId,
+              'fileId': dummyFile.id,
+              'size': dummyFile.size,
+              'localPath': null,
+              'source': flacResult.source,
+            },
+          });
+
+          if (mounted) {
+            if (audioHandler.playbackState.value.playing) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Added to Next in Queue'),
+                  behavior: SnackBarBehavior.floating,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                ),
+              );
+            }
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NowPlayingScreen(
+                  file: dummyFile,
+                  customQueue: [dummyFile],
+                ),
+              ),
+            );
+          }
+        } else {
+          _showSourcePicker(context, widget.track);
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isCheckingSources = false);
+          _showSourcePicker(context, widget.track);
+        }
+      }
+    }
+  }
+
+  void _showSourcePicker(BuildContext context, ItunesTrack track) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SourcePickerSheet(track: track),
+    );
   }
 
   Future<void> _checkLibrary() async {
@@ -328,80 +467,7 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
       child: GlassCard(
         padding: const EdgeInsets.all(12),
         borderRadius: 20,
-        onTap: () async {
-          if (_matchingFile != null) {
-            final library = ref.read(libraryProvider);
-            final customQueue = widget.allSongs.map<TorBoxFile>((t) {
-              final match = library.findMatchingTrack(t.trackName, t.artistName);
-              if (match != null) return match;
-              
-              // Internal dummy for lazy resolution
-              return TorBoxFile(
-                id: -t.trackId,
-                torrentId: -1,
-                name: t.trackName,
-                size: 0,
-                localPath: null,
-              );
-            }).toList();
-
-            final startIndex = widget.allSongs.indexWhere((t) => t.trackId == widget.track.trackId);
-            
-            final url = _matchingFile!.localPath != null 
-                ? Uri.file(_matchingFile!.localPath!).toString() 
-                : 'https://lazy.torbox.internal/${_matchingFile!.torrentId}/${_matchingFile!.id}';
-
-            await audioHandler.customAction('play', {
-              'url': url,
-              'title': widget.track.trackName,
-              'artist': widget.track.artistName,
-              'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
-              'forceReplace': true,
-              'queue': List.generate(customQueue.length, (i) {
-                final e = customQueue[i];
-                final qTrack = widget.allSongs[i];
-                String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
-                if (e.torrentId == -1) {
-                  fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qTrack.trackName)}&artist=${Uri.encodeComponent(qTrack.artistName)}';
-                }
-                return {
-                  'url': fUrl,
-                  'title': qTrack.trackName,
-                  'artist': qTrack.artistName,
-                  'artworkUrl': qTrack.artworkUrl,
-                  'extras': {
-                    'torrentId': e.torrentId,
-                    'fileId': e.id,
-                    'size': e.size,
-                    'localPath': e.localPath,
-                  }
-                };
-              }),
-              'index': startIndex != -1 ? startIndex : 0,
-            });
-
-            if (mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NowPlayingScreen(
-                    file: _matchingFile!,
-                    customQueue: customQueue,
-                  ),
-                ),
-              );
-            }
-          } else {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (ctx) => MusicSearchScreen(
-                  initialQuery: '${widget.track.artistName} ${widget.track.trackName}',
-                ),
-              ),
-            );
-          }
-        },
+        onTap: _isCheckingSources ? null : _handleTap,
         child: Row(
           children: [
             Container(
@@ -437,11 +503,17 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
                 ],
               ),
             ),
-            Icon(
-              _matchingFile != null ? Icons.play_circle_fill_rounded : Icons.add_circle_outline_rounded,
-              color: Theme.of(context).colorScheme.primary,
-              size: 32,
-            ),
+            _isCheckingSources
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 32,
+                ),
           ],
         ),
       ),

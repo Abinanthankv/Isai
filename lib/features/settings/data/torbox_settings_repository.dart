@@ -42,6 +42,9 @@ abstract class TorBoxSettingsRepository {
   Future<void> setPlayerLyricsAlignment(String alignment);
   String get playerLyricsAlignment;
 
+  Future<void> setPlayerLyricsFontWeight(String weight);
+  String get playerLyricsFontWeight;
+
   Future<void> setPlayerControlLayout(String layout);
   String get playerControlLayout;
 
@@ -132,6 +135,15 @@ abstract class TorBoxSettingsRepository {
 
   Future<void> setPlayerShowCurrentLyrics(bool show);
   bool get playerShowCurrentLyrics;
+
+  Future<void> setPlayerShowNextUp(bool show);
+  bool get playerShowNextUp;
+
+  Future<void> setPlayerNextUpCount(int count);
+  int get playerNextUpCount;
+
+  Future<void> setPlayerNextUpStyle(String style);
+  String get playerNextUpStyle;
 
   Future<void> setAudiobookFolder(String? folder);
   String? get audiobookFolder;
@@ -229,6 +241,12 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setPlayerLyricsAlignment(String alignment) => _prefs.setString('player_lyrics_alignment', alignment);
+
+  @override
+  String get playerLyricsFontWeight => _prefs.getString('player_lyrics_font_weight') ?? 'normal';
+
+  @override
+  Future<void> setPlayerLyricsFontWeight(String weight) => _prefs.setString('player_lyrics_font_weight', weight);
 
   @override
   String get playerControlLayout => _prefs.getString('player_control_layout') ?? 'standard';
@@ -410,6 +428,24 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setPlayerShowCurrentLyrics(bool show) => _prefs.setBool('player_show_current_lyrics', show);
+
+  @override
+  bool get playerShowNextUp => _prefs.getBool('player_show_next_up') ?? true;
+
+  @override
+  Future<void> setPlayerShowNextUp(bool show) => _prefs.setBool('player_show_next_up', show);
+
+  @override
+  int get playerNextUpCount => _prefs.getInt('player_next_up_count') ?? 2;
+
+  @override
+  Future<void> setPlayerNextUpCount(int count) => _prefs.setInt('player_next_up_count', count);
+
+  @override
+  String get playerNextUpStyle => _prefs.getString('player_next_up_style') ?? 'art_and_name';
+
+  @override
+  Future<void> setPlayerNextUpStyle(String style) => _prefs.setString('player_next_up_style', style);
 
   @override
   String? get audiobookFolder => _prefs.getString('audiobook_folder');

@@ -122,92 +122,102 @@ class _PlaylistGridScreenState extends State<PlaylistGridScreen> {
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: isDark ? Colors.white54 : Colors.black45,),
                     ),
                   )
-                : GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 0.82,
-                    ),
-                    itemCount: filteredPlaylists.length,
-                    itemBuilder: (context, index) {
-                      final playlist = filteredPlaylists[index];
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PlaylistDetailsScreen(
-                                appleMusicPlaylist: playlist,
-                              ),
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxWidth = constraints.maxWidth;
+                      final crossAxisCount = maxWidth > 900 ? 4 : maxWidth > 600 ? 3 : 2;
+                      final cardWidth = (maxWidth - (16 * 2) - (16.0 * (crossAxisCount - 1))) / crossAxisCount;
+                      final cardHeight = cardWidth;
+                      final aspectRatio = cardWidth / (cardHeight + 50);
+
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(16),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: aspectRatio,
+                        ),
+                        itemCount: filteredPlaylists.length,
+                        itemBuilder: (context, index) {
+                          final playlist = filteredPlaylists[index];
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PlaylistDetailsScreen(
+                                    appleMusicPlaylist: playlist,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.12),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          playlist.artworkUrl.isNotEmpty
+                                              ? CachedNetworkImage(
+                                                  imageUrl: playlist.artworkUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorWidget: (_, __, ___) => Container(
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                                    ),
+                                                    child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 48),
+                                                  ),
+                                                )
+                                              : Container(
+                                                  decoration: BoxDecoration(
+                                                    gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                                  ),
+                                                  child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 48),
+                                                ),
+                                          Positioned.fill(
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topCenter,
+                                                  end: Alignment.bottomCenter,
+                                                  colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
+                                                  stops: const [0.6, 1.0],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  playlist.name,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white : Colors.black,),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           );
                         },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.12),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      playlist.artworkUrl.isNotEmpty
-                                          ? CachedNetworkImage(
-                                              imageUrl: playlist.artworkUrl,
-                                              fit: BoxFit.cover,
-                                              errorWidget: (_, __, ___) => Container(
-                                                decoration: BoxDecoration(
-                                                  gradient: LinearGradient(colors: _getGradientForIndex(index)),
-                                                ),
-                                                child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 48),
-                                              ),
-                                            )
-                                          : Container(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(colors: _getGradientForIndex(index)),
-                                              ),
-                                              child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 48),
-                                            ),
-                                      Positioned.fill(
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                              colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
-                                              stops: const [0.6, 1.0],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              playlist.name,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black,),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
                       );
                     },
                   ),

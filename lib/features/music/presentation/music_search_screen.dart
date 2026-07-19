@@ -191,7 +191,7 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                         GridView.count(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: 2,
+                          crossAxisCount: _gridCrossAxisCount(),
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
                           childAspectRatio: 2.2,
@@ -269,8 +269,8 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: ref.watch(genresProvider).when(
                         data: (genres) => SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: _gridCrossAxisCount(),
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
                             childAspectRatio: 2.2,
@@ -374,6 +374,15 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
     _controller.text = query;
     setState(() => _showChips = false);
     ref.read(musicSearchProvider.notifier).search(query);
+  }
+
+  int _gridCrossAxisCount() {
+    final w = MediaQuery.of(context).size.width;
+    if (w > 1200) return 6;
+    if (w > 900) return 5;
+    if (w > 700) return 4;
+    if (w > 500) return 3;
+    return 2;
   }
 }
 

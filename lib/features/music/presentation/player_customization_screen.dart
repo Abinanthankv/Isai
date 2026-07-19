@@ -355,6 +355,46 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                         ),
                         const Divider(height: 24),
                         Row(
+                          children: [
+                            Icon(Icons.text_fields, color: Theme.of(context).colorScheme.primary, size: 20),
+                            const SizedBox(width: 12),
+                            Text('Font Style', style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _FontStyleOption(
+                              isSelected: settings.playerLyricsFontWeight == 'normal',
+                              label: 'Normal',
+                              weight: FontWeight.w400,
+                              onTap: () => ref.read(settingsProvider.notifier).setPlayerLyricsFontWeight('normal'),
+                            ),
+                            _FontStyleOption(
+                              isSelected: settings.playerLyricsFontWeight == 'bold',
+                              label: 'Bold',
+                              weight: FontWeight.bold,
+                              onTap: () => ref.read(settingsProvider.notifier).setPlayerLyricsFontWeight('bold'),
+                            ),
+                            _FontStyleOption(
+                              isSelected: settings.playerLyricsFontWeight == 'italic',
+                              label: 'Italic',
+                              weight: FontWeight.w400,
+                              italic: true,
+                              onTap: () => ref.read(settingsProvider.notifier).setPlayerLyricsFontWeight('italic'),
+                            ),
+                            _FontStyleOption(
+                              isSelected: settings.playerLyricsFontWeight == 'boldItalic',
+                              label: 'Bold Italic',
+                              weight: FontWeight.bold,
+                              italic: true,
+                              onTap: () => ref.read(settingsProvider.notifier).setPlayerLyricsFontWeight('boldItalic'),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             _AlignmentOption(
@@ -382,6 +422,104 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                           value: settings.playerShowCurrentLyrics,
                           onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerShowCurrentLyrics(val),
                         ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // --- Next Up ---
+                  AppleMusicSectionHeader(title: 'Next Up'),
+                  GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        _CustomizationSwitchTile(
+                          icon: Icons.queue_music_rounded,
+                          title: 'Show Next Up',
+                          subtitle: 'Preview upcoming tracks in the player',
+                          value: settings.playerShowNextUp,
+                          onChanged: (val) => ref.read(settingsProvider.notifier).setPlayerShowNextUp(val),
+                        ),
+                        if (settings.playerShowNextUp) ...[
+                          const Divider(height: 24),
+                          Row(
+                            children: [
+                              Icon(Icons.format_list_numbered_rounded, size: 18, color: theme.colorScheme.primary),
+                              const SizedBox(width: 10),
+                              Text('Count', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove, size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                      onPressed: settings.playerNextUpCount > 0
+                                          ? () => ref.read(settingsProvider.notifier).setPlayerNextUpCount(settings.playerNextUpCount - 1)
+                                          : null,
+                                    ),
+                                    Text(
+                                      '${settings.playerNextUpCount}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: theme.colorScheme.primary,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.add, size: 18),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                      onPressed: settings.playerNextUpCount < 10
+                                          ? () => ref.read(settingsProvider.notifier).setPlayerNextUpCount(settings.playerNextUpCount + 1)
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          Row(
+                            children: [
+                              Icon(Icons.visibility_rounded, size: 18, color: theme.colorScheme.primary),
+                              const SizedBox(width: 10),
+                              Text('Style', style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface)),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _NextUpStyleOption(
+                                isSelected: settings.playerNextUpStyle == 'art_and_name',
+                                label: 'Art + Name',
+                                icon: Icons.album_rounded,
+                                onTap: () => ref.read(settingsProvider.notifier).setPlayerNextUpStyle('art_and_name'),
+                              ),
+                              _NextUpStyleOption(
+                                isSelected: settings.playerNextUpStyle == 'art_only',
+                                label: 'Art Only',
+                                icon: Icons.image_rounded,
+                                onTap: () => ref.read(settingsProvider.notifier).setPlayerNextUpStyle('art_only'),
+                              ),
+                              _NextUpStyleOption(
+                                isSelected: settings.playerNextUpStyle == 'name_only',
+                                label: 'Name Only',
+                                icon: Icons.text_fields_rounded,
+                                onTap: () => ref.read(settingsProvider.notifier).setPlayerNextUpStyle('name_only'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1076,6 +1214,47 @@ class _AlignmentOption extends StatelessWidget {
   }
 }
 
+class _FontStyleOption extends StatelessWidget {
+  final bool isSelected;
+  final String label;
+  final FontWeight weight;
+  final bool italic;
+  final VoidCallback onTap;
+
+  const _FontStyleOption({
+    required this.isSelected,
+    required this.label,
+    required this.weight,
+    this.italic = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: weight,
+            fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+            color: isSelected ? Theme.of(context).colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            fontSize: 13,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LayoutOption extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -1097,6 +1276,43 @@ class _LayoutOption extends StatelessWidget {
       title: Text(title, style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
       subtitle: Text(subtitle, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
       trailing: isSelected ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary) : null,
+    );
+  }
+}
+
+class _NextUpStyleOption extends StatelessWidget {
+  final bool isSelected;
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _NextUpStyleOption({
+    required this.isSelected,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isSelected ? theme.colorScheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isSelected ? theme.colorScheme.primary : Colors.transparent),
+            ),
+            child: Icon(icon, color: isSelected ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.5), size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.7))),
+        ],
+      ),
     );
   }
 }

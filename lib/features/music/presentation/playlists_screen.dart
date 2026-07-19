@@ -119,8 +119,8 @@ class PlaylistsScreen extends ConsumerWidget {
                     : SliverPadding(
                         padding: const EdgeInsets.all(20),
                         sliver: SliverGrid(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: _gridCrossAxisCount(context),
                             mainAxisSpacing: 20,
                             crossAxisSpacing: 20,
                             childAspectRatio: 0.8,
@@ -319,6 +319,15 @@ class PlaylistsScreen extends ConsumerWidget {
       }
     }
   }
+
+  int _gridCrossAxisCount(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w > 1200) return 6;
+    if (w > 900) return 5;
+    if (w > 700) return 4;
+    if (w > 500) return 3;
+    return 2;
+  }
 }
 
 Future<void> _sharePlaylistHelper(BuildContext context, WidgetRef ref, int playlistId, String playlistName) async {
@@ -327,7 +336,7 @@ Future<void> _sharePlaylistHelper(BuildContext context, WidgetRef ref, int playl
     final tempDir = await getTemporaryDirectory();
     final file = File('${tempDir.path}/$playlistName.json');
     await file.writeAsString(jsonStr);
-    
+
     await Share.shareXFiles([XFile(file.path)], text: 'Check out my playlist: $playlistName!');
   } catch (e) {
     if (context.mounted) {
@@ -620,7 +629,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
     final deezerPlaylist = widget.deezerPlaylist;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
-    final artSize = screenWidth * 0.55; // Cover art size
+    final artSize = (screenWidth * 0.55).clamp(160.0, 300.0);
     
     final title = localPlaylist?.name ?? appleMusicPlaylist?.name ?? deezerPlaylist?.title ?? widget.customTitle ?? 'Unknown Playlist';
     final artworkUrl = localPlaylist?.artworkUrl ?? appleMusicPlaylist?.artworkUrl ?? deezerPlaylist?.artworkUrl ?? widget.customArtwork;

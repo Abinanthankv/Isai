@@ -114,9 +114,13 @@ class DiscoveryScreen extends ConsumerWidget {
               )
             else ...[
               SliverToBoxAdapter(
+                child: _buildQuickGenrePills(context, ref, genres, isDark),
+              ),
+
+              SliverToBoxAdapter(
                 child: _buildTrendingSongsSection(context, ref),
               ),
-              
+
               SliverToBoxAdapter(
                 child: _buildVibeSwipeBanner(context, ref, isDark),
               ),
@@ -126,7 +130,7 @@ class DiscoveryScreen extends ConsumerWidget {
               ),
 
               SliverToBoxAdapter(
-                child: _buildLastfmTrendingSection(context, ref),
+                child: _buildGlobalTrendsSection(context, ref),
               ),
 
               SliverToBoxAdapter(
@@ -141,7 +145,7 @@ class DiscoveryScreen extends ConsumerWidget {
                 child: _buildAppleMusicPlaylistsSection(context, ref, isDark),
               ),
 
-              const SliverToBoxAdapter(child: SizedBox(height: 50)),
+              const SliverToBoxAdapter(child: SizedBox(height: 140)),
             ],
           ],
         ),
@@ -157,6 +161,83 @@ class DiscoveryScreen extends ConsumerWidget {
       AppleMusicTheme.blueGradient,
     ];
     return gradients[index % gradients.length];
+  }
+
+  Widget _buildQuickGenrePills(BuildContext context, WidgetRef ref, AsyncValue<List<DeezerGenre>> genresAsync, bool isDark) {
+    return genresAsync.when(
+      data: (genres) {
+        if (genres.isEmpty) return const SizedBox.shrink();
+        final displayGenres = genres.where((g) => g.id != 0).take(10).toList();
+        final pillGradients = [
+          [const Color(0xFFFF6B6B), const Color(0xFFEE5A24)],
+          [const Color(0xFF7C4DFF), const Color(0xFF536DFE)],
+          [const Color(0xFF00C9FF), const Color(0xFF92FE9D)],
+          [const Color(0xFFF7971E), const Color(0xFFFFD200)],
+          [const Color(0xFFFA709A), const Color(0xFFFEE140)],
+          [const Color(0xFF667EEA), const Color(0xFF764BA2)],
+          [const Color(0xFF11998e), const Color(0xFF38ef7d)],
+          [const Color(0xFFFC5C7D), const Color(0xFF6A82FB)],
+          [const Color(0xFFf093fb), const Color(0xFFf5576c)],
+          [const Color(0xFF4facfe), const Color(0xFF00f2fe)],
+        ];
+        return SizedBox(
+          height: 52,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: displayGenres.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final genre = displayGenres[index];
+              final gradient = pillGradients[index % pillGradients.length];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MoodDetailsScreen(
+                        mood: genre.name,
+                        gradientColors: gradient,
+                        contextQuery: genre.name,
+                        genreId: genre.id,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: gradient,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: gradient[0].withOpacity(0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    genre.name,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
   }
 
   void _handleTrackTap(BuildContext context, WidgetRef ref, ItunesTrack track) async {
@@ -266,12 +347,30 @@ class DiscoveryScreen extends ConsumerWidget {
 
   Widget _buildTrendingSongsSection(BuildContext context, WidgetRef ref) {
     final topSongsAsync = ref.watch(cachedTrendingSongsProvider);
+    final selectedRegion = ref.watch(selectedRegionProvider);
+    final regionFlag = RegionPickerSheet.regions[selectedRegion]?.split(' ').first ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text('Trending Now', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+          child: Row(
+            children: [
+              Text('🔥', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Trending Now',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              if (regionFlag.isNotEmpty)
+                Text(regionFlag, style: const TextStyle(fontSize: 20)),
+            ],
+          ),
         ),
         topSongsAsync.when(
           data: (songs) {
@@ -292,7 +391,7 @@ class DiscoveryScreen extends ConsumerWidget {
           loading: () => trendingSongsSkeleton(context),
           error: (_, __) => const SizedBox.shrink(),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -300,177 +399,298 @@ class DiscoveryScreen extends ConsumerWidget {
   Widget _buildVibeSwipeBanner(BuildContext context, WidgetRef ref, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const DiscoverySwipeScreen()),
-            );
-          },
-          child: Consumer(builder: (context, ref, _) {
-            final useMaterial3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
-            final gradientColors = useMaterial3
-                ? [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.primary.withOpacity(0.7)]
-                : [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple];
-            return Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: gradientColors,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const DiscoverySwipeScreen()),
+          );
+        },
+        child: Consumer(builder: (context, ref, _) {
+          final useMaterial3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
+          final gradientColors = useMaterial3
+              ? [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                  Theme.of(context).colorScheme.secondary,
+                ]
+              : [
+                  Theme.of(context).colorScheme.primary,
+                  AppleMusicTheme.primaryPurple,
+                  const Color(0xFFFC3C71),
+                ];
+          return Container(
+            height: 130,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: gradientColors,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Vibe Swipe',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Swipe through personalized 10s previews to find your new favorites.',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70,),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // Decorative circles
+                Positioned(
+                  right: -20,
+                  top: -20,
+                  child: Container(
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
                       shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.08),
                     ),
-                    child: const Icon(Icons.style_rounded, color: Colors.white, size: 28),
                   ),
-                ],
-              ),
-            );
-          }),
-        ),
+                ),
+                Positioned(
+                  right: 40,
+                  bottom: -30,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.06),
+                    ),
+                  ),
+                ),
+                // Content
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '⚡ DISCOVER',
+                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: Colors.white,
+                                   fontWeight: FontWeight.bold,
+                                   letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Vibe Swipe',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Swipe through 10s previews to find your new favorites',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Animated swipe icons
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.arrow_back_ios_rounded, color: Colors.white.withOpacity(0.5), size: 14),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+                                ),
+                                child: const Icon(Icons.style_rounded, color: Colors.white, size: 28),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withOpacity(0.5), size: 14),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Swipe →',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Colors.white.withOpacity(0.7),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ),
     );
   }
 
-  Widget _buildLastfmTrendingSection(BuildContext context, WidgetRef ref) {
+  Widget _buildGlobalTrendsSection(BuildContext context, WidgetRef ref) {
     final artistsAsync = ref.watch(lastfmGlobalTopArtistsProvider);
     final tracksAsync = ref.watch(lastfmGlobalTopTracksProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text('Trending Artists on Last.fm', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.public_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Global Trends',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                ),
+              ),
+              Text(
+                'via Last.fm',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 8),
+
+        // Trending Artists — horizontal scrollable list
         artistsAsync.when(
           data: (artists) {
             if (artists.isEmpty) return const SizedBox.shrink();
-            return SizedBox(
-              height: 140,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: artists.length,
-                itemBuilder: (context, index) {
-                  final artist = artists[index];
-                  final name = artist['name'] as String;
-                  final imageUrl = artist['image_url'] as String;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Text(
+                    'Trending Artists',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 120,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: artists.length,
+                    itemBuilder: (context, index) {
+                      final artist = artists[index];
+                      final name = artist['name'] as String;
+                      final imageUrl = artist['image_url'] as String;
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 18),
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => ArtistScreen(artistName: name)),
-                        );
-                      },
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 85,
-                            height: 85,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.12),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ArtistScreen(artistName: name)),
+                            );
+                          },
+                          child: SizedBox(
+                            width: 80,
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 76,
+                                  height: 76,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.12),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: imageUrl.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            cacheManager: DiscoveryCacheManager(),
+                                            memCacheWidth: 76,
+                                            memCacheHeight: 76,
+                                            imageUrl: imageUrl,
+                                            fit: BoxFit.cover,
+                                            placeholder: (_, __) => Container(color: Colors.grey.withOpacity(0.1)),
+                                            errorWidget: (_, __, ___) => _buildArtistPlaceholder(),
+                                          )
+                                        : _buildArtistPlaceholder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  name,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
-                              child: ClipOval(
-                              child: imageUrl.isNotEmpty
-                                  ? CachedNetworkImage(
-                                      cacheManager: DiscoveryCacheManager(),
-                                      memCacheWidth: 85,
-                                      memCacheHeight: 85,
-                                      imageUrl: imageUrl,
-                                      fit: BoxFit.cover,
-                                      placeholder: (_, __) => Container(color: Colors.grey.withOpacity(0.1)),
-                                      errorWidget: (_, __, ___) => _buildArtistPlaceholder(),
-                                    )
-                                  : _buildArtistPlaceholder(),
-                            ),
                           ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: 85,
-                            child: Text(
-                              name,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             );
           },
-          loading: () => lastfmArtistsSkeleton(context),
+          loading: () => const SizedBox(height: 120),
           error: (_, __) => const SizedBox.shrink(),
         ),
-        const SizedBox(height: 16),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text('Global Hot Tracks', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
-        ),
+
+        const SizedBox(height: 12),
+
+        // Top Tracks as vertical list
         tracksAsync.when(
           data: (tracks) {
             if (tracks.isEmpty) return const SizedBox.shrink();
-            return SizedBox(
-              height: 200,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: tracks.length,
-                itemBuilder: (context, index) {
-                  final track = tracks[index];
+            final topTracks = tracks.take(5).toList();
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: List.generate(topTracks.length, (index) {
+                  final track = topTracks[index];
                   final name = track['name'] as String;
                   final artist = track['artist'] as String;
                   final imageUrl = track['image_url'] as String;
 
-                  // Map to ItunesTrack for reuse of UI handlers
                   final itunesTrack = ItunesTrack(
-                    trackId: index, // Placeholder
+                    trackId: index,
                     trackName: name,
                     artistName: artist,
                     collectionName: '',
@@ -478,7 +698,7 @@ class DiscoveryScreen extends ConsumerWidget {
                   );
 
                   return Padding(
-                    padding: const EdgeInsets.only(right: 12),
+                    padding: const EdgeInsets.only(bottom: 6),
                     child: GestureDetector(
                       onTap: () => _handleTrackTap(context, ref, itunesTrack),
                       onLongPress: () {
@@ -490,46 +710,80 @@ class DiscoveryScreen extends ConsumerWidget {
                           builder: (context) => TrackActionSheet(track: itunesTrack),
                         );
                       },
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: imageUrl.isNotEmpty
-                                ? CachedNetworkImage(
-                                    cacheManager: DiscoveryCacheManager(),
-                                    memCacheWidth: 150,
-                                    memCacheHeight: 150,
-                                    imageUrl: imageUrl,
-                                    width: 150,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, __) => Container(color: Colors.grey.withOpacity(0.1)),
-                                    errorWidget: (_, __, ___) => _buildTrackPlaceholder(150),
-                                  )
-                                : _buildTrackPlaceholder(150),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: 150,
-                            child: Text(name, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600,), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ),
-                          SizedBox(
-                            width: 150,
-                            child: Text(artist, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.02),
+                        ),
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 28,
+                              child: Text(
+                                '${index + 1}',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: imageUrl.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      cacheManager: DiscoveryCacheManager(),
+                                      memCacheWidth: 42,
+                                      memCacheHeight: 42,
+                                      imageUrl: imageUrl,
+                                      width: 42,
+                                      height: 42,
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) => Container(width: 42, height: 42, color: Colors.grey.withOpacity(0.1)),
+                                      errorWidget: (_, __, ___) => _buildTrackPlaceholder(42),
+                                    )
+                                  : _buildTrackPlaceholder(42),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    artist,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.play_circle_outline_rounded, color: Theme.of(context).colorScheme.primary.withOpacity(0.6), size: 24),
+                            const SizedBox(width: 12),
+                          ],
+                        ),
                       ),
                     ),
                   );
-                },
+                }),
               ),
             );
           },
-          loading: () => lastfmTracksSkeleton(context),
+          loading: () => const SizedBox(height: 200),
           error: (_, __) => const SizedBox.shrink(),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -550,19 +804,19 @@ class DiscoveryScreen extends ConsumerWidget {
     );
   }
 
-  // ─── NEW RELEASES HERO CAROUSEL ─────────────────────────────────
+  // ─── NEW RELEASES SQUARE CARDS ─────────────────────────────────
   Widget _buildNewReleasesSection(BuildContext context, WidgetRef ref, AsyncValue<List<ItunesTrack>> releasesAsync, bool isDark) {
     return releasesAsync.when(
       data: (releases) {
         if (releases.isEmpty) return const SizedBox.shrink();
-        final items = releases.take(10).toList();
+        final items = releases.take(12).toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
               child: Row(
-                  children: [
+                children: [
                   Consumer(builder: (context, ref, _) {
                     final useMaterial3 = ref.watch(settingsProvider).appThemeStyle == 'material3';
                     final badgeColors = useMaterial3
@@ -577,121 +831,135 @@ class DiscoveryScreen extends ConsumerWidget {
                       child: Text('NEW', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
                     );
                   }),
-                  const SizedBox(width: 8),
-                  Text('Fresh Releases', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Fresh Releases',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 4),
             SizedBox(
-              height: 220,
-              child: PageView.builder(
-                controller: PageController(viewportFraction: 0.85),
+              height: 230,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final track = items[index];
                   final artworkHi = track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '600x600');
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: GestureDetector(
-                      onTap: () => _handleTrackTap(context, ref, track),
-                      onLongPress: () {
-                        HapticFeedback.mediumImpact();
-                        showModalBottomSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (context) => TrackActionSheet(track: track),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 8)),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              CachedNetworkImage(
-                                cacheManager: DiscoveryCacheManager(),
-                                memCacheWidth: 300,
-                                memCacheHeight: 220,
-                                imageUrl: artworkHi,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: _getGradientForIndex(index),
+                  return GestureDetector(
+                    onTap: () => _handleTrackTap(context, ref, track),
+                    onLongPress: () {
+                      HapticFeedback.mediumImpact();
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => TrackActionSheet(track: track),
+                      );
+                    },
+                    child: SizedBox(
+                      width: 140,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 140,
+                            height: 140,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 6)),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CachedNetworkImage(
+                                    cacheManager: DiscoveryCacheManager(),
+                                    memCacheWidth: 140,
+                                    memCacheHeight: 140,
+                                    imageUrl: artworkHi,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                      ),
+                                      child: const Icon(Icons.music_note_rounded, color: Colors.white38, size: 36),
                                     ),
                                   ),
-                                ),
-                              ),
-                              // Gradient overlay for text readability
-                              Positioned.fill(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Colors.transparent,
-                                        Colors.black.withOpacity(0.7),
-                                      ],
-                                      stops: const [0.4, 1.0],
+                                  // NEW badge
+                                  Positioned(
+                                    top: 8,
+                                    left: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'NEW',
+                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 9,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 16,
-                                left: 16,
-                                right: 16,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      track.trackName,
-                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                  // Play icon overlay
+                                  Positioned(
+                                    bottom: 8,
+                                    right: 8,
+                                    child: Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.black.withOpacity(0.5),
+                                      ),
+                                      child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      track.artistName,
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.8),),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Play icon overlay
-                              Positioned(
-                                top: 12,
-                                right: 12,
-                                child: Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white.withOpacity(0.2),
                                   ),
-                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
-                                ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: 140,
+                            child: Text(
+                              track.trackName,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          SizedBox(
+                            width: 140,
+                            child: Text(
+                              track.artistName,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: isDark ? Colors.white54 : Colors.black45),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
                 },
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
           ],
         );
       },
@@ -700,7 +968,7 @@ class DiscoveryScreen extends ConsumerWidget {
     );
   }
 
-  // ─── BROWSE BY GENRE GRID ───────────────────────────────────────
+  // ─── BROWSE BY GENRE HORIZONTAL SCROLL ────────────────────────────
   Widget _buildGenreBrowseSection(BuildContext context, WidgetRef ref, AsyncValue<List<DeezerGenre>> genresAsync, bool isDark) {
     final genreGradients = [
       [const Color(0xFFFF6B6B), const Color(0xFFEE5A24)],
@@ -709,91 +977,142 @@ class DiscoveryScreen extends ConsumerWidget {
       [const Color(0xFFF7971E), const Color(0xFFFFD200)],
       [const Color(0xFFFA709A), const Color(0xFFFEE140)],
       [const Color(0xFF667EEA), const Color(0xFF764BA2)],
-    ];
-    final genreIcons = [
-      Icons.music_note_rounded,
-      Icons.headphones_rounded,
-      Icons.album_rounded,
-      Icons.piano_rounded,
-      Icons.mic_rounded,
-      Icons.equalizer_rounded,
+      [const Color(0xFF11998e), const Color(0xFF38ef7d)],
+      [const Color(0xFFFC5C7D), const Color(0xFF6A82FB)],
     ];
 
     return genresAsync.when(
       data: (genres) {
         if (genres.isEmpty) return const SizedBox.shrink();
-        // Filter out "All" genre (id 0) and take top 6
-        final displayGenres = genres.where((g) => g.id != 0).take(6).toList();
+        final displayGenres = genres.where((g) => g.id != 0).take(8).toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('Browse by Genre', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,)),
-            ),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 2.8,
-              ),
-              itemCount: displayGenres.length,
-              itemBuilder: (context, index) {
-                final genre = displayGenres[index];
-                final gradient = genreGradients[index % genreGradients.length];
-                final icon = genreIcons[index % genreIcons.length];
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MoodDetailsScreen(
-                          mood: genre.name,
-                          gradientColors: gradient,
-                          contextQuery: genre.name,
-                          genreId: genre.id,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: gradient,
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(color: gradient[0].withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4)),
-                      ],
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.explore_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Explore Genres',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      child: Row(
-                        children: [
-                          Icon(icon, color: Colors.white.withOpacity(0.9), size: 22),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              genre.name,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold,),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 130,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: displayGenres.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final genre = displayGenres[index];
+                  final gradient = genreGradients[index % genreGradients.length];
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MoodDetailsScreen(
+                            mood: genre.name,
+                            gradientColors: gradient,
+                            contextQuery: genre.name,
+                            genreId: genre.id,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 120,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: gradient[0].withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            // Genre image from Deezer
+                            if (genre.picture.isNotEmpty)
+                              CachedNetworkImage(
+                                cacheManager: DiscoveryCacheManager(),
+                                memCacheWidth: 120,
+                                memCacheHeight: 130,
+                                imageUrl: genre.picture,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, __, ___) => Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: gradient,
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: gradient,
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                ),
+                              ),
+                            // Gradient overlay
+                            Positioned.fill(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.7),
+                                    ],
+                                    stops: const [0.3, 1.0],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Genre name
+                            Positioned(
+                              bottom: 12,
+                              left: 10,
+                              right: 10,
+                              child: Text(
+                                genre.name,
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
           ],
         );
       },
@@ -802,7 +1121,7 @@ class DiscoveryScreen extends ConsumerWidget {
     );
   }
 
-  // ─── APPLE MUSIC PLAYLISTS ──────────────────────────────────────
+  // ─── APPLE MUSIC CURATED PLAYLISTS ──────────────────────────────
   Widget _buildAppleMusicPlaylistsSection(BuildContext context, WidgetRef ref, bool isDark) {
     final region = ref.watch(selectedRegionProvider);
     final categorized = ref.watch(appleMusicCategorizedProvider(region));
@@ -818,171 +1137,507 @@ class DiscoveryScreen extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    Widget _buildCategoryRow(String title, List<AppleMusicPlaylist> items, IconData icon) {
+    // Language Curation — horizontal scroll with larger cards
+    Widget _buildLanguageRow(List<AppleMusicPlaylist> items) {
       if (items.isEmpty) return const SizedBox.shrink();
       return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              title,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
-                                letterSpacing: -0.5,),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.translate_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Language Curation',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
                           ),
-                        ],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PlaylistGridScreen(
-                              title: title,
-                              playlists: items,
-                            ),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        'See All',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              SizedBox(
-                height: 165,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: items.length > 10 ? 10 : items.length,
-                  itemBuilder: (context, index) {
-                    final playlist = items[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 14),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PlaylistDetailsScreen(
-                                appleMusicPlaylist: playlist,
-                              ),
-                            ),
-                          );
-                        },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.15),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    playlist.artworkUrl.isNotEmpty
-                                        ? CachedNetworkImage(
-                                            cacheManager: DiscoveryCacheManager(),
-                                            memCacheWidth: 120,
-                                            memCacheHeight: 120,
-                                            imageUrl: playlist.artworkUrl,
-                                            fit: BoxFit.cover,
-                                            errorWidget: (_, __, ___) => Container(
-                                              decoration: BoxDecoration(
-                                                gradient: LinearGradient(colors: _getGradientForIndex(index)),
-                                              ),
-                                              child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
-                                            ),
-                                          )
-                                        : Container(
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(colors: _getGradientForIndex(index)),
-                                            ),
-                                            child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
-                                          ),
-                                    Positioned.fill(
-                                      child: DecoratedBox(
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            begin: Alignment.topCenter,
-                                            end: Alignment.bottomCenter,
-                                            colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                                            stops: const [0.5, 1.0],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: 120,
-                              child: Text(
-                                playlist.name,
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
-                                  color: isDark ? Colors.white : Colors.black,),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlaylistGridScreen(
+                          title: 'Language Curation',
+                          playlists: items,
                         ),
                       ),
                     );
                   },
+                  child: Text(
+                    'See All',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: items.length > 10 ? 10 : items.length,
+              itemBuilder: (context, index) {
+                final playlist = items[index];
+                final isFirst = index == 0;
+                final cardWidth = isFirst ? 155.0 : 140.0;
+
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PlaylistDetailsScreen(
+                            appleMusicPlaylist: playlist,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: cardWidth,
+                          height: 140,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.18),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                playlist.artworkUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        cacheManager: DiscoveryCacheManager(),
+                                        memCacheWidth: cardWidth.toInt(),
+                                        memCacheHeight: 140,
+                                        imageUrl: playlist.artworkUrl,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                          ),
+                                          child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
+                                        ),
+                                      )
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                        ),
+                                        child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
+                                      ),
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                                        stops: const [0.5, 1.0],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 8,
+                                  right: 8,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.black.withOpacity(0.5),
+                                    ),
+                                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: cardWidth,
+                          child: Text(
+                            playlist.name,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? Colors.white : Colors.black,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Moods & Vibes — 2-column grid
+    Widget _buildMoodGrid(List<AppleMusicPlaylist> items) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      final displayItems = items.take(6).toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.wb_twilight_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Moods & Vibes',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlaylistGridScreen(
+                          title: 'Moods & Vibes',
+                          playlists: items,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'See All',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 215,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: displayItems.length,
+              itemBuilder: (context, index) {
+                final playlist = displayItems[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PlaylistDetailsScreen(
+                            appleMusicPlaylist: playlist,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 150,
+                          height: 150,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                playlist.artworkUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        cacheManager: DiscoveryCacheManager(),
+                                        memCacheWidth: 150,
+                                        memCacheHeight: 150,
+                                        imageUrl: playlist.artworkUrl,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                          ),
+                                          child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 30),
+                                        ),
+                                      )
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                        ),
+                                        child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 30),
+                                      ),
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                                        stops: const [0.4, 1.0],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 8,
+                                  left: 10,
+                                  right: 10,
+                                  child: Text(
+                                    playlist.name,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Featured Hits — wide rectangular cards
+    Widget _buildHitsRow(List<AppleMusicPlaylist> items) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Featured Hits & Genres',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlaylistGridScreen(
+                          title: 'Featured Hits & Genres',
+                          playlists: items,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'See All',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 140,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: items.length > 8 ? 8 : items.length,
+              itemBuilder: (context, index) {
+                final playlist = items[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PlaylistDetailsScreen(
+                            appleMusicPlaylist: playlist,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: 240,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
+                      ),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(14),
+                              bottomLeft: Radius.circular(14),
+                            ),
+                            child: playlist.artworkUrl.isNotEmpty
+                                ? CachedNetworkImage(
+                                    cacheManager: DiscoveryCacheManager(),
+                                    memCacheWidth: 90,
+                                    memCacheHeight: 90,
+                                    imageUrl: playlist.artworkUrl,
+                                    width: 90,
+                                    height: 90,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => Container(
+                                      width: 90,
+                                      height: 90,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                      ),
+                                      child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 28),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 90,
+                                    height: 90,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                    ),
+                                    child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 28),
+                                  ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    playlist.name,
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.queue_music_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Curated For You',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.8,
                 ),
               ),
             ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                'Curated Playlists',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
-                  letterSpacing: -0.8,),
-              ),
-            ),
-            _buildCategoryRow('Language Curation', languagePlaylists, Icons.translate_rounded),
-            _buildCategoryRow('Moods & Vibes', moodPlaylists, Icons.wb_twilight_rounded),
-            _buildCategoryRow('Featured Hits & Genres', hitsPlaylists, Icons.auto_awesome_rounded),
-            const SizedBox(height: 24),
-          ],
-        );
+          ),
+        ),
+        _buildLanguageRow(languagePlaylists),
+        _buildMoodGrid(moodPlaylists),
+        _buildHitsRow(hitsPlaylists),
+        const SizedBox(height: 16),
+      ],
+    );
   }
 
   Widget _buildAppBar(BuildContext context, WidgetRef ref, String selectedRegion, bool isDark) {
@@ -1158,10 +1813,12 @@ class DiscoveryScreen extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'JioSaavn Featured Playlists',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
-                          letterSpacing: -0.8,
-                          color: isDark ? Colors.white : Colors.black,),
+                        'JioSaavn Featured',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1184,14 +1841,17 @@ class DiscoveryScreen extends ConsumerWidget {
                   },
                   child: Text(
                     'See All',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600,),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
             ],
           ),
         ),
-        
+
+        // Language chips
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1203,10 +1863,12 @@ class DiscoveryScreen extends ConsumerWidget {
                 child: ChoiceChip(
                   label: Text(
                     entry.value,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isSelected
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: isSelected
                           ? Colors.white
                           : (isDark ? Colors.white70 : Colors.black87),
-                      fontWeight: FontWeight.w600,),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   selected: isSelected,
                   onSelected: (_) {
@@ -1225,8 +1887,9 @@ class DiscoveryScreen extends ConsumerWidget {
           ),
         ),
 
+        // Mixed-size playlist cards
         SizedBox(
-          height: 165,
+          height: 200,
           child: playlistsAsync.when(
             data: (items) {
               if (items.isEmpty) {
@@ -1243,8 +1906,11 @@ class DiscoveryScreen extends ConsumerWidget {
                 itemCount: items.length > 10 ? 10 : items.length,
                 itemBuilder: (context, index) {
                   final playlist = items[index];
+                  final isFeatured = index == 0;
+                  final cardWidth = isFeatured ? 155.0 : 140.0;
+
                   return Padding(
-                    padding: const EdgeInsets.only(right: 14),
+                    padding: const EdgeInsets.only(right: 12),
                     child: GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -1258,68 +1924,112 @@ class DiscoveryScreen extends ConsumerWidget {
                       },
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.15),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 5),
+                          Stack(
+                            children: [
+                              Container(
+                                width: cardWidth,
+                                height: 140,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  playlist.artworkUrl.isNotEmpty
-                                      ? CachedNetworkImage(
-                                          cacheManager: DiscoveryCacheManager(),
-                                          memCacheWidth: 120,
-                                          memCacheHeight: 120,
-                                          imageUrl: playlist.artworkUrl,
-                                          fit: BoxFit.cover,
-                                          errorWidget: (_, __, ___) => Container(
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      playlist.artworkUrl.isNotEmpty
+                                          ? CachedNetworkImage(
+                                              cacheManager: DiscoveryCacheManager(),
+                                              memCacheWidth: cardWidth.toInt(),
+                                              memCacheHeight: 140,
+                                              imageUrl: playlist.artworkUrl,
+                                              fit: BoxFit.cover,
+                                              errorWidget: (_, __, ___) => Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                                ),
+                                                child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
+                                              ),
+                                            )
+                                          : Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                              ),
+                                              child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
                                             ),
-                                            child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
-                                          ),
-                                        )
-                                      : Container(
+                                      // Gradient overlay
+                                      Positioned.fill(
+                                        child: DecoratedBox(
                                           decoration: BoxDecoration(
-                                            gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                                              stops: const [0.5, 1.0],
+                                            ),
                                           ),
-                                          child: const Icon(Icons.queue_music_rounded, color: Colors.white38, size: 36),
-                                        ),
-                                  Positioned.fill(
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                                          stops: const [0.5, 1.0],
                                         ),
                                       ),
-                                    ),
+                                      // Featured badge
+                                      if (isFeatured)
+                                        Positioned(
+                                          top: 8,
+                                          left: 8,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context).colorScheme.primary,
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              'HOT',
+                                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 9,
+                                                letterSpacing: 0.8,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      // Play icon
+                                      Positioned(
+                                        bottom: 8,
+                                        right: 8,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.black.withOpacity(0.5),
+                                          ),
+                                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           SizedBox(
-                            width: 120,
+                            width: cardWidth,
                             child: Text(
                               playlist.name,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black,),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1340,7 +2050,7 @@ class DiscoveryScreen extends ConsumerWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
       ],
     );
   }
@@ -1551,7 +2261,7 @@ class _TrendingSongsCarouselState extends State<TrendingSongsCarousel> {
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.7,
+      viewportFraction: 0.75,
       initialPage: 0,
     );
     _pageController.addListener(() {
@@ -1569,137 +2279,200 @@ class _TrendingSongsCarouselState extends State<TrendingSongsCarousel> {
     super.dispose();
   }
 
+  List<Color> _getGradientForIndex(int index) {
+    final gradients = [
+      AppleMusicTheme.pinkGradient,
+      AppleMusicTheme.purpleGradient,
+      AppleMusicTheme.orangeGradient,
+      AppleMusicTheme.blueGradient,
+    ];
+    return gradients[index % gradients.length];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final height = 260.0;
+    final height = 300.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SizedBox(
-      height: height,
-      child: PageView.builder(
-        controller: _pageController,
-        clipBehavior: Clip.none,
-        itemCount: widget.tracks.length,
-        itemBuilder: (context, index) {
-          final track = widget.tracks[index];
-          final double diff = index - _currentPage;
-          final double t = (1.0 - diff.abs()).clamp(0.0, 1.0);
-          
-          final double width = 60.0 + (260.0 - 60.0) * t;
-          final double borderRadius = 30.0 + (24.0 - 30.0) * t;
-          final double alignX = -diff;
-          
-          final artworkHi = track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '600x600');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: height,
+          child: PageView.builder(
+            controller: _pageController,
+            clipBehavior: Clip.none,
+            itemCount: widget.tracks.length,
+            itemBuilder: (context, index) {
+              final track = widget.tracks[index];
+              final double diff = index - _currentPage;
+              final double t = (1.0 - diff.abs()).clamp(0.0, 1.0);
 
-          return Align(
-            alignment: Alignment(alignX.clamp(-1.0, 1.0), 0.0),
-            child: GestureDetector(
-              onTap: () => widget.onTrackTap(track),
-              onLongPress: () => widget.onTrackLongPress(track),
-              child: Container(
-                width: width,
-                height: height,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(borderRadius),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15 * t),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(borderRadius),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CachedNetworkImage(
-                        cacheManager: DiscoveryCacheManager(),
-                        memCacheWidth: 260,
-                        memCacheHeight: 260,
-                        imageUrl: artworkHi,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.2),
-                          ),
-                          child: const Icon(Icons.music_note_rounded, color: Colors.grey),
+              final double width = 60.0 + (280.0 - 60.0) * t;
+              final double borderRadius = 30.0 + (22.0 - 30.0) * t;
+              final double alignX = -diff;
+
+              final artworkHi = track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '600x600');
+
+              return Align(
+                alignment: Alignment(alignX.clamp(-1.0, 1.0), 0.0),
+                child: GestureDetector(
+                  onTap: () => widget.onTrackTap(track),
+                  onLongPress: () => widget.onTrackLongPress(track),
+                  child: Container(
+                    width: width,
+                    height: height,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(borderRadius),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2 * t),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
                         ),
-                      ),
-                      Positioned.fill(
-                        child: AnimatedOpacity(
-                          duration: Duration.zero,
-                          opacity: t,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withOpacity(0.7),
-                                ],
-                                stops: const [0.4, 1.0],
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(borderRadius),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImage(
+                            cacheManager: DiscoveryCacheManager(),
+                            memCacheWidth: 300,
+                            memCacheHeight: 300,
+                            imageUrl: artworkHi,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: _getGradientForIndex(index),
+                                ),
                               ),
+                              child: const Icon(Icons.music_note_rounded, color: Colors.grey, size: 40),
                             ),
                           ),
-                        ),
-                      ),
-                      if (t > 0.0)
-                        Positioned(
-                          bottom: 12,
-                          left: 12,
-                          right: 12,
-                          child: Opacity(
-                            opacity: t,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.25),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.1),
-                                      width: 0.5,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        track.trackName,
-                                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white,
-                                          fontWeight: FontWeight.bold,),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        track.artistName,
-                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white.withOpacity(0.7),),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                          Positioned.fill(
+                            child: AnimatedOpacity(
+                              duration: Duration.zero,
+                              opacity: t,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.75),
                                     ],
+                                    stops: const [0.35, 1.0],
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                          if (t > 0.0)
+                            Positioned(
+                              bottom: 14,
+                              left: 14,
+                              right: 14,
+                              child: Opacity(
+                                opacity: t,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.12),
+                                          width: 0.5,
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            track.trackName,
+                                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            track.artistName,
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: Colors.white.withOpacity(0.75),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (t > 0.5)
+                            Positioned(
+                              top: 12,
+                              right: 12,
+                              child: Opacity(
+                                opacity: (t - 0.5) * 2,
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.white.withOpacity(0.2),
+                                  ),
+                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Page indicator dots
+        if (widget.tracks.isNotEmpty)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              widget.tracks.length.clamp(0, 10),
+              (index) {
+                final isActive = (_currentPage - index).abs() < 0.5;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: isActive ? 20 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? Theme.of(context).colorScheme.primary
+                        : (isDark ? Colors.white24 : Colors.black12),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
+          ),
+      ],
     );
   }
 }

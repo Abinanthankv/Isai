@@ -73,6 +73,7 @@ class SettingsState {
   final String playerArtworkAnimation;
   final double playerLyricsFontSize;
   final String playerLyricsAlignment;
+  final String playerLyricsFontWeight;
   final String playerControlLayout;
   final String playerButtonStyle;
   final bool playerMinimalistShowSource;
@@ -104,6 +105,9 @@ class SettingsState {
   final double miniPlayerSwipeSensitivity;
   final bool playerSpotifyCanvasEnabled;
   final bool playerShowCurrentLyrics;
+  final bool playerShowNextUp;
+  final int playerNextUpCount;
+  final String playerNextUpStyle;
   final String? audiobookFolder;
   final String hardcoverApiKey;
   final bool hardcoverIsValid;
@@ -130,6 +134,7 @@ class SettingsState {
     this.playerArtworkAnimation = 'zoom',
     this.playerLyricsFontSize = 18.0,
     this.playerLyricsAlignment = 'center',
+    this.playerLyricsFontWeight = 'normal',
     this.playerControlLayout = 'standard',
     this.playerButtonStyle = 'theme',
     this.playerMinimalistShowSource = false,
@@ -160,6 +165,9 @@ class SettingsState {
     this.miniPlayerSwipeSensitivity = 40.0,
     this.playerSpotifyCanvasEnabled = true,
     this.playerShowCurrentLyrics = false,
+    this.playerShowNextUp = true,
+    this.playerNextUpCount = 2,
+    this.playerNextUpStyle = 'art_and_name',
     this.audiobookFolder,
     this.hardcoverApiKey = '',
     this.hardcoverIsValid = false,
@@ -185,6 +193,7 @@ class SettingsState {
     String? playerArtworkAnimation,
     double? playerLyricsFontSize,
     String? playerLyricsAlignment,
+    String? playerLyricsFontWeight,
     String? playerControlLayout,
     String? playerButtonStyle,
     bool? playerMinimalistShowSource,
@@ -215,6 +224,9 @@ class SettingsState {
     double? miniPlayerSwipeSensitivity,
     bool? playerSpotifyCanvasEnabled,
     bool? playerShowCurrentLyrics,
+    bool? playerShowNextUp,
+    int? playerNextUpCount,
+    String? playerNextUpStyle,
     String? audiobookFolder,
     String? hardcoverApiKey,
     bool? hardcoverIsValid,
@@ -239,6 +251,7 @@ class SettingsState {
       playerArtworkAnimation: playerArtworkAnimation ?? this.playerArtworkAnimation,
       playerLyricsFontSize: playerLyricsFontSize ?? this.playerLyricsFontSize,
       playerLyricsAlignment: playerLyricsAlignment ?? this.playerLyricsAlignment,
+      playerLyricsFontWeight: playerLyricsFontWeight ?? this.playerLyricsFontWeight,
       playerControlLayout: playerControlLayout ?? this.playerControlLayout,
       playerButtonStyle: playerButtonStyle ?? this.playerButtonStyle,
       playerMinimalistShowSource: playerMinimalistShowSource ?? this.playerMinimalistShowSource,
@@ -269,6 +282,9 @@ class SettingsState {
       miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
       playerShowCurrentLyrics: playerShowCurrentLyrics ?? this.playerShowCurrentLyrics,
+      playerShowNextUp: playerShowNextUp ?? this.playerShowNextUp,
+      playerNextUpCount: playerNextUpCount ?? this.playerNextUpCount,
+      playerNextUpStyle: playerNextUpStyle ?? this.playerNextUpStyle,
       audiobookFolder: audiobookFolder ?? this.audiobookFolder,
       hardcoverApiKey: hardcoverApiKey ?? this.hardcoverApiKey,
       hardcoverIsValid: hardcoverIsValid ?? this.hardcoverIsValid,
@@ -304,6 +320,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       playerArtworkAnimation: _settings.playerArtworkAnimation,
       playerLyricsFontSize: _settings.playerLyricsFontSize,
       playerLyricsAlignment: _settings.playerLyricsAlignment,
+      playerLyricsFontWeight: _settings.playerLyricsFontWeight,
       playerControlLayout: _settings.playerControlLayout,
       playerButtonStyle: _settings.playerButtonStyle,
       playerMinimalistShowSource: _settings.playerMinimalistShowSource,
@@ -334,6 +351,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
       miniPlayerSwipeSensitivity: _settings.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: _settings.playerSpotifyCanvasEnabled,
       playerShowCurrentLyrics: _settings.playerShowCurrentLyrics,
+      playerShowNextUp: _settings.playerShowNextUp,
+      playerNextUpCount: _settings.playerNextUpCount,
+      playerNextUpStyle: _settings.playerNextUpStyle,
       audiobookFolder: _settings.audiobookFolder,
       hardcoverApiKey: _hardcoverSettings.apiKey ?? '',
       hardcoverIsValid: (_hardcoverSettings.apiKey ?? '').isNotEmpty,
@@ -514,6 +534,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(playerLyricsAlignment: alignment);
   }
 
+  Future<void> setPlayerLyricsFontWeight(String weight) async {
+    await _settings.setPlayerLyricsFontWeight(weight);
+    state = state.copyWith(playerLyricsFontWeight: weight);
+  }
+
   Future<void> setPlayerControlLayout(String layout) async {
     await _settings.setPlayerControlLayout(layout);
     state = state.copyWith(playerControlLayout: layout);
@@ -552,6 +577,21 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setPlayerShowCurrentLyrics(bool show) async {
     await _settings.setPlayerShowCurrentLyrics(show);
     state = state.copyWith(playerShowCurrentLyrics: show);
+  }
+
+  Future<void> setPlayerShowNextUp(bool show) async {
+    await _settings.setPlayerShowNextUp(show);
+    state = state.copyWith(playerShowNextUp: show);
+  }
+
+  Future<void> setPlayerNextUpCount(int count) async {
+    await _settings.setPlayerNextUpCount(count);
+    state = state.copyWith(playerNextUpCount: count);
+  }
+
+  Future<void> setPlayerNextUpStyle(String style) async {
+    await _settings.setPlayerNextUpStyle(style);
+    state = state.copyWith(playerNextUpStyle: style);
   }
 
   // ── Visualizer Setters ──────────────────────────────────────────────────
@@ -655,6 +695,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       playerArtworkAnimation: state.playerArtworkAnimation,
       playerLyricsFontSize: state.playerLyricsFontSize,
       playerLyricsAlignment: state.playerLyricsAlignment,
+      playerLyricsFontWeight: state.playerLyricsFontWeight,
       playerControlLayout: state.playerControlLayout,
       visualizerEnabled: state.visualizerEnabled,
       visualizerShowNowPlaying: state.visualizerShowNowPlaying,
@@ -735,7 +776,7 @@ class MusicSearchNotifier extends Notifier<MusicSearchState> {
   Future<void> search(String query) async {
     if (query.isEmpty) return;
     state = state.copyWith(isLoading: true, query: query, tracks: []);
-    
+
     List<ItunesTrack> tracks;
     if (state.searchMode == 'albums') {
       tracks = await _repo.searchItunesAlbums(query);
@@ -744,7 +785,30 @@ class MusicSearchNotifier extends Notifier<MusicSearchState> {
     } else {
       tracks = await _repo.searchItunes(query);
     }
-    
+
+    if (tracks.length < 5) {
+      try {
+        final deezerResults = await _repo.searchDeezerMeta(query);
+        for (final d in deezerResults) {
+          if (d.trackName != null && d.artistName != null) {
+            final alreadyExists = tracks.any((t) =>
+              t.trackName.toLowerCase() == d.trackName!.toLowerCase() &&
+              t.artistName.toLowerCase() == d.artistName!.toLowerCase());
+            if (!alreadyExists) {
+              tracks.add(ItunesTrack(
+                trackId: -d.trackName!.hashCode.abs(),
+                trackName: d.trackName!,
+                artistName: d.artistName!,
+                collectionName: d.album ?? '',
+                artworkUrl: d.artworkUrlLow ?? d.artworkUrlHigh ?? '',
+                trackTimeMillis: d.trackTimeMillis,
+              ));
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     state = state.copyWith(tracks: tracks, isLoading: false);
   }
 

@@ -23,61 +23,94 @@ class _ShimmerSection extends StatelessWidget {
 
 Widget trendingSongsSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 260,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: 5,
-      itemBuilder: (_, __) => Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(width: 150, height: 150, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
-            const SizedBox(height: 10),
-            Container(width: 120, height: 12, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 6),
-            Container(width: 80, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-          ],
+    height: 330,
+    child: Column(
+      children: [
+        SizedBox(
+          height: 300,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 5,
+            itemBuilder: (_, __) => Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Container(
+                width: 200,
+                height: 300,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            5,
+            (_) => Container(
+              width: 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
 
 Widget newReleasesSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 220,
-    child: PageView.builder(
-      controller: PageController(viewportFraction: 0.85),
-      itemCount: 3,
-      itemBuilder: (_, __) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+    height: 240,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Container(width: 40, height: 18, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6))),
+              const SizedBox(width: 10),
+              Container(width: 140, height: 22, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+            ],
+          ),
         ),
-      ),
+        Expanded(
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 5,
+            itemBuilder: (_, __) => Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(width: 140, height: 140, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
+                  const SizedBox(height: 8),
+                  Container(width: 120, height: 12, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                  const SizedBox(height: 4),
+                  Container(width: 80, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }
 
 Widget lastfmArtistsSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 140,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
+    height: 90,
+    child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: 7,
-      itemBuilder: (_, __) => Padding(
-        padding: const EdgeInsets.only(right: 18),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(width: 85, height: 85, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-            const SizedBox(height: 10),
-            Container(width: 70, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-          ],
-        ),
+      child: Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       ),
     ),
   );
@@ -86,21 +119,18 @@ Widget lastfmArtistsSkeleton(BuildContext context) {
 Widget lastfmTracksSkeleton(BuildContext context) {
   return _ShimmerSection(
     height: 200,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
+    child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      itemCount: 5,
-      itemBuilder: (_, __) => Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(width: 150, height: 150, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
-            const SizedBox(height: 8),
-            Container(width: 120, height: 12, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-            const SizedBox(height: 6),
-            Container(width: 80, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
-          ],
+      child: Column(
+        children: List.generate(
+          5,
+          (_) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Container(
+              height: 56,
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
         ),
       ),
     ),
@@ -109,37 +139,37 @@ Widget lastfmTracksSkeleton(BuildContext context) {
 
 Widget genreBrowseSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 130,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          Expanded(
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 2.8,
-              ),
-              itemCount: 6,
-              itemBuilder: (_, __) => Container(
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+    height: 170,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Container(width: 160, height: 22, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
+        ),
+        Expanded(
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: 6,
+            itemBuilder: (_, __) => Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Container(
+                width: 120,
+                height: 130,
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     ),
   );
 }
 
 Widget appleMusicPlaylistsSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 200,
+    height: 300,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -158,7 +188,7 @@ Widget appleMusicPlaylistsSkeleton(BuildContext context) {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(width: 120, height: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
+                  Container(width: 140, height: 140, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
                   const SizedBox(height: 8),
                   Container(width: 100, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
                 ],
@@ -173,17 +203,17 @@ Widget appleMusicPlaylistsSkeleton(BuildContext context) {
 
 Widget jioSaavnPlaylistsSkeleton(BuildContext context) {
   return _ShimmerSection(
-    height: 165,
+    height: 185,
     child: ListView.builder(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: 5,
       itemBuilder: (_, __) => Padding(
-        padding: const EdgeInsets.only(right: 14),
+        padding: const EdgeInsets.only(right: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 120, height: 120, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
+            Container(width: 130, height: 130, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
             const SizedBox(height: 8),
             Container(width: 100, height: 10, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4))),
           ],
