@@ -22,16 +22,18 @@ class LyricsState {
     this.selectedProvider = LyricsProviderType.auto,
   });
 
+  static const _sentinel = Object();
+
   LyricsState copyWith({
-    LyricsData? lyrics,
+    Object? lyrics = _sentinel,
     bool? isLoading,
-    String? error,
+    Object? error = _sentinel,
     LyricsProviderType? selectedProvider,
   }) {
     return LyricsState(
-      lyrics: lyrics ?? this.lyrics,
+      lyrics: identical(lyrics, _sentinel) ? this.lyrics : lyrics as LyricsData?,
       isLoading: isLoading ?? this.isLoading,
-      error: error ?? this.error,
+      error: identical(error, _sentinel) ? this.error : error as String?,
       selectedProvider: selectedProvider ?? this.selectedProvider,
     );
   }
@@ -126,7 +128,7 @@ class LyricsNotifier extends Notifier<LyricsState> {
       // Only update if this is still the latest request
       if (requestId == _lastRequestId) {
         if (lyrics != null) {
-          state = state.copyWith(lyrics: lyrics, isLoading: false);
+          state = state.copyWith(lyrics: lyrics, isLoading: false, error: null);
         } else {
           state = state.copyWith(isLoading: false, error: 'Lyrics not found');
         }

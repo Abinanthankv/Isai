@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.0.11] - July 2026
+
+### Added
+- **Eclipse Cloud Sync**: Login with email + password, automatic playlist import on sign-in, bidirectional sync (local→Eclipse and Eclipse→local), scrobble playback at 50% threshold, dedicated Eclipse Account screen with sync status and scrobble toggle.
+- **Decade Stats & Mixes**: Stats screen now groups listening history by decade with tappable bars. Tap a decade bar to see all tracks played from that era. For You page shows "Your Decade Mixes" — Deezer playlists matching your top decades and genres, with library fallback.
+- **iTunes Lookup Fallback**: Apple Music playlist tracks now get artist names via iTunes lookup-by-ID when the page scrape fails to extract artist data.
+- **Eclipse Delete Metadata**: When deleting a track from a synced Eclipse playlist without a remote track ID, matches by title+artist as fallback.
+- **Playlist Grid Refresh Pull-to-refresh on playlist screen, with sync loading indicator when Eclipse is connected.
+
+### Changed
+- **Settings Redesign**: Eclipse and Last.fm connected sections collapsed to single entry tiles — tap to navigate to dedicated settings screens with all controls (scrobble toggle, sync, sign out).
+- **Metadata Enrichment**: `releaseYear` now persisted in `ExternalTrackMetadata` cache and `TrackMetadata` table. Song Info sheet shows Year row; Format/Size/Filename rows removed.
+- **Decade Mixes**: Sorted by play count (most-listened first), all decades shown (no cap), Deezer fallback from genre query to generic "decade hits" query before resorting to library. Deduplication by playlist ID.
+- **Eclipse Settings Autofill**: Email/password fields wrapped in `AutofillGroup` with proper `autofillHints` for password manager support.
+
+### Fixed
+- **Apple Playlist Artists Missing**: Apple Music page format change broke JSON-LD extraction. Added iTunes lookup-by-ID fallback when search-based enrichment fails.
+- **Decade Mixes Not Showing**: Direct DB query (`getAllPlayback()`) replaces stream-based provider that had async timing issues.
+- **Pull-to-Refresh Decade Mixes**: Removed `skipLoadingOnReload` so manual refresh shows loading state and updates properly.
+- **Duplicate Deezer Playlists**: Prevents same playlist from appearing across multiple decade mixes via `seenPlaylistIds` set.
+- **Song Info Redundant API Call**: Removed `_checkAndEnrichMetadata()` call that triggered unnecessary iTunes requests every time the sheet opened.
+
 ## [1.0.10] - July 2026
 
 ### Added

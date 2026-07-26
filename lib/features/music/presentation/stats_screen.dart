@@ -10,6 +10,7 @@ import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/glassmorphism.dart';
 import 'listening_time_detail_sheet.dart';
 import 'monthly_wrapped_section.dart';
+import 'decade_tracks_screen.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
@@ -268,6 +269,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             _buildSectionHeader('Genre Breakdown'),
             const SizedBox(height: 12),
             _buildGenreBreakdown(ref, isDark),
+            const SizedBox(height: 24),
+
+            // 5. Decades
+            _buildSectionHeader('Decades'),
+            const SizedBox(height: 12),
+            _buildDecadesSection(ref, isDark),
           ],
         ),
     );
@@ -571,6 +578,66 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               );
             }).toList(),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDecadesSection(WidgetRef ref, bool isDark) {
+    final decades = ref.watch(listeningByDecadeProvider);
+    if (decades.isEmpty) return const SizedBox.shrink();
+
+    final maxPlays = decades.map((d) => d['plays'] as int).fold(1, (a, b) => a > b ? a : b);
+
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      borderRadius: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Tracks by Decade', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          ...decades.map((d) {
+            final decade = d['decade'] as int;
+            final plays = d['plays'] as int;
+            final unique = d['uniqueTracks'] as int;
+            final fraction = plays / maxPlays;
+            final label = '${decade}s';
+            return GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DecadeTracksScreen(decade: decade),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    SizedBox(width: 48, child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87))),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: fraction,
+                          minHeight: 14,
+                          backgroundColor: isDark ? Colors.white10 : Colors.black12,
+                          valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('$plays', style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black)),
+                    const SizedBox(width: 4),
+                    Text('($unique unique)', style: TextStyle(fontSize: 11, color: isDark ? Colors.white38 : Colors.black38)),
+                  ],
+                ),
+              ),
+            );
+          }),
         ],
       ),
     );

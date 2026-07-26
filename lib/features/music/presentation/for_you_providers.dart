@@ -663,3 +663,111 @@ List<ItunesTrack> _deezerTracksToItunes(List<Map<String, dynamic>> deezerTracks)
     );
   }).where((t) => t.trackName != 'Unknown').toList();
 }
+
+/// Decade + genre mixes from Deezer, paired from the user's listening history.
+final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
+  final profile = ref.watch(userMusicProfileProvider).value;
+  final db = getIt<AppDatabase>();
+  final deezer = getIt<DeezerService>();
+
+  // Query DB directly — same as stats page, no stream delay
+  final allHistory = await db.getAllPlayback();
+  final Map<int, ({int plays, Set<String> tracks})> decades = {};
+  for (final h in allHistory) {
+    if (h.releaseYear == null) continue;
+    final decade = (h.releaseYear! ~/ 10) * 10;
+    final entry = decades.putIfAbsent(decade, () => (plays: 0, tracks: {}));
+    decades[decade] = (plays: entry.plays + 1, tracks: {...entry.tracks, '${h.trackTitle}-${h.artist}'});
+  }
+  final sorted = decades.entries.toList()..sort((a, b) => b.value.plays.compareTo(a.value.plays));
+  final topDecades = sorted.map((e) => e.key).toList();
+  if (topDecades.isEmpty) return [];
+
+  final genres = profile?.genreWeights
+      .where((g) => g.genre.isNotEmpty)
+      .map((g) => g.genre)
+      .toList() ?? [];
+
+  final List<({Color from, Color to, Color shadow})> decadeGradients = [
+    (from: const Color(0xFF6B52A0), to: const Color(0xFF2D1B69), shadow: const Color(0xFF6B52A0)),
+    (from: const Color(0xFFD4145A), to: const Color(0xFFBB0B4A), shadow: const Color(0xFFD4145A)),
+    (from: const Color(0xFF11998E), to: const Color(0xFF0B6B5E), shadow: const Color(0xFF11998E)),
+  ];
+
+  final mixes = <DailyMix>[];
+  final seenKeys = <String>{};
+  final seenPlaylistIds = <int>{};
+  for (int i = 0; i < topDecades.length; i++) {
+    final decade = topDecades[i];
+    final gradient = decadeGradients[i % decadeGradients.length];
+    final genre = genres.isNotEmpty ? genres[i % genres.length] : '';
+
+    final mixKey = '$decade|$genre';
+    if (!seenKeys.add(mixKey)) continue;
+
+    final query = genre.isNotEmpty ? '${decade}s $genre' : '${decade}s hits';
+
+    List<ItunesTrack> tracks = [];
+    String mixTitle = genre.isNotEmpty ? '${decade}s $genre Mix' : '${decade}s Mix';
+
+    // Try Deezer with genre query first, then fall back to generic decade hits
+    final queries = genre.isNotEmpty ? [query, '${decade}s hits'] : [query];
+    for (final q in queries) {
+      if (tracks.isNotEmpty) break;
+      try {
+        final playlists = await deezer.searchPlaylists(q);
+        if (playlists.isNotEmpty) {
+          final pl = playlists.firstWhere(
+            (p) => !seenPlaylistIds.contains((p['id'] as num?)?.toInt()),
+            orElse: () => playlists.first,
+          );
+          final plId = (pl['id'] as num?)?.toInt() ?? pl['title']?.toString().hashCode ?? q.hashCode;
+          final rawTracks = await deezer.getPlaylistTracks(plId.toString(), limit: 20);
+          for (final t in rawTracks) {
+            final artist = t['artist'] as Map<String, dynamic>? ?? {};
+            final album = t['album'] as Map<String, dynamic>? ?? {};
+            tracks.add(ItunesTrack(
+              trackId: (t['id'] as num?)?.toInt() ?? 0,
+              trackName: t['title'] as String? ?? 'Unknown',
+              artistName: artist['name'] as String? ?? 'Unknown Artist',
+              collectionName: album['title'] as String? ?? '',
+              artworkUrl: (album['cover_medium'] as String?) ?? (album['cover_big'] as String?) ?? '',
+              previewUrl: t['preview'] as String?,
+              trackTimeMillis: ((t['duration'] as num?)?.toInt() ?? 0) * 1000,
+            ));
+          }
+          seenPlaylistIds.add(plId);
+        }
+    } catch (_) {}
+  }
+
+  if (tracks.isEmpty) {
+    final library = ref.read(libraryProvider);
+      for (final file in library.allAudioFiles) {
+        final meta = library.metadata['${file.torrentId}-${file.id}'];
+        if (meta?.releaseYear == null) continue;
+        if ((meta!.releaseYear! ~/ 10) * 10 != decade) continue;
+        tracks.add(ItunesTrack(
+          trackId: (meta.trackName ?? file.name).hashCode,
+          trackName: meta.trackName ?? file.name,
+          artistName: meta.artistName ?? 'Unknown',
+          collectionName: meta.album ?? '',
+          artworkUrl: meta.artworkUrlHigh ?? meta.artworkUrlLow ?? '',
+          trackTimeMillis: meta.trackTimeMillis,
+        ));
+      }
+    }
+
+    if (tracks.isEmpty) continue;
+
+    final subtitle = genre.isNotEmpty ? '${tracks.length} tracks • $genre' : '${tracks.length} tracks';
+    mixes.add((
+      title: mixTitle,
+      subtitle: subtitle,
+      tracks: tracks,
+      colors: [gradient.from, gradient.to],
+    ));
+  }
+
+  return mixes;
+});

@@ -358,3 +358,59 @@ final musicPersonalityProvider = Provider<MusicPersonality?>((ref) {
   );
 });
 
+final listeningByDecadeProvider = Provider<List<Map<String, dynamic>>>((ref) {
+  final history = ref.watch(allPlaybackProvider).value ?? [];
+  final Map<int, ({int plays, Set<String> tracks})> decades = {};
+
+  for (final h in history) {
+    if (h.releaseYear == null) continue;
+    final decade = (h.releaseYear! ~/ 10) * 10;
+    final entry = decades.putIfAbsent(decade, () => (plays: 0, tracks: {}));
+    decades[decade] = (plays: entry.plays + 1, tracks: {...entry.tracks, '${h.trackTitle}-${h.artist}'});
+  }
+
+  final sorted = decades.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+  return sorted.map((e) => {
+    'decade': e.key,
+    'plays': e.value.plays,
+    'uniqueTracks': e.value.tracks.length,
+  }).toList();
+});
+
+final listeningByYearProvider = Provider<List<Map<String, dynamic>>>((ref) {
+  final history = ref.watch(allPlaybackProvider).value ?? [];
+  final Map<int, int> years = {};
+
+  for (final h in history) {
+    if (h.releaseYear == null) continue;
+    years[h.releaseYear!] = (years[h.releaseYear!] ?? 0) + 1;
+  }
+
+  final sorted = years.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+  return sorted.map((e) => {'year': e.key, 'plays': e.value}).toList();
+});
+
+final tracksByDecadeProvider = Provider.family<List<Map<String, dynamic>>, int>((ref, decade) {
+  final history = ref.watch(allPlaybackProvider).value ?? [];
+  final Map<String, Map<String, dynamic>> tracks = {};
+
+  for (final h in history) {
+    if (h.releaseYear == null) continue;
+    if ((h.releaseYear! ~/ 10) * 10 != decade) continue;
+    final key = '${h.trackTitle}|${h.artist}';
+    if (!tracks.containsKey(key)) {
+      tracks[key] = {
+        'title': h.trackTitle,
+        'artist': h.artist,
+        'releaseYear': h.releaseYear,
+        'artworkUrlLow': h.artworkUrlLow,
+        'artworkUrlHigh': h.artworkUrlHigh,
+        'plays': 0,
+      };
+    }
+    tracks[key]!['plays'] = (tracks[key]!['plays'] as int) + 1;
+  }
+
+  final sorted = tracks.values.toList()..sort((a, b) => (b['releaseYear'] as int).compareTo(a['releaseYear'] as int));
+  return sorted;
+});

@@ -27,6 +27,11 @@ class PlaylistsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playlistsAsync = ref.watch(playlistProvider);
+    ref.listen(settingsProvider, (prev, next) {
+      if (next.eclipseIsValid && (prev == null || !prev.eclipseIsValid)) {
+        ref.read(playlistProvider.notifier).importEclipsePlaylists();
+      }
+    });
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -46,8 +51,10 @@ class PlaylistsScreen extends ConsumerWidget {
                   colors: [Color(0xFFf5f5f7), Color(0xFFefeff1)],
                 ),
         ),
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          onRefresh: () => ref.read(playlistProvider.notifier).refresh(),
+          child: CustomScrollView(
+            slivers: [
             SliverAppBar(
               floating: true,
               pinned: true,
@@ -79,8 +86,9 @@ class PlaylistsScreen extends ConsumerWidget {
             playlistsAsync.when(
               data: (allPlaylists) {
                 final playlists = allPlaylists.where((p) => p.playlist.sourceUrl == null || !p.playlist.sourceUrl!.contains('album_')).toList();
+                final isEmpty = playlists.isEmpty;
                 
-                return playlists.isEmpty
+                return isEmpty
                     ? SliverFillRemaining(
                         child: Center(
                           child: Column(
@@ -144,6 +152,7 @@ class PlaylistsScreen extends ConsumerWidget {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 120)),
           ],
+        ),
         ),
       ),
     );
@@ -425,28 +434,53 @@ class _PlaylistCard extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Consumer(
-                    builder: (context, ref, _) {
-                      final tracksAsync = ref.watch(playlistTracksProvider(item.playlist.id));
-                      return tracksAsync.when(
-                        data: (tracks) {
-                          // Prioritize the first track with artwork over the playlist's own artwork
-                          final imageUrl = tracks.where((t) => t.artworkUrl != null && t.artworkUrl!.isNotEmpty).firstOrNull?.artworkUrl 
-                              ?? item.playlist.artworkUrl;
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final tracksAsync = ref.watch(playlistTracksProvider(item.playlist.id));
+                          return tracksAsync.when(
+                            data: (tracks) {
+                              // Prioritize the first track with artwork over the playlist's own artwork
+                              final imageUrl = tracks.where((t) => t.artworkUrl != null && t.artworkUrl!.isNotEmpty).firstOrNull?.artworkUrl 
+                                  ?? item.playlist.artworkUrl;
 
-                          return imageUrl != null && imageUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: imageUrl,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(color: Colors.grey[800]),
-                                  errorWidget: (context, url, error) => _IconPlaceholder(),
-                                )
-                              : _IconPlaceholder();
+                              return imageUrl != null && imageUrl.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: imageUrl,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) => Container(color: Colors.grey[800]),
+                                      errorWidget: (context, url, error) => _IconPlaceholder(),
+                                    )
+                                  : _IconPlaceholder();
+                            },
+                            loading: () => Container(color: Colors.grey[800]),
+                            error: (_, __) => _IconPlaceholder(),
+                          );
                         },
-                        loading: () => Container(color: Colors.grey[800]),
-                        error: (_, __) => _IconPlaceholder(),
-                      );
-                    },
+                      ),
+                      if (item.playlist.eclipseId != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.deepPurple.withOpacity(0.85),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.cloud_outlined, size: 10, color: Colors.white70),
+                                SizedBox(width: 3),
+                                Text('Eclipse', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -499,6 +533,7 @@ class _PlaylistCard extends StatelessWidget {
     );
   }
 }
+
 
 class _IconPlaceholder extends StatelessWidget {
   @override

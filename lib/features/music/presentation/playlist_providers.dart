@@ -11,6 +11,9 @@ import '../../../core/database/database.dart';
 import '../../../core/di/injection.dart';
 import '../data/music_models.dart';
 import '../data/itunes_metadata_service.dart';
+import '../data/eclipse_sync_service.dart';
+import 'eclipse_playlist_provider.dart';
+import 'music_providers.dart';
 
 class PlaylistWithCount {
   final DbPlaylist playlist;
@@ -24,11 +27,13 @@ final playlistProvider = NotifierProvider<PlaylistNotifier, AsyncValue<List<Play
 
 class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
   late final AppDatabase _db;
+  late final EclipseSyncService _eclipseSync;
   late final _yt = YoutubeExplode();
 
   @override
   AsyncValue<List<PlaylistWithCount>> build() {
     _db = getIt<AppDatabase>();
+    _eclipseSync = EclipseSyncService(_db);
     ref.onDispose(() => _yt.close());
     _init();
     return const AsyncValue.loading();
@@ -505,18 +510,101 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
   }
 
   Future<void> deletePlaylistTrack(int id) async {
+    final track = await _db.getPlaylistTrackById(id);
     await _db.deletePlaylistTrack(id);
+    if (track == null) return;
+    final playlist = await _db.getPlaylistById(track.playlistId);
+    if (playlist?.eclipseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.eclipseIsValid) return;
+
+    if (track.eclipseTrackId != null) {
+      _eclipseSync.removeTrackFromEclipsePlaylist(
+        token: settings.eclipseToken,
+        userId: settings.eclipseUserId!,
+        eclipsePlaylistId: playlist!.eclipseId!,
+        eclipseTrackId: track.eclipseTrackId!,
+      );
+    } else {
+      _eclipseSync.removeTrackFromEclipsePlaylistByMetadata(
+        token: settings.eclipseToken,
+        userId: settings.eclipseUserId!,
+        eclipsePlaylistId: playlist!.eclipseId!,
+        title: track.title,
+        artist: track.artist,
+      );
+    }
   }
 
   Future<void> deletePlaylist(int id) async {
+    final playlist = await _db.getPlaylistById(id);
     await _db.deletePlaylist(id);
+    if (playlist?.eclipseId != null) {
+      final settings = ref.read(settingsProvider);
+      if (settings.eclipseIsValid) {
+        _eclipseSync.deletePlaylistOnEclipse(
+          token: settings.eclipseToken,
+          userId: settings.eclipseUserId!,
+          eclipsePlaylistId: playlist!.eclipseId!,
+        );
+      }
+    }
   }
 
   Future<int> createPlaylist(String name) async {
-    return await _db.createPlaylist(PlaylistsCompanion.insert(
+    final id = await _db.createPlaylist(PlaylistsCompanion.insert(
       name: name,
       createdAt: DateTime.now().millisecondsSinceEpoch,
     ));
+    final settings = ref.read(settingsProvider);
+    if (settings.eclipseIsValid && settings.eclipseToken.isNotEmpty && settings.eclipseUserId != null) {
+      await _eclipseSync.createPlaylistOnEclipse(
+        token: settings.eclipseToken,
+        userId: settings.eclipseUserId!,
+        localPlaylistId: id,
+        name: name,
+      );
+    }
+    return id;
+  }
+
+  Future<void> _syncTrackToEclipse(int playlistId, String title, String artist, {String? album, String? artworkUrl}) async {
+    final playlist = await _db.getPlaylistById(playlistId);
+    if (playlist?.eclipseId == null) return;
+    final settings = ref.read(settingsProvider);
+    if (!settings.eclipseIsValid) return;
+    await _eclipseSync.addTrackToEclipsePlaylist(
+      token: settings.eclipseToken,
+      userId: settings.eclipseUserId!,
+      eclipsePlaylistId: playlist!.eclipseId!,
+      title: title,
+      artist: artist,
+      album: album,
+      artworkUrl: artworkUrl,
+    );
+  }
+
+  Future<void> importEclipsePlaylists() async {
+    final settings = ref.read(settingsProvider);
+    if (!settings.eclipseIsValid || settings.eclipseToken.isEmpty || settings.eclipseUserId == null) return;
+    await _eclipseSync.importEclipsePlaylists(
+      token: settings.eclipseToken,
+      userId: settings.eclipseUserId!,
+    );
+  }
+
+  Future<void> refresh() async {
+    await importEclipsePlaylists();
+    await _refreshState();
+  }
+
+  Future<int> syncLocalPlaylistsToEclipse() async {
+    final settings = ref.read(settingsProvider);
+    if (!settings.eclipseIsValid || settings.eclipseToken.isEmpty || settings.eclipseUserId == null) return 0;
+    return _eclipseSync.syncLocalPlaylistsToEclipse(
+      token: settings.eclipseToken,
+      userId: settings.eclipseUserId!,
+    );
   }
 
   Future<bool> addTrackToPlaylist(int playlistId, ItunesTrack track) async {
@@ -526,7 +614,7 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     );
     if (exists) return false;
 
-    await _db.addTracksToPlaylist([
+    await _db.addSingleTrackToPlaylist(
       PlaylistTracksCompanion.insert(
         playlistId: playlistId,
         title: track.trackName,
@@ -535,7 +623,14 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
         youtubeId: track.trackId.toString(),
         artworkUrl: Value(track.artworkUrl),
       )
-    ]);
+    );
+    _syncTrackToEclipse(
+      playlistId,
+      track.trackName,
+      track.artistName,
+      album: track.collectionName.isNotEmpty ? track.collectionName : null,
+      artworkUrl: track.artworkUrl.isNotEmpty ? track.artworkUrl : null,
+    );
     return true;
   }
 
@@ -547,18 +642,25 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     );
     if (exists) return false;
 
-    await _db.addTracksToPlaylist([
+    await _db.addSingleTrackToPlaylist(
       PlaylistTracksCompanion.insert(
         playlistId: playlistId,
         title: meta.trackName ?? file.name,
         artist: meta.artistName ?? 'Unknown Artist',
         album: Value(meta.album),
-        youtubeId: '', 
+        youtubeId: '',
         torrentId: Value(file.torrentId),
         fileId: Value(file.id),
         artworkUrl: Value(meta.artworkUrlHigh ?? meta.artworkUrlLow),
       )
-    ]);
+    );
+    _syncTrackToEclipse(
+      playlistId,
+      meta.trackName ?? file.name,
+      meta.artistName ?? 'Unknown Artist',
+      album: meta.album,
+      artworkUrl: meta.artworkUrlHigh ?? meta.artworkUrlLow,
+    );
     return true;
   }
 
@@ -646,6 +748,25 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
     if (tracksToInsert.isNotEmpty) {
       await _db.addTracksToPlaylist(tracksToInsert);
+    }
+
+    final settings = ref.read(settingsProvider);
+    if (settings.eclipseIsValid && settings.eclipseToken.isNotEmpty && settings.eclipseUserId != null) {
+      final eclipseTracks = tracks.map((t) => {
+        'title': t.trackName,
+        'artist': t.artistName,
+        if (t.collectionName.isNotEmpty) 'album': t.collectionName,
+        if (t.artworkUrl.isNotEmpty) 'coverUrl': t.artworkUrl,
+      }).toList();
+      await _eclipseSync.createPlaylistOnEclipseWithTracks(
+        token: settings.eclipseToken,
+        userId: settings.eclipseUserId!,
+        localPlaylistId: playlistId,
+        name: name,
+        artworkUrl: artworkUrl,
+        tracks: eclipseTracks,
+      );
+      ref.invalidate(eclipsePlaylistsProvider);
     }
   }
 

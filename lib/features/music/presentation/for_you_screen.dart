@@ -62,6 +62,7 @@ class ForYouScreen extends ConsumerWidget {
           ref.invalidate(newReleasesForYouProvider);
           ref.invalidate(outsideYourBubbleProvider);
           ref.invalidate(freshAndDifferentProvider);
+          ref.invalidate(decadeMixesProvider);
           ref.invalidate(lastfmRecommendedProvider);
           ref.invalidate(lastfmMixProvider);
           
@@ -185,6 +186,7 @@ class ForYouScreen extends ConsumerWidget {
     final newReleases = ref.watch(newReleasesForYouProvider);
     final outsideBubble = ref.watch(outsideYourBubbleProvider);
     final freshDiff = ref.watch(freshAndDifferentProvider);
+    final decadeMixes = ref.watch(decadeMixesProvider);
 
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -200,6 +202,11 @@ class ForYouScreen extends ConsumerWidget {
         // Your Daily Mixes
         SliverToBoxAdapter(
           child: _buildDailyMixSection(context, ref, dailyMixes, isDark),
+        ),
+
+        // ─── Decade Mixes ───────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: _buildDecadeMixesSection(context, ref, decadeMixes, isDark),
         ),
 
         // Because You Listened To...
@@ -406,6 +413,52 @@ class ForYouScreen extends ConsumerWidget {
         );
       },
       loading: () => _buildLoadingSection(context, 'Your Daily Mixes', isDark),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildDecadeMixesSection(BuildContext context, WidgetRef ref, AsyncValue<List<DailyMix>> mixAsync, bool isDark) {
+    return mixAsync.when(
+      data: (mixes) {
+        if (mixes.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AppleMusicSectionHeader(
+              title: 'Your Decade Mixes',
+              subtitle: 'From your most listened eras',
+            ),
+            SizedBox(
+              height: 190,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: mixes.length,
+                itemBuilder: (context, index) {
+                  final mix = mixes[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width * 0.85,
+                      child: _buildMixCard(
+                        context: context,
+                        tracks: mix.tracks,
+                        title: mix.title,
+                        subtitle: mix.subtitle,
+                        isDark: isDark,
+                        gradient: mix.colors,
+                        icon: Icons.queue_music_rounded,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+        );
+      },
+      loading: () => _buildLoadingSection(context, 'Your Decade Mixes', isDark),
       error: (_, __) => const SizedBox.shrink(),
     );
   }

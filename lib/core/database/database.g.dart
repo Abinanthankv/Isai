@@ -1956,6 +1956,17 @@ class $PlaybackHistoryTable extends PlaybackHistory
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _releaseYearMeta = const VerificationMeta(
+    'releaseYear',
+  );
+  @override
+  late final GeneratedColumn<int> releaseYear = GeneratedColumn<int>(
+    'release_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1969,6 +1980,7 @@ class $PlaybackHistoryTable extends PlaybackHistory
     artworkUrlHigh,
     playedAt,
     duration,
+    releaseYear,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2065,6 +2077,15 @@ class $PlaybackHistoryTable extends PlaybackHistory
         duration.isAcceptableOrUnknown(data['duration']!, _durationMeta),
       );
     }
+    if (data.containsKey('release_year')) {
+      context.handle(
+        _releaseYearMeta,
+        releaseYear.isAcceptableOrUnknown(
+          data['release_year']!,
+          _releaseYearMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2118,6 +2139,10 @@ class $PlaybackHistoryTable extends PlaybackHistory
         DriftSqlType.int,
         data['${effectivePrefix}duration'],
       ),
+      releaseYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}release_year'],
+      ),
     );
   }
 
@@ -2140,6 +2165,7 @@ class DbPlaybackHistory extends DataClass
   final String? artworkUrlHigh;
   final int playedAt;
   final int? duration;
+  final int? releaseYear;
   const DbPlaybackHistory({
     required this.id,
     required this.fileId,
@@ -2152,6 +2178,7 @@ class DbPlaybackHistory extends DataClass
     this.artworkUrlHigh,
     required this.playedAt,
     this.duration,
+    this.releaseYear,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2172,6 +2199,9 @@ class DbPlaybackHistory extends DataClass
     map['played_at'] = Variable<int>(playedAt);
     if (!nullToAbsent || duration != null) {
       map['duration'] = Variable<int>(duration);
+    }
+    if (!nullToAbsent || releaseYear != null) {
+      map['release_year'] = Variable<int>(releaseYear);
     }
     return map;
   }
@@ -2195,6 +2225,9 @@ class DbPlaybackHistory extends DataClass
       duration: duration == null && nullToAbsent
           ? const Value.absent()
           : Value(duration),
+      releaseYear: releaseYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(releaseYear),
     );
   }
 
@@ -2215,6 +2248,7 @@ class DbPlaybackHistory extends DataClass
       artworkUrlHigh: serializer.fromJson<String?>(json['artworkUrlHigh']),
       playedAt: serializer.fromJson<int>(json['playedAt']),
       duration: serializer.fromJson<int?>(json['duration']),
+      releaseYear: serializer.fromJson<int?>(json['releaseYear']),
     );
   }
   @override
@@ -2232,6 +2266,7 @@ class DbPlaybackHistory extends DataClass
       'artworkUrlHigh': serializer.toJson<String?>(artworkUrlHigh),
       'playedAt': serializer.toJson<int>(playedAt),
       'duration': serializer.toJson<int?>(duration),
+      'releaseYear': serializer.toJson<int?>(releaseYear),
     };
   }
 
@@ -2247,6 +2282,7 @@ class DbPlaybackHistory extends DataClass
     Value<String?> artworkUrlHigh = const Value.absent(),
     int? playedAt,
     Value<int?> duration = const Value.absent(),
+    Value<int?> releaseYear = const Value.absent(),
   }) => DbPlaybackHistory(
     id: id ?? this.id,
     fileId: fileId ?? this.fileId,
@@ -2263,6 +2299,7 @@ class DbPlaybackHistory extends DataClass
         : this.artworkUrlHigh,
     playedAt: playedAt ?? this.playedAt,
     duration: duration.present ? duration.value : this.duration,
+    releaseYear: releaseYear.present ? releaseYear.value : this.releaseYear,
   );
   DbPlaybackHistory copyWithCompanion(PlaybackHistoryCompanion data) {
     return DbPlaybackHistory(
@@ -2283,6 +2320,9 @@ class DbPlaybackHistory extends DataClass
           : this.artworkUrlHigh,
       playedAt: data.playedAt.present ? data.playedAt.value : this.playedAt,
       duration: data.duration.present ? data.duration.value : this.duration,
+      releaseYear: data.releaseYear.present
+          ? data.releaseYear.value
+          : this.releaseYear,
     );
   }
 
@@ -2299,7 +2339,8 @@ class DbPlaybackHistory extends DataClass
           ..write('artworkUrlLow: $artworkUrlLow, ')
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('playedAt: $playedAt, ')
-          ..write('duration: $duration')
+          ..write('duration: $duration, ')
+          ..write('releaseYear: $releaseYear')
           ..write(')'))
         .toString();
   }
@@ -2317,6 +2358,7 @@ class DbPlaybackHistory extends DataClass
     artworkUrlHigh,
     playedAt,
     duration,
+    releaseYear,
   );
   @override
   bool operator ==(Object other) =>
@@ -2332,7 +2374,8 @@ class DbPlaybackHistory extends DataClass
           other.artworkUrlLow == this.artworkUrlLow &&
           other.artworkUrlHigh == this.artworkUrlHigh &&
           other.playedAt == this.playedAt &&
-          other.duration == this.duration);
+          other.duration == this.duration &&
+          other.releaseYear == this.releaseYear);
 }
 
 class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
@@ -2347,6 +2390,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
   final Value<String?> artworkUrlHigh;
   final Value<int> playedAt;
   final Value<int?> duration;
+  final Value<int?> releaseYear;
   const PlaybackHistoryCompanion({
     this.id = const Value.absent(),
     this.fileId = const Value.absent(),
@@ -2359,6 +2403,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
     this.artworkUrlHigh = const Value.absent(),
     this.playedAt = const Value.absent(),
     this.duration = const Value.absent(),
+    this.releaseYear = const Value.absent(),
   });
   PlaybackHistoryCompanion.insert({
     this.id = const Value.absent(),
@@ -2372,6 +2417,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
     this.artworkUrlHigh = const Value.absent(),
     required int playedAt,
     this.duration = const Value.absent(),
+    this.releaseYear = const Value.absent(),
   }) : fileId = Value(fileId),
        torrentId = Value(torrentId),
        trackTitle = Value(trackTitle),
@@ -2391,6 +2437,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
     Expression<String>? artworkUrlHigh,
     Expression<int>? playedAt,
     Expression<int>? duration,
+    Expression<int>? releaseYear,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2404,6 +2451,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
       if (artworkUrlHigh != null) 'artwork_url_high': artworkUrlHigh,
       if (playedAt != null) 'played_at': playedAt,
       if (duration != null) 'duration': duration,
+      if (releaseYear != null) 'release_year': releaseYear,
     });
   }
 
@@ -2419,6 +2467,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
     Value<String?>? artworkUrlHigh,
     Value<int>? playedAt,
     Value<int?>? duration,
+    Value<int?>? releaseYear,
   }) {
     return PlaybackHistoryCompanion(
       id: id ?? this.id,
@@ -2432,6 +2481,7 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
       artworkUrlHigh: artworkUrlHigh ?? this.artworkUrlHigh,
       playedAt: playedAt ?? this.playedAt,
       duration: duration ?? this.duration,
+      releaseYear: releaseYear ?? this.releaseYear,
     );
   }
 
@@ -2471,6 +2521,9 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
     if (duration.present) {
       map['duration'] = Variable<int>(duration.value);
     }
+    if (releaseYear.present) {
+      map['release_year'] = Variable<int>(releaseYear.value);
+    }
     return map;
   }
 
@@ -2487,7 +2540,8 @@ class PlaybackHistoryCompanion extends UpdateCompanion<DbPlaybackHistory> {
           ..write('artworkUrlLow: $artworkUrlLow, ')
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('playedAt: $playedAt, ')
-          ..write('duration: $duration')
+          ..write('duration: $duration, ')
+          ..write('releaseYear: $releaseYear')
           ..write(')'))
         .toString();
   }
@@ -2543,6 +2597,17 @@ class $PlaylistsTable extends Playlists
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _eclipseIdMeta = const VerificationMeta(
+    'eclipseId',
+  );
+  @override
+  late final GeneratedColumn<String> eclipseId = GeneratedColumn<String>(
+    'eclipse_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2560,6 +2625,7 @@ class $PlaylistsTable extends Playlists
     name,
     artworkUrl,
     sourceUrl,
+    eclipseId,
     createdAt,
   ];
   @override
@@ -2597,6 +2663,12 @@ class $PlaylistsTable extends Playlists
         sourceUrl.isAcceptableOrUnknown(data['source_url']!, _sourceUrlMeta),
       );
     }
+    if (data.containsKey('eclipse_id')) {
+      context.handle(
+        _eclipseIdMeta,
+        eclipseId.isAcceptableOrUnknown(data['eclipse_id']!, _eclipseIdMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2630,6 +2702,10 @@ class $PlaylistsTable extends Playlists
         DriftSqlType.string,
         data['${effectivePrefix}source_url'],
       ),
+      eclipseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}eclipse_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}created_at'],
@@ -2648,12 +2724,14 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
   final String name;
   final String? artworkUrl;
   final String? sourceUrl;
+  final String? eclipseId;
   final int createdAt;
   const DbPlaylist({
     required this.id,
     required this.name,
     this.artworkUrl,
     this.sourceUrl,
+    this.eclipseId,
     required this.createdAt,
   });
   @override
@@ -2666,6 +2744,9 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
     }
     if (!nullToAbsent || sourceUrl != null) {
       map['source_url'] = Variable<String>(sourceUrl);
+    }
+    if (!nullToAbsent || eclipseId != null) {
+      map['eclipse_id'] = Variable<String>(eclipseId);
     }
     map['created_at'] = Variable<int>(createdAt);
     return map;
@@ -2681,6 +2762,9 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
       sourceUrl: sourceUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceUrl),
+      eclipseId: eclipseId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eclipseId),
       createdAt: Value(createdAt),
     );
   }
@@ -2695,6 +2779,7 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
       name: serializer.fromJson<String>(json['name']),
       artworkUrl: serializer.fromJson<String?>(json['artworkUrl']),
       sourceUrl: serializer.fromJson<String?>(json['sourceUrl']),
+      eclipseId: serializer.fromJson<String?>(json['eclipseId']),
       createdAt: serializer.fromJson<int>(json['createdAt']),
     );
   }
@@ -2706,6 +2791,7 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
       'name': serializer.toJson<String>(name),
       'artworkUrl': serializer.toJson<String?>(artworkUrl),
       'sourceUrl': serializer.toJson<String?>(sourceUrl),
+      'eclipseId': serializer.toJson<String?>(eclipseId),
       'createdAt': serializer.toJson<int>(createdAt),
     };
   }
@@ -2715,12 +2801,14 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
     String? name,
     Value<String?> artworkUrl = const Value.absent(),
     Value<String?> sourceUrl = const Value.absent(),
+    Value<String?> eclipseId = const Value.absent(),
     int? createdAt,
   }) => DbPlaylist(
     id: id ?? this.id,
     name: name ?? this.name,
     artworkUrl: artworkUrl.present ? artworkUrl.value : this.artworkUrl,
     sourceUrl: sourceUrl.present ? sourceUrl.value : this.sourceUrl,
+    eclipseId: eclipseId.present ? eclipseId.value : this.eclipseId,
     createdAt: createdAt ?? this.createdAt,
   );
   DbPlaylist copyWithCompanion(PlaylistsCompanion data) {
@@ -2731,6 +2819,7 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
           ? data.artworkUrl.value
           : this.artworkUrl,
       sourceUrl: data.sourceUrl.present ? data.sourceUrl.value : this.sourceUrl,
+      eclipseId: data.eclipseId.present ? data.eclipseId.value : this.eclipseId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -2742,13 +2831,15 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
           ..write('name: $name, ')
           ..write('artworkUrl: $artworkUrl, ')
           ..write('sourceUrl: $sourceUrl, ')
+          ..write('eclipseId: $eclipseId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, artworkUrl, sourceUrl, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, artworkUrl, sourceUrl, eclipseId, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2757,6 +2848,7 @@ class DbPlaylist extends DataClass implements Insertable<DbPlaylist> {
           other.name == this.name &&
           other.artworkUrl == this.artworkUrl &&
           other.sourceUrl == this.sourceUrl &&
+          other.eclipseId == this.eclipseId &&
           other.createdAt == this.createdAt);
 }
 
@@ -2765,12 +2857,14 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
   final Value<String> name;
   final Value<String?> artworkUrl;
   final Value<String?> sourceUrl;
+  final Value<String?> eclipseId;
   final Value<int> createdAt;
   const PlaylistsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.artworkUrl = const Value.absent(),
     this.sourceUrl = const Value.absent(),
+    this.eclipseId = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   PlaylistsCompanion.insert({
@@ -2778,6 +2872,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
     required String name,
     this.artworkUrl = const Value.absent(),
     this.sourceUrl = const Value.absent(),
+    this.eclipseId = const Value.absent(),
     required int createdAt,
   }) : name = Value(name),
        createdAt = Value(createdAt);
@@ -2786,6 +2881,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
     Expression<String>? name,
     Expression<String>? artworkUrl,
     Expression<String>? sourceUrl,
+    Expression<String>? eclipseId,
     Expression<int>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -2793,6 +2889,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
       if (name != null) 'name': name,
       if (artworkUrl != null) 'artwork_url': artworkUrl,
       if (sourceUrl != null) 'source_url': sourceUrl,
+      if (eclipseId != null) 'eclipse_id': eclipseId,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -2802,6 +2899,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
     Value<String>? name,
     Value<String?>? artworkUrl,
     Value<String?>? sourceUrl,
+    Value<String?>? eclipseId,
     Value<int>? createdAt,
   }) {
     return PlaylistsCompanion(
@@ -2809,6 +2907,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
       name: name ?? this.name,
       artworkUrl: artworkUrl ?? this.artworkUrl,
       sourceUrl: sourceUrl ?? this.sourceUrl,
+      eclipseId: eclipseId ?? this.eclipseId,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -2828,6 +2927,9 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
     if (sourceUrl.present) {
       map['source_url'] = Variable<String>(sourceUrl.value);
     }
+    if (eclipseId.present) {
+      map['eclipse_id'] = Variable<String>(eclipseId.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(createdAt.value);
     }
@@ -2841,6 +2943,7 @@ class PlaylistsCompanion extends UpdateCompanion<DbPlaylist> {
           ..write('name: $name, ')
           ..write('artworkUrl: $artworkUrl, ')
           ..write('sourceUrl: $sourceUrl, ')
+          ..write('eclipseId: $eclipseId, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -2969,6 +3072,17 @@ class $PlaylistTracksTable extends PlaylistTracks
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _eclipseTrackIdMeta = const VerificationMeta(
+    'eclipseTrackId',
+  );
+  @override
+  late final GeneratedColumn<String> eclipseTrackId = GeneratedColumn<String>(
+    'eclipse_track_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2982,6 +3096,7 @@ class $PlaylistTracksTable extends PlaylistTracks
     genre,
     torrentId,
     fileId,
+    eclipseTrackId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3066,6 +3181,15 @@ class $PlaylistTracksTable extends PlaylistTracks
         fileId.isAcceptableOrUnknown(data['file_id']!, _fileIdMeta),
       );
     }
+    if (data.containsKey('eclipse_track_id')) {
+      context.handle(
+        _eclipseTrackIdMeta,
+        eclipseTrackId.isAcceptableOrUnknown(
+          data['eclipse_track_id']!,
+          _eclipseTrackIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3119,6 +3243,10 @@ class $PlaylistTracksTable extends PlaylistTracks
         DriftSqlType.int,
         data['${effectivePrefix}file_id'],
       ),
+      eclipseTrackId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}eclipse_track_id'],
+      ),
     );
   }
 
@@ -3140,6 +3268,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
   final String? genre;
   final int? torrentId;
   final int? fileId;
+  final String? eclipseTrackId;
   const DbPlaylistTrack({
     required this.id,
     required this.playlistId,
@@ -3152,6 +3281,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
     this.genre,
     this.torrentId,
     this.fileId,
+    this.eclipseTrackId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3178,6 +3308,9 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
     }
     if (!nullToAbsent || fileId != null) {
       map['file_id'] = Variable<int>(fileId);
+    }
+    if (!nullToAbsent || eclipseTrackId != null) {
+      map['eclipse_track_id'] = Variable<String>(eclipseTrackId);
     }
     return map;
   }
@@ -3207,6 +3340,9 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
       fileId: fileId == null && nullToAbsent
           ? const Value.absent()
           : Value(fileId),
+      eclipseTrackId: eclipseTrackId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eclipseTrackId),
     );
   }
 
@@ -3227,6 +3363,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
       genre: serializer.fromJson<String?>(json['genre']),
       torrentId: serializer.fromJson<int?>(json['torrentId']),
       fileId: serializer.fromJson<int?>(json['fileId']),
+      eclipseTrackId: serializer.fromJson<String?>(json['eclipseTrackId']),
     );
   }
   @override
@@ -3244,6 +3381,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
       'genre': serializer.toJson<String?>(genre),
       'torrentId': serializer.toJson<int?>(torrentId),
       'fileId': serializer.toJson<int?>(fileId),
+      'eclipseTrackId': serializer.toJson<String?>(eclipseTrackId),
     };
   }
 
@@ -3259,6 +3397,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
     Value<String?> genre = const Value.absent(),
     Value<int?> torrentId = const Value.absent(),
     Value<int?> fileId = const Value.absent(),
+    Value<String?> eclipseTrackId = const Value.absent(),
   }) => DbPlaylistTrack(
     id: id ?? this.id,
     playlistId: playlistId ?? this.playlistId,
@@ -3271,6 +3410,9 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
     genre: genre.present ? genre.value : this.genre,
     torrentId: torrentId.present ? torrentId.value : this.torrentId,
     fileId: fileId.present ? fileId.value : this.fileId,
+    eclipseTrackId: eclipseTrackId.present
+        ? eclipseTrackId.value
+        : this.eclipseTrackId,
   );
   DbPlaylistTrack copyWithCompanion(PlaylistTracksCompanion data) {
     return DbPlaylistTrack(
@@ -3289,6 +3431,9 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
       genre: data.genre.present ? data.genre.value : this.genre,
       torrentId: data.torrentId.present ? data.torrentId.value : this.torrentId,
       fileId: data.fileId.present ? data.fileId.value : this.fileId,
+      eclipseTrackId: data.eclipseTrackId.present
+          ? data.eclipseTrackId.value
+          : this.eclipseTrackId,
     );
   }
 
@@ -3305,7 +3450,8 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
           ..write('artworkUrl: $artworkUrl, ')
           ..write('genre: $genre, ')
           ..write('torrentId: $torrentId, ')
-          ..write('fileId: $fileId')
+          ..write('fileId: $fileId, ')
+          ..write('eclipseTrackId: $eclipseTrackId')
           ..write(')'))
         .toString();
   }
@@ -3323,6 +3469,7 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
     genre,
     torrentId,
     fileId,
+    eclipseTrackId,
   );
   @override
   bool operator ==(Object other) =>
@@ -3338,7 +3485,8 @@ class DbPlaylistTrack extends DataClass implements Insertable<DbPlaylistTrack> {
           other.artworkUrl == this.artworkUrl &&
           other.genre == this.genre &&
           other.torrentId == this.torrentId &&
-          other.fileId == this.fileId);
+          other.fileId == this.fileId &&
+          other.eclipseTrackId == this.eclipseTrackId);
 }
 
 class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
@@ -3353,6 +3501,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
   final Value<String?> genre;
   final Value<int?> torrentId;
   final Value<int?> fileId;
+  final Value<String?> eclipseTrackId;
   const PlaylistTracksCompanion({
     this.id = const Value.absent(),
     this.playlistId = const Value.absent(),
@@ -3365,6 +3514,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
     this.genre = const Value.absent(),
     this.torrentId = const Value.absent(),
     this.fileId = const Value.absent(),
+    this.eclipseTrackId = const Value.absent(),
   });
   PlaylistTracksCompanion.insert({
     this.id = const Value.absent(),
@@ -3378,6 +3528,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
     this.genre = const Value.absent(),
     this.torrentId = const Value.absent(),
     this.fileId = const Value.absent(),
+    this.eclipseTrackId = const Value.absent(),
   }) : playlistId = Value(playlistId),
        title = Value(title),
        artist = Value(artist),
@@ -3394,6 +3545,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
     Expression<String>? genre,
     Expression<int>? torrentId,
     Expression<int>? fileId,
+    Expression<String>? eclipseTrackId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3407,6 +3559,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
       if (genre != null) 'genre': genre,
       if (torrentId != null) 'torrent_id': torrentId,
       if (fileId != null) 'file_id': fileId,
+      if (eclipseTrackId != null) 'eclipse_track_id': eclipseTrackId,
     });
   }
 
@@ -3422,6 +3575,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
     Value<String?>? genre,
     Value<int?>? torrentId,
     Value<int?>? fileId,
+    Value<String?>? eclipseTrackId,
   }) {
     return PlaylistTracksCompanion(
       id: id ?? this.id,
@@ -3435,6 +3589,7 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
       genre: genre ?? this.genre,
       torrentId: torrentId ?? this.torrentId,
       fileId: fileId ?? this.fileId,
+      eclipseTrackId: eclipseTrackId ?? this.eclipseTrackId,
     );
   }
 
@@ -3474,6 +3629,9 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
     if (fileId.present) {
       map['file_id'] = Variable<int>(fileId.value);
     }
+    if (eclipseTrackId.present) {
+      map['eclipse_track_id'] = Variable<String>(eclipseTrackId.value);
+    }
     return map;
   }
 
@@ -3490,7 +3648,8 @@ class PlaylistTracksCompanion extends UpdateCompanion<DbPlaylistTrack> {
           ..write('artworkUrl: $artworkUrl, ')
           ..write('genre: $genre, ')
           ..write('torrentId: $torrentId, ')
-          ..write('fileId: $fileId')
+          ..write('fileId: $fileId, ')
+          ..write('eclipseTrackId: $eclipseTrackId')
           ..write(')'))
         .toString();
   }
@@ -7008,6 +7167,7 @@ typedef $$PlaybackHistoryTableCreateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       required int playedAt,
       Value<int?> duration,
+      Value<int?> releaseYear,
     });
 typedef $$PlaybackHistoryTableUpdateCompanionBuilder =
     PlaybackHistoryCompanion Function({
@@ -7022,6 +7182,7 @@ typedef $$PlaybackHistoryTableUpdateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       Value<int> playedAt,
       Value<int?> duration,
+      Value<int?> releaseYear,
     });
 
 class $$PlaybackHistoryTableFilterComposer
@@ -7085,6 +7246,11 @@ class $$PlaybackHistoryTableFilterComposer
 
   ColumnFilters<int> get duration => $composableBuilder(
     column: $table.duration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get releaseYear => $composableBuilder(
+    column: $table.releaseYear,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7152,6 +7318,11 @@ class $$PlaybackHistoryTableOrderingComposer
     column: $table.duration,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get releaseYear => $composableBuilder(
+    column: $table.releaseYear,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PlaybackHistoryTableAnnotationComposer
@@ -7201,6 +7372,11 @@ class $$PlaybackHistoryTableAnnotationComposer
 
   GeneratedColumn<int> get duration =>
       $composableBuilder(column: $table.duration, builder: (column) => column);
+
+  GeneratedColumn<int> get releaseYear => $composableBuilder(
+    column: $table.releaseYear,
+    builder: (column) => column,
+  );
 }
 
 class $$PlaybackHistoryTableTableManager
@@ -7251,6 +7427,7 @@ class $$PlaybackHistoryTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 Value<int> playedAt = const Value.absent(),
                 Value<int?> duration = const Value.absent(),
+                Value<int?> releaseYear = const Value.absent(),
               }) => PlaybackHistoryCompanion(
                 id: id,
                 fileId: fileId,
@@ -7263,6 +7440,7 @@ class $$PlaybackHistoryTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 playedAt: playedAt,
                 duration: duration,
+                releaseYear: releaseYear,
               ),
           createCompanionCallback:
               ({
@@ -7277,6 +7455,7 @@ class $$PlaybackHistoryTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 required int playedAt,
                 Value<int?> duration = const Value.absent(),
+                Value<int?> releaseYear = const Value.absent(),
               }) => PlaybackHistoryCompanion.insert(
                 id: id,
                 fileId: fileId,
@@ -7289,6 +7468,7 @@ class $$PlaybackHistoryTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 playedAt: playedAt,
                 duration: duration,
+                releaseYear: releaseYear,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -7321,6 +7501,7 @@ typedef $$PlaylistsTableCreateCompanionBuilder =
       required String name,
       Value<String?> artworkUrl,
       Value<String?> sourceUrl,
+      Value<String?> eclipseId,
       required int createdAt,
     });
 typedef $$PlaylistsTableUpdateCompanionBuilder =
@@ -7329,6 +7510,7 @@ typedef $$PlaylistsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> artworkUrl,
       Value<String?> sourceUrl,
+      Value<String?> eclipseId,
       Value<int> createdAt,
     });
 
@@ -7384,6 +7566,11 @@ class $$PlaylistsTableFilterComposer
 
   ColumnFilters<String> get sourceUrl => $composableBuilder(
     column: $table.sourceUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eclipseId => $composableBuilder(
+    column: $table.eclipseId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7447,6 +7634,11 @@ class $$PlaylistsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get eclipseId => $composableBuilder(
+    column: $table.eclipseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7475,6 +7667,9 @@ class $$PlaylistsTableAnnotationComposer
 
   GeneratedColumn<String> get sourceUrl =>
       $composableBuilder(column: $table.sourceUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get eclipseId =>
+      $composableBuilder(column: $table.eclipseId, builder: (column) => column);
 
   GeneratedColumn<int> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -7537,12 +7732,14 @@ class $$PlaylistsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> artworkUrl = const Value.absent(),
                 Value<String?> sourceUrl = const Value.absent(),
+                Value<String?> eclipseId = const Value.absent(),
                 Value<int> createdAt = const Value.absent(),
               }) => PlaylistsCompanion(
                 id: id,
                 name: name,
                 artworkUrl: artworkUrl,
                 sourceUrl: sourceUrl,
+                eclipseId: eclipseId,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -7551,12 +7748,14 @@ class $$PlaylistsTableTableManager
                 required String name,
                 Value<String?> artworkUrl = const Value.absent(),
                 Value<String?> sourceUrl = const Value.absent(),
+                Value<String?> eclipseId = const Value.absent(),
                 required int createdAt,
               }) => PlaylistsCompanion.insert(
                 id: id,
                 name: name,
                 artworkUrl: artworkUrl,
                 sourceUrl: sourceUrl,
+                eclipseId: eclipseId,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
@@ -7630,6 +7829,7 @@ typedef $$PlaylistTracksTableCreateCompanionBuilder =
       Value<String?> genre,
       Value<int?> torrentId,
       Value<int?> fileId,
+      Value<String?> eclipseTrackId,
     });
 typedef $$PlaylistTracksTableUpdateCompanionBuilder =
     PlaylistTracksCompanion Function({
@@ -7644,6 +7844,7 @@ typedef $$PlaylistTracksTableUpdateCompanionBuilder =
       Value<String?> genre,
       Value<int?> torrentId,
       Value<int?> fileId,
+      Value<String?> eclipseTrackId,
     });
 
 final class $$PlaylistTracksTableReferences
@@ -7734,6 +7935,11 @@ class $$PlaylistTracksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get eclipseTrackId => $composableBuilder(
+    column: $table.eclipseTrackId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PlaylistsTableFilterComposer get playlistId {
     final $$PlaylistsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -7817,6 +8023,11 @@ class $$PlaylistTracksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get eclipseTrackId => $composableBuilder(
+    column: $table.eclipseTrackId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PlaylistsTableOrderingComposer get playlistId {
     final $$PlaylistsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7881,6 +8092,11 @@ class $$PlaylistTracksTableAnnotationComposer
 
   GeneratedColumn<int> get fileId =>
       $composableBuilder(column: $table.fileId, builder: (column) => column);
+
+  GeneratedColumn<String> get eclipseTrackId => $composableBuilder(
+    column: $table.eclipseTrackId,
+    builder: (column) => column,
+  );
 
   $$PlaylistsTableAnnotationComposer get playlistId {
     final $$PlaylistsTableAnnotationComposer composer = $composerBuilder(
@@ -7947,6 +8163,7 @@ class $$PlaylistTracksTableTableManager
                 Value<String?> genre = const Value.absent(),
                 Value<int?> torrentId = const Value.absent(),
                 Value<int?> fileId = const Value.absent(),
+                Value<String?> eclipseTrackId = const Value.absent(),
               }) => PlaylistTracksCompanion(
                 id: id,
                 playlistId: playlistId,
@@ -7959,6 +8176,7 @@ class $$PlaylistTracksTableTableManager
                 genre: genre,
                 torrentId: torrentId,
                 fileId: fileId,
+                eclipseTrackId: eclipseTrackId,
               ),
           createCompanionCallback:
               ({
@@ -7973,6 +8191,7 @@ class $$PlaylistTracksTableTableManager
                 Value<String?> genre = const Value.absent(),
                 Value<int?> torrentId = const Value.absent(),
                 Value<int?> fileId = const Value.absent(),
+                Value<String?> eclipseTrackId = const Value.absent(),
               }) => PlaylistTracksCompanion.insert(
                 id: id,
                 playlistId: playlistId,
@@ -7985,6 +8204,7 @@ class $$PlaylistTracksTableTableManager
                 genre: genre,
                 torrentId: torrentId,
                 fileId: fileId,
+                eclipseTrackId: eclipseTrackId,
               ),
           withReferenceMapper: (p0) => p0
               .map(

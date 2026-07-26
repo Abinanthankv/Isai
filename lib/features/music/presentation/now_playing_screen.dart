@@ -3625,86 +3625,6 @@ class _SongInfoSheet extends ConsumerStatefulWidget {
 }
 
 class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
-  ItunesMeta? _enrichedMeta;
-  bool _isFetching = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkAndEnrichMetadata();
-  }
-
-  Future<void> _checkAndEnrichMetadata() async {
-    final library = ref.read(libraryProvider);
-    final existingMeta = library.metadata['${widget.file.torrentId}-${widget.file.id}'];
-    
-    // If we have genre or album, we consider it "enriched enough"
-    if (existingMeta?.genre != null || existingMeta?.album != null) {
-      return;
-    }
-
-    final parsed = parseFilename(widget.file.displayName);
-    if (parsed.title.isEmpty) return;
-
-    setState(() => _isFetching = true);
-    
-    try {
-      final itunes = getIt<ItunesMetadataService>();
-      final result = await itunes.fetchMeta(parsed.title, parsed.artist);
-      if (!mounted) return;
-      
-      if (result != null && mounted) {
-        final enriched = ItunesMeta(
-          trackName: result.trackName,
-          artistName: result.artistName,
-          artworkUrlLow: result.artworkUrlLow,
-          artworkUrlHigh: result.artworkUrlHigh,
-          album: result.album,
-          genre: result.genre,
-          releaseYear: result.releaseYear,
-          trackTimeMillis: result.trackTimeMillis,
-        );
-        
-        setState(() => _enrichedMeta = enriched);
-        
-        // Persist to library
-        await ref.read(libraryProvider.notifier).updateTrackMetadata(widget.file, enriched);
-        if (!mounted) return;
-        setState(() {});
-      }
-    } catch (e) {
-      print('[SongInfoSheet] Enrichment error: $e');
-    } finally {
-      if (mounted) setState(() => _isFetching = false);
-    }
-  }
-
-  String _detectedFormat() {
-    final name = widget.file.name.toLowerCase();
-    
-    // Check extension first
-    if (name.endsWith('.flac')) return 'FLAC';
-    if (name.endsWith('.mp3')) return 'MP3';
-    if (name.endsWith('.m4a') || name.endsWith('.aac')) return 'AAC/M4A';
-    if (name.endsWith('.wav')) return 'WAV';
-    if (name.endsWith('.ogg')) return 'OGG';
-
-    // If no extension, or potentially a generic pirate bay name, 
-    // check the stream source which is more reliable for our "Lazy" streams.
-    final currentMedia = audioHandler.mediaItem.value;
-    
-    // Check for "FLAC" in the filename anywhere as a fallback
-    if (name.contains('flac')) return 'FLAC';
-
-    if (currentMedia != null) {
-      final id = currentMedia.id.toLowerCase();
-      if (id.contains('flac') || id.contains('tidal')) return 'FLAC';
-      if (id.contains('torbox')) return 'MP3/FLAC';
-    }
-
-    return 'Unknown';
-  }
-
   @override
   Widget build(BuildContext context) {
     final library = ref.watch(libraryProvider);
@@ -3729,8 +3649,6 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
         if (activeMeta == null && widget.file.torrentId != -1) {
           activeMeta = library.metadata['${widget.file.torrentId}-${widget.file.id}'];
         }
-        activeMeta ??= _enrichedMeta;
-
         // Prefer liveItem data, fall back to widget.file as last resort
         final displayTitle = activeMeta?.trackName
             ?? liveItem?.title
@@ -3740,25 +3658,10 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
             ?? (activeParsed.artist.isNotEmpty ? activeParsed.artist : 'Unknown');
         final artists = ItunesTrack.splitArtists(displayArtist);
 
-        final displayArtwork = (activeMeta?.artworkUrlHigh?.isNotEmpty == true)
-            ? activeMeta!.artworkUrlHigh!
-            : (activeMeta?.artworkUrlLow?.isNotEmpty == true)
-                ? activeMeta!.artworkUrlLow!
-                : (liveItem?.artUri != null)
-                    ? liveItem!.artUri.toString()
-                    : (widget.initialArtwork?.isNotEmpty == true)
-                        ? widget.initialArtwork!
-                        : '';
-
         // Genre from metadata or live player extras
         final displayGenre = activeMeta?.genre
             ?? (liveItem?.extras?['genre'] as String?);
 
-        // Filename / size: prefer live extras, fall back to widget.file
-        final displayFilename = liveItem?.title ?? widget.file.name;
-        final displaySize = widget.file.formattedSize;
-
-        final format = _detectedFormat();
 
         return Container(
           decoration: BoxDecoration(
@@ -3786,12 +3689,6 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white,
                           fontWeight: FontWeight.bold,),
                       ),
-                      if (_isFetching)
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary),
-                        ),
                     ],
                   ),
                 ),
@@ -3837,25 +3734,9 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
                   },
                 )),
                 if (activeMeta?.album != null) _buildInfoRow('Album', _cleanAlbumName(activeMeta!.album!)),
+                if (activeMeta?.releaseYear != null) _buildInfoRow('Year', activeMeta!.releaseYear.toString()),
                 if (displayGenre != null) _buildInfoRow('Genre', displayGenre),
-                _buildInfoRow('Format', format),
-                _buildInfoRow('Filename', displayFilename),
-                _buildInfoRow('Size', displaySize),
                 const SizedBox(height: 12),
-                if (displayArtwork.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: displayArtwork,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 30),
               ],
             ),
           ),

@@ -6,7 +6,9 @@ import '../../../core/di/injection.dart';
 import 'package:isai/core/utils/string_utils.dart';
 import '../../settings/data/torbox_settings_repository.dart';
 import '../../settings/data/hardcover_settings_repository.dart';
+import '../../settings/data/eclipse_settings_repository.dart';
 import '../../audiobooks/data/hardcover_api_service.dart';
+import '../../../core/network/eclipse_api_service.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
 import 'downloads_screen.dart';
@@ -115,6 +117,16 @@ class SettingsState {
   final String? hardcoverError;
   final String? hardcoverUsername;
 
+  final String eclipseToken;
+  final bool eclipseIsValid;
+  final bool eclipseIsValidating;
+  final String? eclipseError;
+  final String? eclipseUserId;
+  final String? eclipseUsername;
+  final String? eclipseEmail;
+  final String? eclipseAvatarUrl;
+  final bool eclipseScrobbleEnabled;
+
   bool get hardcoverHasKey => hardcoverApiKey.isNotEmpty;
 
   SettingsState({
@@ -174,6 +186,15 @@ class SettingsState {
     this.hardcoverIsValidating = false,
     this.hardcoverError,
     this.hardcoverUsername,
+    this.eclipseToken = '',
+    this.eclipseIsValid = false,
+    this.eclipseIsValidating = false,
+    this.eclipseError,
+    this.eclipseUserId,
+    this.eclipseUsername,
+    this.eclipseEmail,
+    this.eclipseAvatarUrl,
+    this.eclipseScrobbleEnabled = false,
   });
 
   SettingsState copyWith({
@@ -233,6 +254,15 @@ class SettingsState {
     bool? hardcoverIsValidating,
     String? hardcoverError,
     String? hardcoverUsername,
+    String? eclipseToken,
+    bool? eclipseIsValid,
+    bool? eclipseIsValidating,
+    String? eclipseError,
+    String? eclipseUserId,
+    String? eclipseUsername,
+    String? eclipseEmail,
+    String? eclipseAvatarUrl,
+    bool? eclipseScrobbleEnabled,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -291,6 +321,15 @@ class SettingsState {
       hardcoverIsValidating: hardcoverIsValidating ?? this.hardcoverIsValidating,
       hardcoverError: hardcoverError ?? this.hardcoverError,
       hardcoverUsername: hardcoverUsername ?? this.hardcoverUsername,
+      eclipseToken: eclipseToken ?? this.eclipseToken,
+      eclipseIsValid: eclipseIsValid ?? this.eclipseIsValid,
+      eclipseIsValidating: eclipseIsValidating ?? this.eclipseIsValidating,
+      eclipseError: eclipseError ?? this.eclipseError,
+      eclipseUserId: eclipseUserId ?? this.eclipseUserId,
+      eclipseUsername: eclipseUsername ?? this.eclipseUsername,
+      eclipseEmail: eclipseEmail ?? this.eclipseEmail,
+      eclipseAvatarUrl: eclipseAvatarUrl ?? this.eclipseAvatarUrl,
+      eclipseScrobbleEnabled: eclipseScrobbleEnabled ?? this.eclipseScrobbleEnabled,
     );
   }
 }
@@ -298,12 +337,14 @@ class SettingsState {
 class SettingsNotifier extends Notifier<SettingsState> {
   late final TorBoxSettingsRepository _settings;
   late final HardcoverSettingsRepository _hardcoverSettings;
+  late final EclipseSettingsRepository _eclipseSettings;
   late final MusicRepository _repo;
 
   @override
   SettingsState build() {
     _settings = getIt<TorBoxSettingsRepository>();
     _hardcoverSettings = getIt<HardcoverSettingsRepository>();
+    _eclipseSettings = getIt<EclipseSettingsRepository>();
     _repo = getIt<MusicRepository>();
     return SettingsState(
       apiKey: _settings.apiKey ?? '',
@@ -358,6 +399,13 @@ class SettingsNotifier extends Notifier<SettingsState> {
       hardcoverApiKey: _hardcoverSettings.apiKey ?? '',
       hardcoverIsValid: (_hardcoverSettings.apiKey ?? '').isNotEmpty,
       hardcoverUsername: _hardcoverSettings.username,
+      eclipseToken: _eclipseSettings.token ?? '',
+      eclipseIsValid: _eclipseSettings.hasToken,
+      eclipseUserId: _eclipseSettings.userId,
+      eclipseUsername: _eclipseSettings.username,
+      eclipseEmail: _eclipseSettings.email,
+      eclipseAvatarUrl: _eclipseSettings.avatarUrl,
+      eclipseScrobbleEnabled: _eclipseSettings.scrobbleEnabled,
     );
   }
 
@@ -449,6 +497,53 @@ class SettingsNotifier extends Notifier<SettingsState> {
       hardcoverError: null,
       hardcoverUsername: null,
     );
+  }
+
+  Future<void> eclipseLogin(String email, String password) async {
+    state = state.copyWith(eclipseIsValidating: true, eclipseError: null);
+    final service = EclipseApiService();
+    final result = await service.login(email, password);
+    if (result != null) {
+      await _eclipseSettings.setToken(result.token);
+      await _eclipseSettings.setUserId(result.userId);
+      await _eclipseSettings.setEmail(result.email);
+      await _eclipseSettings.setUsername(result.username);
+      await _eclipseSettings.setAvatarUrl(result.avatarUrl);
+      state = state.copyWith(
+        eclipseToken: result.token,
+        eclipseIsValid: true,
+        eclipseIsValidating: false,
+        eclipseUserId: result.userId,
+        eclipseUsername: result.username,
+        eclipseEmail: result.email,
+        eclipseAvatarUrl: result.avatarUrl,
+      );
+    } else {
+      state = state.copyWith(
+        eclipseIsValidating: false,
+        eclipseIsValid: false,
+        eclipseError: 'Login failed. Check your email and password.',
+      );
+    }
+  }
+
+  Future<void> eclipseLogout() async {
+    await _eclipseSettings.clearToken();
+    state = state.copyWith(
+      eclipseToken: '',
+      eclipseIsValid: false,
+      eclipseError: null,
+      eclipseUserId: null,
+      eclipseUsername: null,
+      eclipseEmail: null,
+      eclipseAvatarUrl: null,
+      eclipseScrobbleEnabled: false,
+    );
+  }
+
+  Future<void> setEclipseScrobbleEnabled(bool enabled) async {
+    await _eclipseSettings.setScrobbleEnabled(enabled);
+    state = state.copyWith(eclipseScrobbleEnabled: enabled);
   }
 
   Future<void> setYouTubeScraperEnabled(bool enabled) async {
@@ -1793,6 +1888,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           artworkUrlHigh: dbMeta?.artworkUrlHigh ?? cached.artworkUrlHigh,
           album: (dbMeta?.album == null || dbMeta!.album!.isEmpty) ? cached.album : dbMeta.album,
           genre: (dbMeta?.genre == null || dbMeta!.genre!.isEmpty) ? cached.genre : dbMeta.genre,
+          releaseYear: dbMeta?.releaseYear ?? cached.releaseYear,
           trackTimeMillis: dbMeta?.trackTimeMillis ?? cached.trackTimeMillis,
         );
         final metaMap = Map<String, ItunesMeta>.from(state.metadata);
@@ -1808,6 +1904,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           artworkUrlHigh: Value(meta.artworkUrlHigh),
           album: Value(meta.album),
           genre: Value(meta.genre),
+          releaseYear: Value(meta.releaseYear),
           trackTimeMillis: Value(meta.trackTimeMillis),
         ));
         return;
@@ -2608,7 +2705,13 @@ class AppleMusicPlaylistNotifier extends StateNotifier<AsyncValue<List<ItunesTra
       }
 
       // Fetch from iTunes
-      final meta = await _itunes.fetchMeta(t.trackName, t.artistName);
+      ItunesMeta? meta = await _itunes.fetchMeta(t.trackName, t.artistName);
+
+      // If search with empty artist failed but we have a track ID, try direct lookup
+      if (meta == null && t.trackId > 0) {
+        meta = await _itunes.lookupById(t.trackId);
+      }
+
       if (meta != null) {
         final enriched = t.copyWith(
           trackName: meta.trackName ?? t.trackName,

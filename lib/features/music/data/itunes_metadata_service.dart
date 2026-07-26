@@ -117,6 +117,54 @@ class ItunesMetadataService {
     }
   }
 
+  Future<ItunesMeta?> lookupById(int trackId) async {
+    final cacheKey = 'lookup_$trackId';
+    if (_cache.containsKey(cacheKey)) return _cache[cacheKey];
+
+    try {
+      final response = await _dio.get(
+        '$_itunesBase/lookup',
+        queryParameters: {
+          'id': trackId,
+          'entity': 'song',
+        },
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 8),
+        ),
+      );
+
+      final data = response.data;
+      Map<String, dynamic> json;
+      if (data is Map<String, dynamic>) {
+        json = data;
+      } else if (data is String) {
+        json = jsonDecode(data) as Map<String, dynamic>;
+      } else {
+        _cache[cacheKey] = null;
+        return null;
+      }
+
+      final results = (json['results'] as List<dynamic>?) ?? [];
+      if (results.isEmpty) {
+        _cache[cacheKey] = null;
+        return null;
+      }
+
+      final meta = _parseResult(results.first as Map<String, dynamic>);
+      _cache[cacheKey] = meta;
+      return meta;
+    } catch (e) {
+      print('[ItunesService] Lookup error for id=$trackId: $e');
+      _cache[cacheKey] = null;
+      return null;
+    }
+  }
+
   Future<List<ItunesMeta>> searchMeta(String term) async {
     final cleanedTerm = term.replaceAll('"', '').replaceAll("'", '');
     print('[ItunesService] Searching: "$cleanedTerm"');

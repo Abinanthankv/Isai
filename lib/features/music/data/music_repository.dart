@@ -1355,6 +1355,7 @@ class MusicRepositoryImpl implements MusicRepository {
       artworkUrlHigh: Value(artworkUrlHigh ?? meta?.artworkUrlHigh),
       playedAt: DateTime.now().millisecondsSinceEpoch,
       duration: Value(duration),
+      releaseYear: Value(meta?.releaseYear),
     ));
   }
 

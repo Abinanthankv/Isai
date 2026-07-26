@@ -16,6 +16,7 @@ import '../../music/presentation/player_customization_screen.dart';
 import 'plugin_management_screen.dart';
 import 'storage_settings_screen.dart';
 import 'lastfm_settings_screen.dart';
+import 'eclipse_screen.dart';
 import 'package:dio/dio.dart';
 import 'package:isai/core/updater/app_updater.dart';
 
@@ -321,9 +322,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                           ),
                         ),
                         Divider(color: isDark ? Colors.white12 : Colors.black12, height: 1),
-                        const _LastfmSettingsSection(),
+                        _LastfmLoginSection(),
                       ],
                     ),
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  AppleMusicSectionHeader(title: 'Eclipse'),
+                  
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: const _EclipseSettingsSection(),
                   ),
                   
                   const SizedBox(height: 12),
@@ -1413,38 +1423,124 @@ class _HardcoverSettingsSectionState extends ConsumerState<_HardcoverSettingsSec
   }
 }
 
-class _LastfmSettingsSection extends ConsumerWidget {
-  const _LastfmSettingsSection();
 
+
+class _LastfmLoginSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lastfm = ref.watch(lastfmProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (lastfm.isConnected) {
-      return Column(
+      return _SettingsTile(
+        icon: Icons.music_note_rounded,
+        title: 'Last.fm',
+        subtitle: 'Connected as ${lastfm.username}',
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LastfmSettingsScreen())),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SettingsTile(
-            icon: Icons.person_outline,
-            title: 'Logged in as ${lastfm.username}',
-            subtitle: 'Scrobbling is active',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LastfmSettingsScreen())),
+          Row(
+            children: [
+              Icon(Icons.music_note_rounded, color: Theme.of(context).colorScheme.primary, size: 24),
+              const SizedBox(width: 12),
+              Text('Connect Last.fm',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+            ],
           ),
-          const Divider(height: 1, indent: 48),
-          _SettingsTile(
-            icon: Icons.settings_rounded,
-            title: 'Scrobble settings',
-            subtitle: 'Threshold, minimum length, toggle',
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LastfmSettingsScreen())),
+          const SizedBox(height: 12),
+          Text('Keep track of every song you listen to and sync your history with Last.fm.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black87)),
+          if (lastfm.error != null) ...[
+            const SizedBox(height: 12),
+            Text(lastfm.error!, style: const TextStyle(color: Colors.redAccent)),
+          ],
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: GlassButton(
+                  onPressed: lastfm.isConnecting
+                      ? null
+                      : () => ref.read(lastfmProvider.notifier).connect(),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: lastfm.isConnecting
+                      ? const SizedBox(height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Connect'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GlassButton(
+                  onPressed: lastfm.isConnecting
+                      ? null
+                      : () => ref.read(lastfmProvider.notifier).completeConnection(),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  gradient: LinearGradient(
+                    colors: [Theme.of(context).colorScheme.primary, AppleMusicTheme.primaryPurple],
+                  ),
+                  child: const Text('Finish Setup',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
-          const Divider(height: 1, indent: 48),
-          _SettingsTile(
-            icon: Icons.logout,
-            title: 'Disconnect Last.fm',
-            subtitle: 'Stop scrobbling to this account',
-            onTap: () => ref.read(lastfmProvider.notifier).disconnect(),
+          const SizedBox(height: 8),
+          Center(
+            child: Text('1. Tap Connect -> 2. Approve in browser -> 3. Tap Finish',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isDark ? Colors.white38 : Colors.black38)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EclipseSettingsSection extends ConsumerStatefulWidget {
+  const _EclipseSettingsSection();
+  @override
+  ConsumerState<_EclipseSettingsSection> createState() => _EclipseSettingsSectionState();
+}
+
+class _EclipseSettingsSectionState extends ConsumerState<_EclipseSettingsSection> {
+  late TextEditingController _emailController;
+  late TextEditingController _passwordController;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController();
+    _passwordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+
+    if (settings.eclipseIsValid) {
+      return _SettingsTile(
+        icon: Icons.cloud,
+        title: 'Eclipse',
+        subtitle: settings.eclipseUsername ?? 'Connected',
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EclipseAccountScreen())),
       );
     }
 
@@ -1456,77 +1552,101 @@ class _LastfmSettingsSection extends ConsumerWidget {
           Row(
             children: [
               Icon(
-                Icons.music_note_rounded,
-                color: Theme.of(context).colorScheme.primary,
-                size: 24,
+                Icons.cloud_outlined,
+                color: theme.colorScheme.primary,
+                size: 20,
               ),
               const SizedBox(width: 12),
               Text(
-                'Connect Last.fm',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black,),
+                'Connect Eclipse',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            'Keep track of every song you listen to and sync your history with Last.fm.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: isDark ? Colors.white70 : Colors.black87,),
-          ),
-          if (lastfm.error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              lastfm.error!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.redAccent,),
+            'Sync your playlists and listen history across devices.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black87,
             ),
-          ],
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: Row(
+          ),
+          const SizedBox(height: 12),
+          AutofillGroup(
+            child: Column(
               children: [
-                Expanded(
-                  child: GlassButton(
-                    onPressed: lastfm.isConnecting 
-                        ? null 
-                        : () => ref.read(lastfmProvider.notifier).connect(),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: lastfm.isConnecting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text('Connect'),
+                TextField(
+                  controller: _emailController,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                    prefixIcon: Icon(Icons.email_outlined, color: isDark ? Colors.white54 : Colors.black45),
+                    filled: true,
+                    fillColor: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: GlassButton(
-                    onPressed: lastfm.isConnecting 
-                        ? null 
-                        : () => ref.read(lastfmProvider.notifier).completeConnection(),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    gradient: LinearGradient(
-                      colors: [
-                        Theme.of(context).colorScheme.primary,
-                        AppleMusicTheme.primaryPurple,
-                      ],
-                    ),
-                    child: Text(
-                      'Finish Setup',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  keyboardType: TextInputType.visiblePassword,
+                  autofillHints: const [AutofillHints.password],
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                    prefixIcon: Icon(Icons.lock_outlined, color: isDark ? Colors.white54 : Colors.black45),
+                    filled: true,
+                    fillColor: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              '1. Tap Connect -> 2. Approve in browser -> 3. Tap Finish',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white38 : Colors.black38,),
+          if (settings.eclipseError != null) ...[
+            const SizedBox(height: 8),
+            Text(settings.eclipseError!, style: const TextStyle(color: Colors.redAccent)),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: GlassButton(
+              onPressed: settings.eclipseIsValidating
+                  ? null
+                  : () => ref
+                      .read(settingsProvider.notifier)
+                      .eclipseLogin(_emailController.text.trim(), _passwordController.text),
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.primary,
+                  AppleMusicTheme.primaryPurple,
+                ],
+              ),
+              child: settings.eclipseIsValidating
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                        SizedBox(width: 12),
+                        Text('Connecting...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ],
+                    )
+                  : const Text('Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             ),
           ),
         ],

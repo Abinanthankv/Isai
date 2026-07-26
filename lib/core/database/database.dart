@@ -76,6 +76,7 @@ class PlaybackHistory extends Table {
   TextColumn get artworkUrlHigh => text().nullable()();
   IntColumn get playedAt => integer()(); // timestamp
   IntColumn get duration => integer().nullable()(); // listen duration in seconds
+  IntColumn get releaseYear => integer().nullable()();
 }
 
 @DataClassName('DbPlaylist')
@@ -84,6 +85,7 @@ class Playlists extends Table {
   TextColumn get name => text()();
   TextColumn get artworkUrl => text().nullable()();
   TextColumn get sourceUrl => text().nullable()(); // YouTube Playlist URL
+  TextColumn get eclipseId => text().nullable()(); // Eclipse remote playlist UUID
   IntColumn get createdAt => integer()();
 }
 
@@ -100,6 +102,7 @@ class PlaylistTracks extends Table {
   TextColumn get genre => text().nullable()();
   IntColumn get torrentId => integer().nullable()();
   IntColumn get fileId => integer().nullable()();
+  TextColumn get eclipseTrackId => text().nullable()(); // Eclipse remote track UUID
 }
 
 @DataClassName('DbExternalTrackMetadata')
@@ -176,12 +179,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
-          if (from < 15) {
+          if (from < 17) {
+            await m.addColumn(playbackHistory, playbackHistory.releaseYear);
+          }
+          if (from < 16) {
             await m.createTable(audiobookBookmarks);
           }
           if (from < 14) {
@@ -427,6 +433,10 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  Future<int> addSingleTrackToPlaylist(PlaylistTracksCompanion track) async {
+    return into(playlistTracks).insert(track);
+  }
+
   Future<List<DbPlaylist>> getAllPlaylists() => select(this.playlists).get();
   
   Stream<List<DbPlaylist>> watchAllPlaylists() => select(this.playlists).watch();
@@ -460,6 +470,30 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deletePlaylist(int id) async {
     await (delete(playlists)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<DbPlaylist?> getPlaylistByEclipseId(String eclipseId) async {
+    return (select(playlists)..where((t) => t.eclipseId.equals(eclipseId))).getSingleOrNull();
+  }
+
+  Future<DbPlaylistTrack?> getPlaylistTrackByEclipseTrackId(String eclipseTrackId) async {
+    return (select(playlistTracks)..where((t) => t.eclipseTrackId.equals(eclipseTrackId))).getSingleOrNull();
+  }
+
+  Future<DbPlaylistTrack?> getPlaylistTrackById(int id) async {
+    return (select(playlistTracks)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<DbPlaylist?> getPlaylistById(int id) async {
+    return (select(playlists)..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  Future<void> updatePlaylistEclipseId(int id, String eclipseId) async {
+    await (update(playlists)..where((t) => t.id.equals(id))).write(PlaylistsCompanion(eclipseId: Value(eclipseId)));
+  }
+
+  Future<void> updatePlaylistTrackEclipseId(int id, String eclipseTrackId) async {
+    await (update(playlistTracks)..where((t) => t.id.equals(id))).write(PlaylistTracksCompanion(eclipseTrackId: Value(eclipseTrackId)));
   }
 
   // --- External Track Metadata Cache ---

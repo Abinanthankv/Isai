@@ -33,11 +33,11 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
     super.dispose();
   }
 
+  bool get _hasSelection => _selectedPlaylistIds.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     final playlistsAsync = ref.watch(playlistProvider);
-    // Force dark theme for this sheet as it's often opened from the dark NowPlayingScreen
-    const isDark = true; 
 
     return Container(
       decoration: BoxDecoration(
@@ -77,7 +77,7 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold,
                         color: Colors.white,),
                     ),
-                    if (_selectedPlaylistIds.isNotEmpty)
+                    if (_hasSelection)
                       Text(
                         '${_selectedPlaylistIds.length} selected',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary,
@@ -193,11 +193,9 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
                   width: double.infinity,
                   child: AppleMusicButton(
                     label: 'Done',
-                    backgroundColor: _selectedPlaylistIds.isEmpty ? Colors.white24 : Theme.of(context).colorScheme.primary,
-                    foregroundColor: _selectedPlaylistIds.isEmpty ? Colors.white30 : Colors.white,
-                    onTap: _selectedPlaylistIds.isEmpty
-                        ? null
-                        : () => _addTrackToSelectedPlaylists(context),
+                    backgroundColor: _hasSelection ? Theme.of(context).colorScheme.primary : Colors.white24,
+                    foregroundColor: _hasSelection ? Colors.white : Colors.white30,
+                    onTap: _hasSelection ? () => _addTrackToSelectedPlaylists(context) : null,
                   ),
                 ),
               ],
@@ -220,23 +218,25 @@ class _PlaylistPickerSheetState extends ConsumerState<PlaylistPickerSheet> {
         added = await notifier.addFileToPlaylist(
           playlistId, 
           widget.libraryFile!, 
-          meta ?? ItunesMeta(trackName: widget.libraryFile!.name)
+          meta ?? ItunesMeta(trackName: widget.track.trackName, artistName: widget.track.artistName)
         );
       } else {
         added = await notifier.addTrackToPlaylist(playlistId, widget.track);
       }
-      if (added) {
-        addedCount++;
-      }
+      if (added) addedCount++;
     }
 
     if (context.mounted) {
       Navigator.pop(context);
+      String msg;
+      if (addedCount > 0) {
+        msg = 'Added to $addedCount playlist${addedCount > 1 ? 's' : ''}';
+      } else {
+        msg = 'Already in the selected playlist${_selectedPlaylistIds.length > 1 ? 's' : ''}';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(addedCount > 0 
-              ? 'Added to $addedCount playlist${addedCount > 1 ? 's' : ''}'
-              : 'Already in the selected playlist${_selectedPlaylistIds.length > 1 ? 's' : ''}'),
+          content: Text(msg),
           backgroundColor: addedCount > 0 ? Colors.green.withOpacity(0.9) : Theme.of(context).colorScheme.primary.withOpacity(0.9),
           behavior: SnackBarBehavior.floating,
         ),

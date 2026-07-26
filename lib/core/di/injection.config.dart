@@ -28,6 +28,8 @@ import 'package:isai/features/music/data/plugins/plugin_manager.dart' as _i1006;
 import 'package:isai/features/music/data/scrapers/last_fm_scraper.dart'
     as _i893;
 import 'package:isai/features/player/data/audio_metadata_service.dart' as _i349;
+import 'package:isai/features/settings/data/eclipse_settings_repository.dart'
+    as _i119;
 import 'package:isai/features/settings/data/hardcover_settings_repository.dart'
     as _i1012;
 import 'package:isai/features/settings/data/lastfm_repository.dart' as _i230;
@@ -80,6 +82,9 @@ extension GetItInjectableX on _i174.GetIt {
     gh.lazySingleton<_i1012.HardcoverSettingsRepository>(
       () =>
           _i1012.HardcoverSettingsRepositoryImpl(gh<_i460.SharedPreferences>()),
+    );
+    gh.lazySingleton<_i119.EclipseSettingsRepository>(
+      () => _i119.EclipseSettingsRepositoryImpl(gh<_i460.SharedPreferences>()),
     );
     gh.lazySingleton<_i81.MusicRepository>(
       () => _i81.MusicRepositoryImpl(

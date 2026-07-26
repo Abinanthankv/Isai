@@ -9,9 +9,11 @@ import '../../music/data/music_repository.dart';
 import '../../music/data/plugins/plugin_manager.dart';
 import '../../music/data/plugins/js_plugin.dart';
 import '../../music/data/plugins/eclipse_addon.dart';
+import '../../../core/network/eclipse_api_service.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/database/database.dart';
 import '../../settings/data/torbox_settings_repository.dart';
+import '../../settings/data/eclipse_settings_repository.dart';
 import '../../music/data/music_models.dart';
 import '../../music/data/itunes_metadata_service.dart';
 import '../../youtube/data/youtube_video_service.dart';
@@ -376,15 +378,26 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             
             try {
               final dbMeta = await db.getTrackMetadata(torrentId, fileId);
-              final meta = dbMeta != null ? ItunesMeta(
-                trackName: dbMeta.trackTitle,
-                artistName: dbMeta.artist,
-                album: dbMeta.album,
-                genre: dbMeta.genre,
-              ) : ItunesMeta(
-                trackName: item.title,
-                artistName: item.artist,
-              );
+              ItunesMeta meta;
+              if (dbMeta != null) {
+                meta = ItunesMeta(
+                  trackName: dbMeta.trackTitle,
+                  artistName: dbMeta.artist,
+                  album: dbMeta.album,
+                  genre: dbMeta.genre,
+                  releaseYear: dbMeta.releaseYear,
+                );
+              } else {
+                final cacheKey = '${item.title}|${item.artist ?? ''}';
+                final cached = await db.getExternalTrackMetadata(cacheKey);
+                meta = ItunesMeta(
+                  trackName: cached?.trackTitle ?? item.title,
+                  artistName: cached?.artist ?? item.artist ?? 'Unknown',
+                  album: cached?.album,
+                  genre: cached?.genre,
+                  releaseYear: cached?.releaseYear,
+                );
+              }
 
               final torBoxFile = TorBoxFile(
                 id: fileId,
@@ -405,12 +418,30 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                print('[AudioHandler] Error recording playback: $e');
              }
 
-            // Last.fm: Submit Scrobble — GUARD: audiobooks already returned above
+             // Last.fm: Submit Scrobble — GUARD: audiobooks already returned above
             final minDurationSec = lfmRepo.minScrobbleMinutes * 60;
             final trackDurationSec = item.duration!.inSeconds;
             if (lfmRepo.isConnected && lfmRepo.scrobbleEnabled && trackDurationSec >= minDurationSec) {
               final lfmService = getIt<LastFmService>();
               lfmService.scrobble(item, lfmRepo.sessionKey!);
+            }
+
+            // Eclipse: Submit Scrobble
+            final eclipseRepo = getIt<EclipseSettingsRepository>();
+            final eclipseToken = eclipseRepo.token;
+            if (eclipseToken != null && eclipseToken.isNotEmpty && eclipseRepo.scrobbleEnabled) {
+              final eclipseApi = EclipseApiService();
+              eclipseApi.logPlay(eclipseToken, {
+                'trackTitle': item.title,
+                'artistName': item.artist,
+                'albumName': item.album,
+                'artworkUrl': item.artUri?.toString(),
+                'durationMs': item.duration!.inMilliseconds,
+                'playedMs': position.inMilliseconds,
+                'completedPlay': false,
+                if (torrentId != null) 'torrentHash': torrentId.toString(),
+                'filename': item.title,
+              });
             }
           }
         }
@@ -553,6 +584,15 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                        : tagItem.artUri,
               );
             }
+          }
+        }
+
+        // Debug: print enriched metadata (album, year)
+        if (torrentId != null && fileId != null) {
+          final db = getIt<AppDatabase>();
+          final dbMeta = await db.getTrackMetadata(torrentId, fileId);
+          if (dbMeta != null) {
+            print('[AudioHandler] Metadata: album="${dbMeta.album}", year=${dbMeta.releaseYear}, genre="${dbMeta.genre}"');
           }
         }
         
@@ -841,11 +881,26 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 artist: meta.artistName ?? item.artist ?? 'Unknown',
                 album: Value(meta.album),
                 genre: Value(meta.genre),
+                releaseYear: Value(meta.releaseYear),
                 artworkUrlHigh: Value(meta.artworkUrlHigh),
                 artworkUrlLow: Value(meta.artworkUrlLow),
                 trackTimeMillis: Value(meta.trackTimeMillis),
                 lastUpdated: DateTime.now().millisecondsSinceEpoch,
               ));
+              if (torrentId > 0) {
+                await db.saveTrackMetadata(TrackMetadataCompanion.insert(
+                  fileId: fileId,
+                  torrentId: torrentId,
+                  trackTitle: Value(meta.trackName ?? item.title),
+                  artist: Value(meta.artistName ?? item.artist ?? 'Unknown'),
+                  album: Value(meta.album),
+                  genre: Value(meta.genre),
+                  releaseYear: Value(meta.releaseYear),
+                  artworkUrlLow: Value(meta.artworkUrlLow),
+                  artworkUrlHigh: Value(meta.artworkUrlHigh),
+                  trackTimeMillis: Value(meta.trackTimeMillis),
+                ));
+              }
             }
           }
         }
@@ -997,11 +1052,27 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 trackTitle: title,
                 artist: artist,
                 album: Value(meta.album),
+                genre: Value(meta.genre),
+                releaseYear: Value(meta.releaseYear),
                 artworkUrlHigh: Value(meta.artworkUrlHigh),
                 artworkUrlLow: Value(meta.artworkUrlLow),
                 trackTimeMillis: Value(meta.trackTimeMillis),
                 lastUpdated: DateTime.now().millisecondsSinceEpoch,
               ));
+              if (nextFile.torrentId > 0) {
+                await db.saveTrackMetadata(TrackMetadataCompanion.insert(
+                  fileId: nextFile.id,
+                  torrentId: nextFile.torrentId,
+                  trackTitle: Value(meta.trackName ?? title),
+                  artist: Value(meta.artistName ?? artist),
+                  album: Value(meta.album),
+                  genre: Value(meta.genre),
+                  releaseYear: Value(meta.releaseYear),
+                  artworkUrlLow: Value(meta.artworkUrlLow),
+                  artworkUrlHigh: Value(meta.artworkUrlHigh),
+                  trackTimeMillis: Value(meta.trackTimeMillis),
+                ));
+              }
            }
         }
 
