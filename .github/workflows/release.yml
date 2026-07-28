@@ -166,9 +166,75 @@ jobs:
           name: linux-app
           path: build/linux-release/*
 
+  build-windows:
+    name: Build Windows App
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Package Windows Bundle
+        run: |
+          mkdir build\windows-release
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\windows-release\isai-windows-x64.zip
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: build/windows-release/isai-windows-x64.zip
+
+  build-ios:
+    name: Build iOS App
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (debug, no codesign)
+        run: flutter build ios --debug --no-codesign
+
+      - name: Package iOS App
+        run: |
+          mkdir -p build/ios-release
+          cd build/ios/iphoneos
+          zip -r ../../ios-release/isai-ios-debug.zip Runner.app
+
+      - name: Upload iOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: build/ios-release/isai-ios-debug.zip
+
   release:
     name: Create GitHub Release
-    needs: [build-android, build-linux]
+    needs: [build-android, build-linux, build-windows, build-ios]
     runs-on: ubuntu-latest
 
     steps:
@@ -185,6 +251,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: linux-app
+          path: release-assets/
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-app
+          path: release-assets/
+
+      - name: Download iOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-app
           path: release-assets/
 
       - name: Extract Latest Changelog Entry
