@@ -12,6 +12,7 @@ class PodcastEpisode {
   final String? feedUrl;
   final String? collectionName;
   final String? chaptersUrl;
+  final String? guid;
 
   const PodcastEpisode({
     required this.id,
@@ -25,6 +26,7 @@ class PodcastEpisode {
     this.feedUrl,
     this.collectionName,
     this.chaptersUrl,
+    this.guid,
   });
 }
 

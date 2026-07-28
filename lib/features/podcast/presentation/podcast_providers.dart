@@ -95,12 +95,16 @@ final podcastGenreFilterProvider = StateProvider<String>((ref) => 'All');
 
 final allGenresPodcastsProvider = FutureProvider<Map<String, List<PodcastSeries>>>((ref) async {
   final api = ref.read(podcastApiServiceProvider);
+  const batchSize = 5;
   final entries = <MapEntry<String, List<PodcastSeries>>>[];
-  for (final g in podcastGenreNames) {
-    final results = await api.byGenre(g, limit: 15);
-    entries.add(MapEntry(g, results));
-    if (g != podcastGenreNames.last) {
-      await Future.delayed(const Duration(milliseconds: 100));
+  for (var i = 0; i < podcastGenreNames.length; i += batchSize) {
+    final batch = podcastGenreNames.skip(i).take(batchSize).toList();
+    final results = await Future.wait(batch.map((g) => api.byGenre(g, limit: 15)));
+    for (var j = 0; j < batch.length; j++) {
+      entries.add(MapEntry(batch[j], results[j]));
+    }
+    if (i + batchSize < podcastGenreNames.length) {
+      await Future.delayed(const Duration(milliseconds: 200));
     }
   }
   return Map.fromEntries(entries);
@@ -135,17 +139,31 @@ final podcastFollowedDetailsProvider = FutureProvider<List<PodcastSeries>>((ref)
   final api = ref.read(podcastApiServiceProvider);
   final results = <PodcastSeries>[];
   if (followed.isNotEmpty) {
-    for (final id in followed) {
-      final result = await api.lookupPodcast(id);
-      if (result != null) results.add(result);
-      await Future.delayed(const Duration(milliseconds: 50));
+    const batchSize = 5;
+    final ids = followed.toList();
+    for (var i = 0; i < ids.length; i += batchSize) {
+      final batch = ids.skip(i).take(batchSize).toList();
+      final batchResults = await Future.wait(batch.map((id) => api.lookupPodcast(id)));
+      for (final r in batchResults) {
+        if (r != null) results.add(r);
+      }
+      if (i + batchSize < ids.length) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
     }
   }
   if (manualUrls.isNotEmpty) {
-    for (final url in manualUrls) {
-      final result = await api.fetchSeriesFromFeed(url);
-      if (result != null) results.add(result);
-      await Future.delayed(const Duration(milliseconds: 50));
+    const batchSize = 5;
+    final urls = manualUrls.toList();
+    for (var i = 0; i < urls.length; i += batchSize) {
+      final batch = urls.skip(i).take(batchSize).toList();
+      final batchResults = await Future.wait(batch.map((url) => api.fetchSeriesFromFeed(url)));
+      for (final r in batchResults) {
+        if (r != null) results.add(r);
+      }
+      if (i + batchSize < urls.length) {
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
     }
   }
   _followedCache[cacheKey] = results;

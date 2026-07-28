@@ -131,7 +131,16 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   }
 
   Future<void> _play() async {
-    final url = widget.episode.audioUrl ?? '';
+    var episode = widget.episode;
+    if (widget.feedUrl != null && widget.feedUrl!.isNotEmpty) {
+      final fresh = await PodcastApiService().fetchEpisodes(widget.feedUrl!);
+      final match = fresh.where((e) =>
+        (episode.guid != null && e.guid == episode.guid) ||
+        e.title == episode.title
+      ).firstOrNull;
+      if (match?.audioUrl != null) episode = match!;
+    }
+    final url = episode.audioUrl ?? '';
     final resolved = url.isNotEmpty ? await PodcastApiService.resolveAudioUrl(url) : url;
     await audioHandler.customAction('play', {
       'url': resolved,
@@ -158,6 +167,14 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 
   Future<void> _playEpisode(PodcastEpisode episode, int index) async {
     await _saveProgress();
+    if (widget.feedUrl != null && widget.feedUrl!.isNotEmpty) {
+      final fresh = await PodcastApiService().fetchEpisodes(widget.feedUrl!);
+      final match = fresh.where((e) =>
+        (episode.guid != null && e.guid == episode.guid) ||
+        e.title == episode.title
+      ).firstOrNull;
+      if (match?.audioUrl != null) episode = match!;
+    }
     final url = episode.audioUrl ?? '';
     final resolved = url.isNotEmpty ? await PodcastApiService.resolveAudioUrl(url) : url;
     await audioHandler.customAction('play', {

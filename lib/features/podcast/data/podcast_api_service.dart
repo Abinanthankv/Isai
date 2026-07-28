@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -81,6 +82,7 @@ class PodcastApiService {
       return channel.findElements('item').map((item) {
         final enclosure = item.findElements('enclosure').firstOrNull;
         final audioUrl = enclosure?.getAttribute('url') ?? '';
+        final guid = item.findElements('guid').firstOrNull?.text;
         final duration = _parseDuration(item);
         final desc = item.findElements('description').firstOrNull?.text ?? '';
         final description = _stripHtml(desc);
@@ -89,7 +91,7 @@ class PodcastApiService {
             item.findElements('chapters').firstOrNull;
         final chaptersUrl = chaptersEl?.getAttribute('url');
         return PodcastEpisode(
-          id: audioUrl.isNotEmpty ? audioUrl : item.findElements('guid').firstOrNull?.text ?? '',
+          id: audioUrl.isNotEmpty ? audioUrl : guid ?? '',
           title: item.findElements('title').firstOrNull?.text ?? '',
           description: description.isNotEmpty ? description : null,
           audioUrl: audioUrl.isNotEmpty ? audioUrl : null,
@@ -99,6 +101,7 @@ class PodcastApiService {
           feedUrl: feedUrl,
           collectionName: collectionName,
           chaptersUrl: chaptersUrl,
+          guid: guid,
         );
       }).toList();
     } catch (e) {
@@ -353,10 +356,12 @@ class PodcastApiService {
       client.autoUncompress = false;
       client.connectionTimeout = const Duration(seconds: 5);
       var currentUrl = url;
+      int? finalStatus;
       for (var i = 0; i < 5; i++) {
         final request = await client.getUrl(Uri.parse(currentUrl));
         request.followRedirects = false;
         final response = await request.close().timeout(const Duration(seconds: 5));
+        finalStatus = response.statusCode;
         if (response.statusCode >= 300 && response.statusCode < 400) {
           final location = response.headers.value('location');
           if (location == null) break;
@@ -368,7 +373,13 @@ class PodcastApiService {
         }
       }
       client.close(force: true);
-      _resolvedCache[url] = _ResolvedUrl(currentUrl);
+      if (finalStatus != null && finalStatus >= 200 && finalStatus < 400) {
+        _resolvedCache[url] = _ResolvedUrl(currentUrl);
+      } else if (finalStatus != null && finalStatus == 403) {
+        final stallUrl = currentUrl;
+        _resolvedCache[url] = _ResolvedUrl(stallUrl);
+        return stallUrl;
+      }
       return currentUrl;
     } catch (_) {
       _resolvedCache[url] = _ResolvedUrl(url);

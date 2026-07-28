@@ -312,8 +312,15 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
             await audioHandler.play();
             await audioHandler.seek(current.position);
           } else {
-            final url = current.audioUrl;
-            final resolved = url.isNotEmpty ? await PodcastApiService.resolveAudioUrl(url) : url;
+            var audioUrl = current.audioUrl;
+            if (current.feedUrl != null && current.feedUrl!.isNotEmpty) {
+              final fresh = await PodcastApiService().fetchEpisodes(current.feedUrl!);
+              final match = fresh.where((e) =>
+                e.title == current.episodeTitle || e.id == current.episodeId
+              ).firstOrNull;
+              if (match?.audioUrl != null) audioUrl = match!.audioUrl!;
+            }
+            final resolved = audioUrl.isNotEmpty ? await PodcastApiService.resolveAudioUrl(audioUrl) : audioUrl;
             await audioHandler.customAction('play', {
               'url': resolved,
               'title': current.episodeTitle,
