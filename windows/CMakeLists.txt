@@ -52,20 +52,6 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
-# Convert .plugin_symlinks symlinks to real directories (Windows CI compat).
-# media_kit_libs_windows_video creates a tar archive during build and libarchive
-# cannot archive through symlinks on Windows.
-file(GLOB PLUGIN_SYMLINKS "flutter/ephemeral/.plugin_symlinks/*")
-foreach(SYMLINK ${PLUGIN_SYMLINKS})
-  if(IS_SYMLINK "${SYMLINK}")
-    get_filename_component(SYMLINK_NAME "${SYMLINK}" NAME)
-    get_filename_component(SYMLINK_TARGET "${SYMLINK}" REALPATH)
-    message(STATUS "Resolving plugin symlink: ${SYMLINK_NAME}")
-    file(REMOVE_RECURSE "${SYMLINK}")
-    file(COPY "${SYMLINK_TARGET}/" DESTINATION "flutter/ephemeral/.plugin_symlinks/${SYMLINK_NAME}/")
-  endif()
-endforeach()
-
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 

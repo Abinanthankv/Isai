@@ -186,12 +186,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Remove plugin symlinks (let Flutter recreate fresh during build)
-        run: |
-          if (Test-Path "windows\flutter\ephemeral\.plugin_symlinks") {
-            Remove-Item -Recurse -Force "windows\flutter\ephemeral\.plugin_symlinks"
-          }
-
       - name: Build Windows
         run: flutter build windows --release
         env:
