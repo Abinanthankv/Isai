@@ -186,22 +186,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Convert plugin symlinks to copies (Windows tar compat)
-        run: |
-          $dir = "windows\flutter\ephemeral\.plugin_symlinks"
-          if (Test-Path $dir) {
-            Get-ChildItem $dir | ForEach-Object {
-              if ($_.LinkType -eq "SymbolicLink" -or $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                $target = $_.Target
-                if ($target) {
-                  Write-Output "Converting symlink: $($_.Name) -> $target"
-                  Remove-Item $_.FullName -Force
-                  Copy-Item -Recurse $target $_.FullName -Force
-                }
-              }
-            }
-          }
-
       - name: Build Windows
         run: flutter build windows --release
         env:
