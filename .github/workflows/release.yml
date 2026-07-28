@@ -189,7 +189,7 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
         env:
-          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
 
       - name: Package Windows Bundle
         run: |
