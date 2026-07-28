@@ -95,11 +95,14 @@ final podcastGenreFilterProvider = StateProvider<String>((ref) => 'All');
 
 final allGenresPodcastsProvider = FutureProvider<Map<String, List<PodcastSeries>>>((ref) async {
   final api = ref.read(podcastApiServiceProvider);
-  final futures = podcastGenreNames.map((g) async {
+  final entries = <MapEntry<String, List<PodcastSeries>>>[];
+  for (final g in podcastGenreNames) {
     final results = await api.byGenre(g, limit: 15);
-    return MapEntry(g, results);
-  });
-  final entries = await Future.wait(futures);
+    entries.add(MapEntry(g, results));
+    if (g != podcastGenreNames.last) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+  }
   return Map.fromEntries(entries);
 });
 
@@ -121,12 +124,36 @@ final podcastProgressProvider = StateNotifierProvider<PodcastProgressNotifier, M
   return PodcastProgressNotifier();
 });
 
+final _followedCache = <String, List<PodcastSeries>>{};
 final podcastFollowedDetailsProvider = FutureProvider<List<PodcastSeries>>((ref) async {
   final followed = ref.watch(podcastFollowedProvider);
-  if (followed.isEmpty) return [];
+  final manualUrls = ref.watch(podcastManualFeedUrlsProvider);
+  if (followed.isEmpty && manualUrls.isEmpty) return [];
+  final cacheKey = '${followed.hashCode}_${manualUrls.hashCode}';
+  final cached = _followedCache[cacheKey];
+  if (cached != null) return cached;
   final api = ref.read(podcastApiServiceProvider);
-  final results = await Future.wait(followed.map((id) => api.lookupPodcast(id)));
-  return results.whereType<PodcastSeries>().toList();
+  final results = <PodcastSeries>[];
+  if (followed.isNotEmpty) {
+    for (final id in followed) {
+      final result = await api.lookupPodcast(id);
+      if (result != null) results.add(result);
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+  if (manualUrls.isNotEmpty) {
+    for (final url in manualUrls) {
+      final result = await api.fetchSeriesFromFeed(url);
+      if (result != null) results.add(result);
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+  _followedCache[cacheKey] = results;
+  return results;
+});
+
+final podcastManualFeedUrlsProvider = StateNotifierProvider<PodcastManualFeedUrlsNotifier, Set<String>>((ref) {
+  return PodcastManualFeedUrlsNotifier();
 });
 
 class PodcastFollowedNotifier extends StateNotifier<Set<int>> {
@@ -156,6 +183,35 @@ class PodcastFollowedNotifier extends StateNotifier<Set<int>> {
   }
 
   bool isFollowed(int collectionId) => state.contains(collectionId);
+}
+
+class PodcastManualFeedUrlsNotifier extends StateNotifier<Set<String>> {
+  PodcastManualFeedUrlsNotifier() : super({}) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('podcast_manual_feeds');
+    if (raw != null) {
+      try {
+        final list = (jsonDecode(raw) as List).cast<String>();
+        state = list.toSet();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> add(String url) async {
+    state = {...state, url};
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('podcast_manual_feeds', jsonEncode(state.toList()));
+  }
+
+  Future<void> remove(String url) async {
+    state = {...state}..remove(url);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('podcast_manual_feeds', jsonEncode(state.toList()));
+  }
 }
 
 class PodcastProgressNotifier extends StateNotifier<Map<String, int>> {

@@ -67,10 +67,43 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     });
   }
 
+  Future<void> _showAddByUrlDialog() async {
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Podcast by RSS URL'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'https://example.com/feed.xml',
+            labelText: 'RSS Feed URL',
+          ),
+          keyboardType: TextInputType.url,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (url != null && url.isNotEmpty) {
+      ref.read(podcastManualFeedUrlsProvider.notifier).add(url);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final newReleasesAsync = ref.watch(podcastRecentProvider);
     final followed = ref.watch(podcastFollowedProvider);
+    final manualUrls = ref.watch(podcastManualFeedUrlsProvider);
 
     return SingleChildScrollView(
       child: Column(
@@ -83,6 +116,11 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               hintText: 'Search podcasts...',
               leading: const Icon(Icons.search),
               trailing: [
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: 'Add by URL',
+                  onPressed: _showAddByUrlDialog,
+                ),
                 IconButton(
                   icon: const Icon(Icons.bar_chart_rounded),
                   tooltip: 'Stats',
@@ -106,7 +144,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               onChanged: _onSearchChanged,
             ),
           ),
-          if (followed.isNotEmpty) _buildFollowedSection(followed),
+          if (followed.isNotEmpty || manualUrls.isNotEmpty) _buildFollowedSection(followed),
           _buildContinueListening(),
           _buildNewReleasesSection(newReleasesAsync),
           _buildGenreCatalogs(),
@@ -458,6 +496,8 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
   }
 
   Widget _buildPodcastCard(PodcastSeries podcast) {
+    final manualUrls = ref.read(podcastManualFeedUrlsProvider);
+    final isManual = podcast.feedUrl != null && manualUrls.contains(podcast.feedUrl);
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -467,6 +507,30 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
           ),
         );
       },
+      onLongPress: isManual
+          ? () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Remove Podcast'),
+                  content: Text('Remove "${podcast.collectionName}" from your library?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Remove'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && podcast.feedUrl != null) {
+                ref.read(podcastManualFeedUrlsProvider.notifier).remove(podcast.feedUrl!);
+              }
+            }
+          : null,
       child: Container(
         width: 150,
         margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -602,7 +666,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               child: PodcastArtworkImage(
                 imageUrl: imageUrl,
                 width: 150,
-                height: 140,
+                height: 136,
               ),
             ),
             const SizedBox(height: 6),

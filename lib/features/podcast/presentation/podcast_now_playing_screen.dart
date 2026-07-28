@@ -68,11 +68,6 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   DateTime? _sleepTimerEnd;
   int _lastSleepDisplayMinutes = -1;
   bool _wasPlaying = false;
-  Timer? _seekDebounceTimer;
-  int _accumulatedSeekSeconds = 0;
-  Timer? _positionTimer;
-  Duration _currentPosition = Duration.zero;
-  Duration? _initialSeekPosition;
   PodcastProgressNotifier? _progressNotifier;
   LastPlayedPodcastNotifier? _lastPlayedNotifier;
   bool _chaptersExpanded = false;
@@ -88,7 +83,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     final current = audioHandler.mediaItem.value;
     final isAlreadyPlaying = current?.id == widget.episode.audioUrl;
     if (!isAlreadyPlaying) {
-      _play();
+      _play().catchError((_) {});
     }
     _playbackStateSub = audioHandler.playbackState.listen((state) {
       if (_sleepTimerEnd != null && !state.playing && _sleepTimer != null) {
@@ -101,27 +96,19 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
       }
       _wasPlaying = state.playing;
     });
-    _positionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (!mounted) return;
-      setState(() {
-        _currentPosition = audioHandler.playbackState.value.position;
-      });
-    });
-    _currentPosition = audioHandler.playbackState.value.position;
   }
 
   @override
   void dispose() {
     _playbackStateSub?.cancel();
     _sleepTimer?.cancel();
-    _seekDebounceTimer?.cancel();
-    _positionTimer?.cancel();
     Future(() => _saveProgress());
     super.dispose();
   }
 
   Future<void> _saveProgress() async {
-    final pos = audioHandler.playbackState.value.position.inMilliseconds;
+    final state = audioHandler.playbackState.value;
+    final pos = state.position.inMilliseconds;
     if (pos > 5000) {
       final key = '${widget.podcastTitle}_${widget.episode.id}';
       _progressNotifier?.save(key, pos);
@@ -192,55 +179,6 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'episodeArtwork': episode.artworkUrl ?? '',
         if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
       },
-    });
-  }
-
-  void _accumulateSeek(int seconds, Duration currentPosition) {
-    if (_initialSeekPosition == null) {
-      _initialSeekPosition = currentPosition;
-      _accumulatedSeekSeconds = 0;
-    }
-    _accumulatedSeekSeconds += seconds;
-    _seekDebounceTimer?.cancel();
-    final totalJump = _accumulatedSeekSeconds;
-    final direction = totalJump > 0 ? 'Forward' : 'Rewind';
-    final absSeconds = totalJump.abs();
-    final primaryColor = Theme.of(context).colorScheme.primary;
-    final onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: primaryColor,
-        behavior: SnackBarBehavior.floating,
-        elevation: 3,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        margin: const EdgeInsets.only(bottom: 32, left: 80, right: 80),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        duration: const Duration(milliseconds: 600),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              totalJump > 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
-              color: onPrimaryColor, size: 16,
-            ),
-            const SizedBox(width: 8),
-            Text('$direction ${absSeconds}s',
-              style: TextStyle(color: onPrimaryColor, fontWeight: FontWeight.bold, fontSize: 12.5),
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-    _seekDebounceTimer = Timer(const Duration(milliseconds: 450), () {
-      if (_initialSeekPosition != null) {
-        final targetPos = _initialSeekPosition! + Duration(seconds: _accumulatedSeekSeconds);
-        audioHandler.seek(targetPos < Duration.zero ? Duration.zero : targetPos);
-        _initialSeekPosition = null;
-        _accumulatedSeekSeconds = 0;
-      }
     });
   }
 
@@ -348,110 +286,10 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 20),
-                    StreamBuilder<PlaybackState>(
-                      stream: audioHandler.playbackState,
-                      builder: (context, stateSnapshot) {
-                        final playbackState = stateSnapshot.data;
-                        final playing = playbackState?.playing ?? false;
-                        final position = _currentPosition;
-                        final mediaItem = audioHandler.mediaItem.value;
-                        final duration = mediaItem?.duration ?? Duration.zero;
-
-                        double sliderValue = 0.0;
-                        if (duration.inMilliseconds > 0) {
-                          sliderValue = (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
-                        }
-
-                        return Column(
-                          children: [
-                            SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                trackHeight: 4,
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                              ),
-                              child: Slider(
-                                value: sliderValue,
-                                activeColor: Theme.of(context).colorScheme.primary,
-                                inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                onChanged: (val) {
-                                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
-                                  setState(() => _currentPosition = seekPos);
-                                },
-                                onChangeEnd: (val) {
-                                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
-                                  audioHandler.seek(seekPos);
-                                },
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(_formatDuration(position), style: Theme.of(context).textTheme.bodySmall),
-                                  Text(_formatDuration(duration),
-                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.fast_rewind_rounded, size: 32),
-                                  onPressed: _previousEpisode,
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.replay_10_rounded, size: 32),
-                                  onPressed: () {
-                                    _accumulateSeek(-10, playbackState?.position ?? Duration.zero);
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                      size: 36,
-                                    ),
-                                    onPressed: () {
-                                      if (playing) {
-                                        audioHandler.pause();
-                                      } else {
-                                        audioHandler.play();
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.forward_10_rounded, size: 32),
-                                  onPressed: () {
-                                    _accumulateSeek(10, playbackState?.position ?? Duration.zero);
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.fast_forward_rounded, size: 32),
-                                  onPressed: _nextEpisode,
-                                ),
-                              ],
-                            ),
-                          ],
-                        );
-                      },
+                    _PodcastProgressBar(
+                      onPreviousEpisode: _previousEpisode,
+                      onNextEpisode: _nextEpisode,
+                      onSaveProgress: _saveProgress,
                     ),
                     const SizedBox(height: 24),
                     _buildChaptersSection(context),
@@ -646,12 +484,13 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 
   void _previousEpisode() {
     final pos = audioHandler.playbackState.value.position;
-    _accumulateSeek(-60, pos);
+    final seekTarget = pos - const Duration(seconds: 60);
+    audioHandler.seek(seekTarget.isNegative ? Duration.zero : seekTarget);
   }
 
   void _nextEpisode() {
     final pos = audioHandler.playbackState.value.position;
-    _accumulateSeek(60, pos);
+    audioHandler.seek(pos + const Duration(seconds: 60));
   }
 
   void _showSleepTimerSheet() {
@@ -755,6 +594,213 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
           ],
         ),
       ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return '${h}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    return '${m}:${s.toString().padLeft(2, '0')}';
+  }
+}
+
+class _PodcastProgressBar extends StatefulWidget {
+  final VoidCallback onPreviousEpisode;
+  final VoidCallback onNextEpisode;
+  final VoidCallback onSaveProgress;
+
+  const _PodcastProgressBar({
+    required this.onPreviousEpisode,
+    required this.onNextEpisode,
+    required this.onSaveProgress,
+  });
+
+  @override
+  State<_PodcastProgressBar> createState() => _PodcastProgressBarState();
+}
+
+class _PodcastProgressBarState extends State<_PodcastProgressBar> {
+  Timer? _positionTimer;
+  Timer? _seekDebounceTimer;
+  Duration _currentPosition = Duration.zero;
+  Duration? _initialSeekPosition;
+  int _accumulatedSeekSeconds = 0;
+  bool _wasPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _positionTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = audioHandler.playbackState.value.position;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _positionTimer?.cancel();
+    _seekDebounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _accumulateSeek(int seconds) {
+    if (_initialSeekPosition == null) {
+      _initialSeekPosition = _currentPosition;
+      _accumulatedSeekSeconds = 0;
+    }
+    _accumulatedSeekSeconds += seconds;
+    _seekDebounceTimer?.cancel();
+    final totalJump = _accumulatedSeekSeconds;
+    final direction = totalJump > 0 ? 'Forward' : 'Rewind';
+    final absSeconds = totalJump.abs();
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: primaryColor,
+        behavior: SnackBarBehavior.floating,
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        margin: const EdgeInsets.only(bottom: 32, left: 80, right: 80),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        duration: const Duration(milliseconds: 600),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              totalJump > 0 ? Icons.fast_forward_rounded : Icons.fast_rewind_rounded,
+              color: onPrimaryColor, size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text('$direction ${absSeconds}s',
+              style: TextStyle(color: onPrimaryColor, fontWeight: FontWeight.bold, fontSize: 12.5),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+    _seekDebounceTimer = Timer(const Duration(milliseconds: 450), () {
+      if (_initialSeekPosition != null) {
+        final targetPos = _initialSeekPosition! + Duration(seconds: _accumulatedSeekSeconds);
+        audioHandler.seek(targetPos < Duration.zero ? Duration.zero : targetPos);
+        _initialSeekPosition = null;
+        _accumulatedSeekSeconds = 0;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<PlaybackState>(
+      stream: audioHandler.playbackState,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final playing = state?.playing ?? false;
+        final mediaItem = audioHandler.mediaItem.value;
+        final duration = mediaItem?.duration ?? Duration.zero;
+
+        if (_wasPlaying && !playing) {
+          widget.onSaveProgress();
+        }
+        _wasPlaying = playing;
+
+        double sliderValue = 0.0;
+        if (duration.inMilliseconds > 0) {
+          sliderValue = (_currentPosition.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+        }
+
+        return Column(
+          children: [
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 4,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              ),
+              child: Slider(
+                value: sliderValue,
+                activeColor: Theme.of(context).colorScheme.primary,
+                inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                onChanged: (val) {
+                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
+                  setState(() => _currentPosition = seekPos);
+                },
+                onChangeEnd: (val) {
+                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
+                  audioHandler.seek(seekPos);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatDuration(_currentPosition), style: Theme.of(context).textTheme.bodySmall),
+                  Text(_formatDuration(duration),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.fast_rewind_rounded, size: 32),
+                  onPressed: widget.onPreviousEpisode,
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.replay_10_rounded, size: 32),
+                  onPressed: () => _accumulateSeek(-10),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                      size: 36,
+                    ),
+                    onPressed: () {
+                      if (playing) {
+                        audioHandler.pause();
+                      } else {
+                        audioHandler.play();
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.forward_10_rounded, size: 32),
+                  onPressed: () => _accumulateSeek(10),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.fast_forward_rounded, size: 32),
+                  onPressed: widget.onNextEpisode,
+                ),
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 

@@ -44,7 +44,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
     final metadataAsync = ref.watch(artistMetadataProvider(widget.artistName));
     final deezerPlaylistsAsync = ref.watch(deezerArtistPlaylistsProvider(widget.artistName));
     final deezerRelatedAsync = ref.watch(deezerRelatedArtistsProvider(widget.artistName));
-    final deezerTopTracksAsync = ref.watch(deezerArtistTopTracksProvider(widget.artistName));
     final deezerArtistDetailsAsync = ref.watch(deezerArtistDetailsProvider(widget.artistName));
     
     // Check if followed if we have artistId
@@ -798,7 +797,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                   return Container(
                     width: 280,
                     margin: const EdgeInsets.only(right: 16),
-                    child: _ArtistSongTile(track: track),
+                    child: _ArtistSongTile(track: track, index: index),
                   );
                 },
               ),

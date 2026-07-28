@@ -115,6 +115,9 @@ abstract class TorBoxSettingsRepository {
   Future<void> setAddonPriority(List<String> priority);
   List<String> get addonPriority;
 
+  Future<void> setMetadataProviderEnabled(String id, bool enabled);
+  bool isMetadataProviderEnabled(String id);
+
   Future<void> setAppThemeStyle(String style);
   String get appThemeStyle;
 
@@ -386,6 +389,10 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   Future<void> setAddonPriority(List<String> priority) => _prefs.setStringList('addon_priority_order', priority);
+  @override
+  bool isMetadataProviderEnabled(String id) => _prefs.getBool('meta_provider_$id') ?? (id == 'apple_music');
+  @override
+  Future<void> setMetadataProviderEnabled(String id, bool enabled) => _prefs.setBool('meta_provider_$id', enabled);
 
   @override
   String get appThemeStyle => _prefs.getString('app_theme_style') ?? 'material3';

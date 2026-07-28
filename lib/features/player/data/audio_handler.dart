@@ -16,6 +16,7 @@ import '../../settings/data/torbox_settings_repository.dart';
 import '../../settings/data/eclipse_settings_repository.dart';
 import '../../music/data/music_models.dart';
 import '../../music/data/itunes_metadata_service.dart';
+import '../../music/data/metadata/metadata_addon_manager.dart';
 import '../../youtube/data/youtube_video_service.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -393,9 +394,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 meta = ItunesMeta(
                   trackName: cached?.trackTitle ?? item.title,
                   artistName: cached?.artist ?? item.artist ?? 'Unknown',
-                  album: cached?.album,
-                  genre: cached?.genre,
-                  releaseYear: cached?.releaseYear,
+                  album: cached?.album ?? item.extras?['album'] as String?,
+                  genre: cached?.genre ?? item.extras?['genre'] as String?,
+                  releaseYear: cached?.releaseYear ?? (item.extras?['releaseYear'] as int?),
                 );
               }
 
@@ -834,6 +835,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     try {
       final db = getIt<AppDatabase>();
       final itunes = getIt<ItunesMetadataService>();
+      final addonManager = getIt<MetadataAddonManager>();
 
       ItunesMeta? meta;
       
@@ -871,8 +873,45 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               trackTimeMillis: cached.trackTimeMillis,
             );
           } else if (isVirtualTrack || needsEnrichment) {
-            // 3. Fetch from iTunes as last resort
-            meta = await itunes.fetchMeta(item.title, item.artist ?? '');
+            // 3a. Try metadata addons
+            try {
+              final addonMeta = await addonManager.enrich(item.title, item.artist ?? '');
+              if (addonMeta != null) {
+                final extras = <String, dynamic>{
+                  if (addonMeta.isrc != null) 'isrc': addonMeta.isrc,
+                  if (addonMeta.label != null) 'label': addonMeta.label,
+                  if (addonMeta.copyright != null) 'copyright': addonMeta.copyright,
+                  if (addonMeta.composer != null) 'composer': addonMeta.composer,
+                  if (addonMeta.trackNumber != null) 'trackNumber': addonMeta.trackNumber,
+                  if (addonMeta.totalTracks != null) 'totalTracks': addonMeta.totalTracks,
+                  if (addonMeta.discNumber != null) 'discNumber': addonMeta.discNumber,
+                  if (addonMeta.totalDiscs != null) 'totalDiscs': addonMeta.totalDiscs,
+                  if (addonMeta.albumType != null) 'albumType': addonMeta.albumType,
+                  if (addonMeta.albumArtist != null) 'albumArtist': addonMeta.albumArtist,
+                  if (addonMeta.bpm != null) 'bpm': addonMeta.bpm,
+                  if (addonMeta.gain != null) 'gain': addonMeta.gain,
+                  if (addonMeta.isExplicit != null) 'isExplicit': addonMeta.isExplicit,
+                  if (addonMeta.provider != null) 'provider': addonMeta.provider,
+                  if (addonMeta.releaseYear != null) 'releaseYear': addonMeta.releaseYear,
+                  if (addonMeta.album != null) 'album': addonMeta.album,
+                };
+                meta = ItunesMeta(
+                  trackName: addonMeta.trackName,
+                  artistName: addonMeta.artistName,
+                  album: addonMeta.album,
+                  genre: addonMeta.genre,
+                  artworkUrlHigh: addonMeta.artworkUrlHigh,
+                  artworkUrlLow: addonMeta.artworkUrlLow,
+                  trackTimeMillis: addonMeta.trackTimeMillis,
+                  extras: extras.isNotEmpty ? extras : null,
+                );
+              }
+            } catch (_) {}
+
+            // 3b. Fetch from iTunes as last resort
+            if (meta == null) {
+              meta = await itunes.fetchMeta(item.title, item.artist ?? '');
+            }
             if (meta != null) {
               final cacheKey2 = '${item.title}|${item.artist ?? ''}';
               await db.saveExternalTrackMetadata(ExternalTrackMetadataCompanion.insert(
@@ -930,6 +969,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           extras: {
             ...item.extras ?? {},
             if (meta.genre != null) 'genre': meta.genre,
+            if (meta.extras != null) ...meta.extras!,
             'enriched': true,
           },
         );

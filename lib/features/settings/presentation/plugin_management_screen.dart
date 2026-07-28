@@ -384,6 +384,33 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
 
             const SizedBox(height: 20),
 
+            // Metadata Providers
+            AppleMusicSectionHeader(title: 'Metadata Providers'),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  _MetadataProviderTile(
+                    icon: Icons.apple,
+                    name: 'Apple Music',
+                    description: 'Album art, genres, track info from the iTunes Store catalog',
+                    enabled: ref.watch(settingsProvider).appleMusicMetadataEnabled,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setAppleMusicMetadataEnabled(val),
+                  ),
+                  Divider(height: 1, color: isDark ? Colors.white10 : Colors.black.withOpacity(0.08)),
+                  _MetadataProviderTile(
+                    icon: Icons.music_note,
+                    name: 'Deezer',
+                    description: 'ISRC, label, BPM, album type, high-res cover art',
+                    enabled: ref.watch(settingsProvider).deezerMetadataEnabled,
+                    onToggle: (val) => ref.read(settingsProvider.notifier).setDeezerMetadataEnabled(val),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
             // Installed Plugins List
             AppleMusicSectionHeader(
               title: 'Installed Addons',
@@ -741,6 +768,53 @@ class _BuiltInSourceTile extends StatelessWidget {
         ),
         Divider(height: 1, indent: 72, color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
       ],
+    );
+  }
+}
+
+class _MetadataProviderTile extends StatelessWidget {
+  final IconData icon;
+  final String name;
+  final String description;
+  final bool enabled;
+  final ValueChanged<bool> onToggle;
+
+  const _MetadataProviderTile({
+    required this.icon,
+    required this.name,
+    required this.description,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      ),
+      title: Text(
+        name,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold),
+      ),
+      subtitle: Text(
+        description,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: isDark ? Colors.white54 : Colors.black54),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Switch(
+        value: enabled,
+        onChanged: onToggle,
+      ),
     );
   }
 }

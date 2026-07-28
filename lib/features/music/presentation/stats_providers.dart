@@ -406,6 +406,8 @@ final tracksByDecadeProvider = Provider.family<List<Map<String, dynamic>>, int>(
         'artworkUrlLow': h.artworkUrlLow,
         'artworkUrlHigh': h.artworkUrlHigh,
         'plays': 0,
+        'fileId': h.fileId,
+        'torrentId': h.torrentId,
       };
     }
     tracks[key]!['plays'] = (tracks[key]!['plays'] as int) + 1;

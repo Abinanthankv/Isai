@@ -151,16 +151,35 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                 }
                 final months = _buildMonthSections(episodes);
                 if (months.isEmpty) {
-        return SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => _buildEpisodeTile(context, episodes[index], episodes, feedUrl: feedUrl),
-                    childCount: episodes.length,
+                  return SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _buildEpisodeTile(context, episodes[index], episodes, feedUrl: feedUrl),
+                      childCount: episodes.length,
                     ),
                   );
                 }
                 _selectedMonth ??= months.last;
-                return SliverToBoxAdapter(
-                  child: _buildEpisodesWithFilter(episodes, months, feedUrl: feedUrl),
+                final filtered = _selectedMonth != null
+                    ? episodes.where((ep) {
+                        final dt = _parseDate(ep.pubDate);
+                        return dt != null && _monthKey(dt) == _selectedMonth;
+                      }).toList()
+                    : episodes;
+                if (filtered.isEmpty) {
+                  return SliverToBoxAdapter(
+                    child: _buildFilteredEmpty(episodes, months),
+                  );
+                }
+                return SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (index == 0) {
+                        return _buildFilterHeader(episodes, months);
+                      }
+                      return _buildEpisodeTile(context, filtered[index - 1], episodes, feedUrl: feedUrl);
+                    },
+                    childCount: filtered.length + 1,
+                  ),
                 );
               },
               loading: () => const SliverToBoxAdapter(
@@ -262,14 +281,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
     return sorted;
   }
 
-  Widget _buildEpisodesWithFilter(List<PodcastEpisode> episodes, List<String> months, {String? feedUrl}) {
-    final filtered = _selectedMonth != null
-        ? episodes.where((ep) {
-            final dt = _parseDate(ep.pubDate);
-            return dt != null && _monthKey(dt) == _selectedMonth;
-          }).toList()
-        : episodes;
-
+  Widget _buildFilterHeader(List<PodcastEpisode> episodes, List<String> months) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -318,23 +330,29 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
             },
           ),
         ),
-        if (filtered.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(Icons.search_off_rounded, size: 40,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
-                  const SizedBox(height: 8),
-                  Text('No episodes in ${_monthLabel(_selectedMonth!)}',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                ],
-              ),
+      ],
+    );
+  }
+
+  Widget _buildFilteredEmpty(List<PodcastEpisode> episodes, List<String> months) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildFilterHeader(episodes, months),
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.search_off_rounded, size: 40,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                const SizedBox(height: 8),
+                Text('No episodes in ${_monthLabel(_selectedMonth!)}',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
             ),
-          )
-        else
-          ...filtered.map((ep) => _buildEpisodeTile(context, ep, episodes, feedUrl: feedUrl)),
+          ),
+        ),
       ],
     );
   }

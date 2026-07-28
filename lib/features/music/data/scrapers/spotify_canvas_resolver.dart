@@ -211,4 +211,15 @@ class SpotifyCanvasResolver {
     }
     return null;
   }
+
+  Future<String?> resolveCanvasFromIsrc(String isrc) async {
+    try {
+      final spotifyUrl = await getSpotifyUrl(isrc);
+      if (spotifyUrl == null) return null;
+      return await getCanvasVideo(spotifyUrl);
+    } catch (e) {
+      print('[SpotifyCanvasResolver] ISRC canvas error: $e');
+      return null;
+    }
+  }
 }

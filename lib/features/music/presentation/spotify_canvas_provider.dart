@@ -33,7 +33,7 @@ class SpotifyCanvasNotifier extends Notifier<SpotifyCanvasState> {
   @override
   SpotifyCanvasState build() => SpotifyCanvasState();
 
-  Future<void> fetchCanvas(String track, String artist) async {
+  Future<void> fetchCanvas(String track, String artist, {String? isrc}) async {
     final trackKey = '$artist-$track';
     
     if (_currentTrackKey == trackKey) return;
@@ -47,7 +47,13 @@ class SpotifyCanvasNotifier extends Notifier<SpotifyCanvasState> {
     state = SpotifyCanvasState(isLoading: true);
 
     try {
-      final url = await _resolver.resolveCanvas(artist, track);
+      String? url;
+
+      if (isrc != null) {
+        url = await _resolver.resolveCanvasFromIsrc(isrc);
+      }
+
+      url ??= await _resolver.resolveCanvas(artist, track);
       _cache[trackKey] = url;
       if (_currentTrackKey == trackKey) {
         state = SpotifyCanvasState(canvasUrl: url);

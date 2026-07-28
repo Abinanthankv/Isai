@@ -11,6 +11,7 @@ import '../../audiobooks/data/hardcover_api_service.dart';
 import '../../../core/network/eclipse_api_service.dart';
 import '../../music/data/music_repository.dart';
 import '../../music/data/music_models.dart';
+import '../../music/data/musicbrainz_service.dart';
 import 'downloads_screen.dart';
 import 'playlist_providers.dart';
 import '../../player/presentation/player_providers.dart';
@@ -30,6 +31,7 @@ import '../data/lastfm_service.dart';
 import '../../settings/data/lastfm_repository.dart';
 import 'lastfm_provider.dart';
 import 'package:audiotags/audiotags.dart';
+import '../data/metadata/metadata_addon_manager.dart';
 
 
 /// Parses a raw audio filename like "Artist - Title.mp3" or "Title.mp3"
@@ -103,6 +105,8 @@ class SettingsState {
   final String appFontFamily;
   final bool appleUseLiquidGlass;
   final double appleLiquidGlassOpacity;
+  final bool appleMusicMetadataEnabled;
+  final bool deezerMetadataEnabled;
   final bool miniPlayerSwipeEnabled;
   final double miniPlayerSwipeSensitivity;
   final bool playerSpotifyCanvasEnabled;
@@ -173,6 +177,8 @@ class SettingsState {
     this.appFontFamily = 'Roboto Flex',
     this.appleUseLiquidGlass = true,
     this.appleLiquidGlassOpacity = 0.5,
+    this.appleMusicMetadataEnabled = true,
+    this.deezerMetadataEnabled = false,
     this.miniPlayerSwipeEnabled = true,
     this.miniPlayerSwipeSensitivity = 40.0,
     this.playerSpotifyCanvasEnabled = true,
@@ -241,6 +247,8 @@ class SettingsState {
     String? appFontFamily,
     bool? appleUseLiquidGlass,
     double? appleLiquidGlassOpacity,
+    bool? appleMusicMetadataEnabled,
+    bool? deezerMetadataEnabled,
     bool? miniPlayerSwipeEnabled,
     double? miniPlayerSwipeSensitivity,
     bool? playerSpotifyCanvasEnabled,
@@ -308,6 +316,8 @@ class SettingsState {
       appFontFamily: appFontFamily ?? this.appFontFamily,
       appleUseLiquidGlass: appleUseLiquidGlass ?? this.appleUseLiquidGlass,
       appleLiquidGlassOpacity: appleLiquidGlassOpacity ?? this.appleLiquidGlassOpacity,
+      appleMusicMetadataEnabled: appleMusicMetadataEnabled ?? this.appleMusicMetadataEnabled,
+      deezerMetadataEnabled: deezerMetadataEnabled ?? this.deezerMetadataEnabled,
       miniPlayerSwipeEnabled: miniPlayerSwipeEnabled ?? this.miniPlayerSwipeEnabled,
       miniPlayerSwipeSensitivity: miniPlayerSwipeSensitivity ?? this.miniPlayerSwipeSensitivity,
       playerSpotifyCanvasEnabled: playerSpotifyCanvasEnabled ?? this.playerSpotifyCanvasEnabled,
@@ -406,6 +416,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
       eclipseEmail: _eclipseSettings.email,
       eclipseAvatarUrl: _eclipseSettings.avatarUrl,
       eclipseScrobbleEnabled: _eclipseSettings.scrobbleEnabled,
+      appleMusicMetadataEnabled: _settings.isMetadataProviderEnabled('apple_music'),
+      deezerMetadataEnabled: _settings.isMetadataProviderEnabled('deezer'),
     );
   }
 
@@ -549,6 +561,16 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setYouTubeScraperEnabled(bool enabled) async {
     await _settings.setYouTubeScraperEnabled(enabled);
     state = state.copyWith(enableYouTubeScraper: enabled);
+  }
+
+  Future<void> setAppleMusicMetadataEnabled(bool enabled) async {
+    await _settings.setMetadataProviderEnabled('apple_music', enabled);
+    state = state.copyWith(appleMusicMetadataEnabled: enabled);
+  }
+
+  Future<void> setDeezerMetadataEnabled(bool enabled) async {
+    await _settings.setMetadataProviderEnabled('deezer', enabled);
+    state = state.copyWith(deezerMetadataEnabled: enabled);
   }
 
   Future<void> addDownloadFolder(String path) async {
@@ -1578,6 +1600,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
   late final MusicRepository _repo;
   late final ItunesMetadataService _itunes;
   late final AppDatabase _db;
+  late final MetadataAddonManager _addonManager;
 
   final Set<int> _enrichingIds = {};
   int? _lastKnownHash;
@@ -1587,6 +1610,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
     _repo = getIt<MusicRepository>();
     _itunes = getIt<ItunesMetadataService>();
     _db = getIt<AppDatabase>();
+    _addonManager = getIt<MetadataAddonManager>();
     return LibraryState();
   }
 
@@ -1910,7 +1934,62 @@ class LibraryNotifier extends Notifier<LibraryState> {
         return;
       }
 
-      // 3. Fetch from iTunes as last resort
+      // 3. Try metadata addons (Apple Music, Deezer, etc.)
+      try {
+        final addonMeta = await _addonManager.enrich(
+          dbMeta?.trackTitle ?? parsed.title,
+          dbMeta?.artist ?? parsed.artist,
+        );
+        if (addonMeta != null) {
+          final extras = <String, dynamic>{
+            if (addonMeta.isrc != null) 'isrc': addonMeta.isrc,
+            if (addonMeta.label != null) 'label': addonMeta.label,
+            if (addonMeta.copyright != null) 'copyright': addonMeta.copyright,
+            if (addonMeta.composer != null) 'composer': addonMeta.composer,
+            if (addonMeta.trackNumber != null) 'trackNumber': addonMeta.trackNumber,
+            if (addonMeta.totalTracks != null) 'totalTracks': addonMeta.totalTracks,
+            if (addonMeta.discNumber != null) 'discNumber': addonMeta.discNumber,
+            if (addonMeta.totalDiscs != null) 'totalDiscs': addonMeta.totalDiscs,
+            if (addonMeta.albumType != null) 'albumType': addonMeta.albumType,
+            if (addonMeta.albumArtist != null) 'albumArtist': addonMeta.albumArtist,
+            if (addonMeta.bpm != null) 'bpm': addonMeta.bpm,
+            if (addonMeta.gain != null) 'gain': addonMeta.gain,
+            if (addonMeta.isExplicit != null) 'isExplicit': addonMeta.isExplicit,
+            if (addonMeta.provider != null) 'provider': addonMeta.provider,
+            if (addonMeta.releaseYear != null) 'releaseYear': addonMeta.releaseYear,
+            if (addonMeta.album != null) 'album': addonMeta.album,
+          };
+          final meta = ItunesMeta(
+            trackName: dbMeta?.trackTitle ?? addonMeta.trackName ?? parsed.title,
+            artistName: dbMeta?.artist ?? addonMeta.artistName ?? parsed.artist,
+            artworkUrlLow: addonMeta.artworkUrlLow,
+            artworkUrlHigh: addonMeta.artworkUrlHigh,
+            album: addonMeta.album,
+            genre: addonMeta.genre,
+            releaseYear: addonMeta.releaseYear,
+            trackTimeMillis: addonMeta.trackTimeMillis,
+            extras: extras,
+          );
+          final metaMap = Map<String, ItunesMeta>.from(state.metadata);
+          metaMap[key] = meta;
+          state = state.copyWith(metadata: metaMap);
+          _db.saveTrackMetadata(TrackMetadataCompanion.insert(
+            fileId: file.id,
+            torrentId: file.torrentId,
+            trackTitle: Value(meta.trackName ?? parsed.title),
+            artist: Value(meta.artistName ?? parsed.artist),
+            artworkUrlLow: Value(meta.artworkUrlLow),
+            artworkUrlHigh: Value(meta.artworkUrlHigh),
+            album: Value(meta.album),
+            genre: Value(meta.genre),
+            releaseYear: Value(meta.releaseYear),
+            trackTimeMillis: Value(meta.trackTimeMillis),
+          ));
+          return;
+        }
+      } catch (_) {}
+
+      // 4. Fetch from iTunes as last resort
       // Politeness delay to prevent 429 lockout if scrolling fast
       await Future.delayed(const Duration(milliseconds: 400));
       final res = await _itunes.fetchMeta(dbMeta?.trackTitle ?? parsed.title, dbMeta?.artist ?? parsed.artist);
@@ -2401,6 +2480,25 @@ final albumTracksProvider = FutureProvider.family<List<ItunesTrack>, ItunesTrack
       }
     }
   }
+
+  if (tracks.isEmpty) {
+    final mb = getIt<MusicBrainzService>();
+    final mbTracks = await mb.getAlbumTracks(album.artistName, album.collectionName);
+    if (mbTracks.isNotEmpty) {
+      tracks = mbTracks.map((t) {
+        return ItunesTrack(
+          trackId: t['position']?.hashCode ?? 0,
+          trackName: t['title'] as String? ?? '',
+          artistName: album.artistName,
+          collectionName: album.collectionName,
+          artworkUrl: album.artworkUrl,
+          trackTimeMillis: (t['length'] as num?)?.toInt(),
+          trackNumber: t['position'] as int?,
+        );
+      }).toList();
+    }
+  }
+
   return tracks;
 });
 

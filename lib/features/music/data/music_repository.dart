@@ -237,17 +237,44 @@ class MusicRepositoryImpl implements MusicRepository {
           .map((r) => ItunesTrack.fromJson(r as Map<String, dynamic>))
           .toList();
           
-      // Sort locally by releaseDate descending (newest first)
-      results.sort((a, b) {
-        if (a.releaseDate == null && b.releaseDate == null) return 0;
-        if (a.releaseDate == null) return 1;
-        if (b.releaseDate == null) return -1;
-        return b.releaseDate!.compareTo(a.releaseDate!);
-      });
-      
-      return results;
+      if (results.isNotEmpty) {
+        results.sort((a, b) {
+          if (a.releaseDate == null && b.releaseDate == null) return 0;
+          if (a.releaseDate == null) return 1;
+          if (b.releaseDate == null) return -1;
+          return b.releaseDate!.compareTo(a.releaseDate!);
+        });
+        return results;
+      }
+
+      print('[Music] iTunes top songs empty for $artistName, trying Deezer fallback');
+      return _getDeezerTopSongs(artistName);
     } catch (e) {
-      print('[Music] iTunes getArtistTopSongs error: $e');
+      print('[Music] iTunes getArtistTopSongs error: $e, trying Deezer fallback');
+      return _getDeezerTopSongs(artistName);
+    }
+  }
+
+  Future<List<ItunesTrack>> _getDeezerTopSongs(String artistName) async {
+    try {
+      final artist = await _deezer.searchArtist(artistName);
+      if (artist == null) return [];
+      final id = artist['id'].toString();
+      final tracks = await _deezer.getArtistTopTracks(id, artistName);
+      return tracks.map((t) {
+        final album = t['album'] as Map<String, dynamic>?;
+        return ItunesTrack(
+          trackId: (t['id'] as num).toInt(),
+          trackName: t['title'] as String,
+          artistName: artistName,
+          collectionName: album?['title'] as String? ?? '',
+          artworkUrl: album?['cover_big'] as String? ?? album?['cover_medium'] as String? ?? '',
+          previewUrl: t['preview'] as String?,
+          trackTimeMillis: (t['duration'] as num).toInt() * 1000,
+        );
+      }).toList();
+    } catch (e) {
+      print('[Music] Deezer getArtistTopSongs error: $e');
       return [];
     }
   }
@@ -273,17 +300,73 @@ class MusicRepositoryImpl implements MusicRepository {
           .map((r) => ItunesTrack.fromJson(r as Map<String, dynamic>))
           .toList();
           
-      // Sort locally by releaseDate descending (newest first)
-      results.sort((a, b) {
-        if (a.releaseDate == null && b.releaseDate == null) return 0;
-        if (a.releaseDate == null) return 1;
-        if (b.releaseDate == null) return -1;
-        return b.releaseDate!.compareTo(a.releaseDate!);
-      });
-      
-      return results;
+      if (results.isNotEmpty) {
+        results.sort((a, b) {
+          if (a.releaseDate == null && b.releaseDate == null) return 0;
+          if (a.releaseDate == null) return 1;
+          if (b.releaseDate == null) return -1;
+          return b.releaseDate!.compareTo(a.releaseDate!);
+        });
+        return results;
+      }
+
+      print('[Music] iTunes albums empty for $artistName, trying Deezer fallback');
+      return _getDeezerAlbums(artistName);
     } catch (e) {
-      print('[Music] iTunes getArtistAlbums error: $e');
+      print('[Music] iTunes getArtistAlbums error: $e, trying Deezer fallback');
+      return _getDeezerAlbums(artistName);
+    }
+  }
+
+  Future<List<ItunesTrack>> _getDeezerAlbums(String artistName) async {
+    try {
+      final artist = await _deezer.searchArtist(artistName);
+      if (artist != null) {
+        final id = artist['id'].toString();
+        print('[Music] _getDeezerAlbums: found artist ID $id for $artistName');
+        final albums = await _deezer.getArtistAlbums(id, artistName);
+        if (albums.isNotEmpty) {
+          print('[Music] _getDeezerAlbums: got ${albums.length} albums from Deezer for $artistName');
+          return albums.map((a) {
+            DateTime? releaseDate;
+            if (a['release_date'] != null) {
+              releaseDate = DateTime.tryParse(a['release_date'] as String);
+            }
+            return ItunesTrack(
+              trackId: (a['id'] as num).toInt(),
+              trackName: '',
+              artistName: artistName,
+              collectionName: a['title'] as String? ?? '',
+              artworkUrl: a['cover_big'] as String? ?? a['cover_medium'] as String? ?? '',
+              releaseDate: releaseDate,
+            );
+          }).toList();
+        }
+      }
+
+      print('[Music] Deezer returned no albums for $artistName, trying MusicBrainz');
+      final mbAlbums = await _mb.getArtistAlbums(artistName);
+      if (mbAlbums.isNotEmpty) {
+        print('[Music] MusicBrainz: got ${mbAlbums.length} albums for $artistName');
+        return mbAlbums.map((a) {
+          DateTime? releaseDate;
+          if (a['releaseDate']?.isNotEmpty == true) {
+            releaseDate = DateTime.tryParse(a['releaseDate']!);
+          }
+          return ItunesTrack(
+            trackId: a['id']?.hashCode ?? 0,
+            trackName: '',
+            artistName: artistName,
+            collectionName: a['title'] ?? '',
+            artworkUrl: a['coverUrl'] ?? '',
+            releaseDate: releaseDate,
+          );
+        }).toList();
+      }
+
+      return [];
+    } catch (e) {
+      print('[Music] getArtistAlbums fallback error: $e');
       return [];
     }
   }

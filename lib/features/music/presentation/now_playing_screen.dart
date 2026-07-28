@@ -209,8 +209,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             durationMs: item.duration?.inMilliseconds,
           );
 
-          // Fetch Canvas for the new track
-          ref.read(spotifyCanvasProvider.notifier).fetchCanvas(title, artist);
+          // Fetch Canvas for the new track — use ISRC if already enriched
+          final isrc = item.extras?['isrc'] as String?;
+          ref.read(spotifyCanvasProvider.notifier).fetchCanvas(title, artist, isrc: isrc);
 
           // Proactively enrich library metadata for this track if not already loaded
           final fileId = (item.extras?['fileId'] as num?)?.toInt();
@@ -3649,6 +3650,8 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
         if (activeMeta == null && widget.file.torrentId != -1) {
           activeMeta = library.metadata['${widget.file.torrentId}-${widget.file.id}'];
         }
+        // Helper: read from activeMeta.extras first, fall back to liveItem.extras
+        T? _ex<T>(String key) => (activeMeta?.extras?[key] ?? liveItem?.extras?[key]) as T?;
         // Prefer liveItem data, fall back to widget.file as last resort
         final displayTitle = activeMeta?.trackName
             ?? liveItem?.title
@@ -3733,15 +3736,92 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
                     );
                   },
                 )),
-                if (activeMeta?.album != null) _buildInfoRow('Album', _cleanAlbumName(activeMeta!.album!)),
+                if (activeMeta?.album != null)
+                  _buildInfoRow('Album', _cleanAlbumName(activeMeta!.album!), onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(
+                      album: ItunesTrack(
+                        trackId: liveFileId ?? widget.file.id,
+                        trackName: displayTitle,
+                        artistName: displayArtist,
+                        artworkUrl: activeMeta?.artworkUrlHigh ?? liveItem?.artUri?.toString() ?? '',
+                        collectionName: activeMeta!.album!,
+                        artistViewUrl: '',
+                      ),
+                    )));
+                  }),
+                if (activeMeta?.album == null && _ex<String>('album') != null)
+                  _buildInfoRow('Album', _ex<String>('album')!, onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(
+                      album: ItunesTrack(
+                        trackId: liveFileId ?? widget.file.id,
+                        trackName: displayTitle,
+                        artistName: displayArtist,
+                        artworkUrl: _ex<String>('artworkUrlHigh') ?? liveItem?.artUri?.toString() ?? '',
+                        collectionName: _ex<String>('album')!,
+                        artistViewUrl: '',
+                      ),
+                    )));
+                  }),
+                if (activeMeta?.album == null && _ex<String>('album') == null && liveItem?.album != null && liveItem!.album!.isNotEmpty)
+                  _buildInfoRow('Album', liveItem!.album!, onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => AlbumScreen(
+                      album: ItunesTrack(
+                        trackId: liveFileId ?? widget.file.id,
+                        trackName: displayTitle,
+                        artistName: displayArtist,
+                        artworkUrl: liveItem?.artUri?.toString() ?? '',
+                        collectionName: liveItem!.album!,
+                        artistViewUrl: '',
+                      ),
+                    )));
+                  }),
+                if (activeMeta?.releaseYear != null || _ex<int>('releaseYear') != null || _ex<int>('trackNumber') != null || _ex<bool>('isExplicit') == true)
+                  _sectionDivider(),
                 if (activeMeta?.releaseYear != null) _buildInfoRow('Year', activeMeta!.releaseYear.toString()),
+                if (activeMeta?.releaseYear == null && _ex<int>('releaseYear') != null) _buildInfoRow('Year', _ex<int>('releaseYear').toString()),
                 if (displayGenre != null) _buildInfoRow('Genre', displayGenre),
+                if (_ex<bool>('isExplicit') == true) _buildInfoRow('Explicit', 'Yes'),
+                if (_ex<int>('trackNumber') != null) _buildInfoRow(
+                  'Track',
+                  _ex<int>('totalTracks') != null
+                      ? '${_ex<int>('trackNumber')} / ${_ex<int>('totalTracks')}'
+                      : _ex<int>('trackNumber').toString(),
+                ),
+                if (_ex<int>('discNumber') != null) _buildInfoRow(
+                  'Disc',
+                  _ex<int>('totalDiscs') != null
+                      ? '${_ex<int>('discNumber')} / ${_ex<int>('totalDiscs')}'
+                      : _ex<int>('discNumber').toString(),
+                ),
+                if (_ex<String>('composer') != null || _ex<String>('albumArtist') != null || _ex<String>('albumType') != null || _ex<String>('label') != null || _ex<String>('copyright') != null || _ex<String>('isrc') != null || _ex<int>('bpm') != null)
+                  _sectionDivider(),
+                if (_ex<String>('composer') != null) _buildInfoRow('Composer', _ex<String>('composer')!),
+                if (_ex<String>('albumArtist') != null) _buildInfoRow('Album Artist', _ex<String>('albumArtist')!),
+                if (_ex<String>('albumType') != null) _buildInfoRow('Album Type', _ex<String>('albumType')!),
+                if (_ex<String>('label') != null) _buildInfoRow('Label', _ex<String>('label')!),
+                if (_ex<String>('copyright') != null) _buildInfoRow('Copyright', _ex<String>('copyright')!),
+                if (_ex<String>('isrc') != null) _buildInfoRow('ISRC', _ex<String>('isrc')!),
+                if (_ex<int>('bpm') != null && _ex<int>('bpm')! > 0) _buildInfoRow('BPM', _ex<int>('bpm').toString()),
+                if (_ex<String>('provider') != null || _ex<double>('gain') != null)
+                  _sectionDivider(),
+                if (_ex<String>('provider') != null) _buildInfoRow('Metadata Source', _ex<String>('provider')!),
+                if (_ex<double>('gain') != null) _buildInfoRow('Replay Gain', '${_ex<double>('gain')} dB'),
                 const SizedBox(height: 12),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _sectionDivider() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: Divider(color: Colors.white.withOpacity(0.08), height: 1),
     );
   }
 
@@ -3754,7 +3834,7 @@ class _SongInfoSheetState extends ConsumerState<_SongInfoSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 80,
+              width: 100,
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white54,),

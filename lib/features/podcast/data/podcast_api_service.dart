@@ -6,7 +6,7 @@ import 'podcast_models.dart';
 
 class PodcastApiService {
   final Dio _dio;
-  static final _resolvedCache = <String, String>{};
+  static final _resolvedCache = <String, _ResolvedUrl>{};
 
   PodcastApiService() : _dio = Dio(BaseOptions(
     headers: {'User-Agent': 'Isai-Podcast/1.0'},
@@ -243,7 +243,7 @@ class PodcastApiService {
       if (el == null) continue;
       final text = el.text.trim();
       final num = int.tryParse(text);
-      if (num != null) return num;
+      if (num != null && num > 0) return num;
       final parts = text.split(':');
       if (parts.length == 3) {
         return int.tryParse(parts[0])! * 3600 +
@@ -278,6 +278,34 @@ class PodcastApiService {
     }
   }
 
+  Future<PodcastSeries?> fetchSeriesFromFeed(String feedUrl) async {
+    try {
+      final res = await _dio.get<String>(feedUrl);
+      final raw = res.data;
+      if (raw == null) return null;
+      final xml = XmlDocument.parse(raw);
+      final channel = xml.findAllElements('channel').firstOrNull;
+      if (channel == null) return null;
+      final title = channel.findElements('title').firstOrNull?.text ?? '';
+      final artwork = _artworkFromChannel(channel);
+      final itunesNs = 'http://www.itunes.com/dtds/podcast-1.0.dtd';
+      final author = channel.findElements('author').firstOrNull?.text ??
+          channel.childElements
+              .where((e) => e.name.local == 'author' && e.name.namespaceUri == itunesNs)
+              .firstOrNull?.text ?? '';
+      return PodcastSeries(
+        collectionId: feedUrl.hashCode,
+        collectionName: title,
+        artistName: author,
+        feedUrl: feedUrl,
+        artworkUrl: artwork,
+      );
+    } catch (e) {
+      print('[PodcastApi] fetchSeriesFromFeed error: $e');
+      return null;
+    }
+  }
+
   static Future<List<PodcastChapter>> fetchChapters(String chaptersUrl) async {
     try {
       final res = await Dio().get<Map<String, dynamic>>(
@@ -307,24 +335,28 @@ class PodcastApiService {
     }
   }
 
+  static String _stripHtml(String html) {
+    return html.replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
+  }
+
   static Future<String> resolveAudioUrl(String url) async {
     final cached = _resolvedCache[url];
-    if (cached != null) return cached;
-    if (url.endsWith('.mp3') || url.endsWith('.m4a') ||
-        url.endsWith('.mp4') || url.endsWith('.ogg') ||
-        url.endsWith('.wav') || url.endsWith('.aac')) {
-      _resolvedCache[url] = url;
-      return url;
-    }
+    if (cached != null && !cached.isExpired) return cached.url;
     try {
       final client = HttpClient();
       client.autoUncompress = false;
-      client.connectionTimeout = const Duration(seconds: 2);
+      client.connectionTimeout = const Duration(seconds: 5);
       var currentUrl = url;
       for (var i = 0; i < 5; i++) {
         final request = await client.getUrl(Uri.parse(currentUrl));
         request.followRedirects = false;
-        final response = await request.close().timeout(const Duration(seconds: 2));
+        final response = await request.close().timeout(const Duration(seconds: 5));
         if (response.statusCode >= 300 && response.statusCode < 400) {
           final location = response.headers.value('location');
           if (location == null) break;
@@ -336,21 +368,21 @@ class PodcastApiService {
         }
       }
       client.close(force: true);
-      _resolvedCache[url] = currentUrl;
+      _resolvedCache[url] = _ResolvedUrl(currentUrl);
       return currentUrl;
     } catch (_) {
-      _resolvedCache[url] = url;
+      _resolvedCache[url] = _ResolvedUrl(url);
       return url;
     }
   }
+}
 
-  String _stripHtml(String html) {
-    return html.replaceAll(RegExp(r'<[^>]*>'), '')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .trim();
-  }
+class _ResolvedUrl {
+  final String url;
+  final DateTime cachedAt;
+  static const _ttl = Duration(hours: 1);
+
+  _ResolvedUrl(this.url) : cachedAt = DateTime.now();
+
+  bool get isExpired => DateTime.now().difference(cachedAt) > _ttl;
 }

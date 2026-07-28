@@ -8,12 +8,25 @@
 - **iTunes Lookup Fallback**: Apple Music playlist tracks now get artist names via iTunes lookup-by-ID when the page scrape fails to extract artist data.
 - **Eclipse Delete Metadata**: When deleting a track from a synced Eclipse playlist without a remote track ID, matches by title+artist as fallback.
 - **Playlist Grid Refresh Pull-to-refresh on playlist screen, with sync loading indicator when Eclipse is connected.
+- **Metadata Enrichment System**: TrackMeta model + DeezerMetadataProvider (ISRC→Deezer), AppleMusicMetadataProvider (wraps iTunes), MetadataAddonManager orchestrating enrichment with togglable providers in Addons Manager.
+- **Spotify Canvas via ISRC**: resolveCanvasFromIsrc() searches Spotify URL by ISRC then fetches canvas video; fallback to full title+artist search.
+- **Song Info Overhaul**: Full metadata sheet with Track Details / Credits & IDs / Source sections — ISRC, BPM, label, copyright, release year, album type, cover art.
+- **Album Row Tappable**: Album name in Song Info navigates to AlbumScreen (constructs ItunesTrack from available data).
+- **Deezer Tab in Metadata Picker**: Search via MusicBrainz→ISRC path with fallback to iTunes.
+- **MusicBrainz Album Fallback**: Artist album listing falls back to Deezer then MusicBrainz release groups with Cover Art Archive when iTunes/Deezer return empty.
+- **Manual Podcast RSS Feeds**: Add podcasts by RSS URL via dialog; URLs persisted in SharedPreferences; manual feeds rendered alongside iTunes-followed podcasts with long-press to remove.
+- **Podcast Audio Redirect Resolution**: resolveAudioUrl() follows 5-hop redirect chains for token-based podcast enclosure URLs.
+- **Podcast Performance Optimizations**: Episode list lazy-loaded via SliverList.builder (not Column+map); progress bar isolated to its own widget so 200ms timer doesn't rebuild entire screen; genre API calls sequentialized with delay; followed podcast details cached with TTL.
 
 ### Changed
 - **Settings Redesign**: Eclipse and Last.fm connected sections collapsed to single entry tiles — tap to navigate to dedicated settings screens with all controls (scrobble toggle, sync, sign out).
 - **Metadata Enrichment**: `releaseYear` now persisted in `ExternalTrackMetadata` cache and `TrackMetadata` table. Song Info sheet shows Year row; Format/Size/Filename rows removed.
 - **Decade Mixes**: Sorted by play count (most-listened first), all decades shown (no cap), Deezer fallback from genre query to generic "decade hits" query before resorting to library. Deduplication by playlist ID.
 - **Eclipse Settings Autofill**: Email/password fields wrapped in `AutofillGroup` with proper `autofillHints` for password manager support.
+- **Deezer Metadata Toggle**: Deezer metadata provider defaults to disabled; Apple Music defaults enabled — both configurable in Addons Manager.
+- **Artist Data Source Fallback**: Artist top songs and albums fall through iTunes→Deezer→MusicBrainz chains for maximum coverage.
+- **Podcast Episode Duration**: RSS `<itunes:duration>` of `0` treated as unknown (null) instead of showing "0m".
+- **Metadata Picker Deezer Tab**: Shows fallback notice when switching to iTunes; sequential ISRC resolution with 150ms delays.
 
 ### Fixed
 - **Apple Playlist Artists Missing**: Apple Music page format change broke JSON-LD extraction. Added iTunes lookup-by-ID fallback when search-based enrichment fails.
@@ -21,6 +34,11 @@
 - **Pull-to-Refresh Decade Mixes**: Removed `skipLoadingOnReload` so manual refresh shows loading state and updates properly.
 - **Duplicate Deezer Playlists**: Prevents same playlist from appearing across multiple decade mixes via `seenPlaylistIds` set.
 - **Song Info Redundant API Call**: Removed `_checkAndEnrichMetadata()` call that triggered unnecessary iTunes requests every time the sheet opened.
+- **Decade Tracks Now Playable**: Tapping tracks in decade stats screen now plays the song instead of showing dummy data error.
+- **Artist Duplicate Deezer Section**: Removed duplicate Deezer top tracks section from Artist screen (data flows through fallbacks instead).
+- **Album Artwork for MusicBrainz Albums**: Cover Art Archive (`coverartarchive.org`) provides album artwork for MusicBrainz-sourced releases.
+- **Podcast Audio URL Redirect**: resolveAudioUrl no longer short-circuits for .mp3/.m4a URLs — always follows redirects for token-based auth URLs.
+- **Spotify Card Overflow**: Spotify chart card image height reduced by 4px to prevent 1px RenderFlex overflow in 180px horizontal list.
 
 ## [1.0.10] - July 2026
 

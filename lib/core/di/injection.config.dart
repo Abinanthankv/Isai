@@ -27,6 +27,12 @@ import 'package:isai/features/music/data/musicbrainz_service.dart' as _i615;
 import 'package:isai/features/music/data/plugins/plugin_manager.dart' as _i1006;
 import 'package:isai/features/music/data/scrapers/last_fm_scraper.dart'
     as _i893;
+import 'package:isai/features/music/data/metadata/apple_music_metadata_provider.dart'
+    as _i1040;
+import 'package:isai/features/music/data/metadata/deezer_metadata_provider.dart'
+    as _i1039;
+import 'package:isai/features/music/data/metadata/metadata_addon_manager.dart'
+    as _i1038;
 import 'package:isai/features/player/data/audio_metadata_service.dart' as _i349;
 import 'package:isai/features/settings/data/eclipse_settings_repository.dart'
     as _i119;
@@ -66,6 +72,20 @@ extension GetItInjectableX on _i174.GetIt {
     );
     gh.lazySingleton<_i615.MusicBrainzService>(
       () => _i615.MusicBrainzService(gh<_i361.Dio>()),
+    );
+    gh.lazySingleton<_i1039.DeezerMetadataProvider>(
+      () => _i1039.DeezerMetadataProvider(gh<_i361.Dio>()),
+    );
+    gh.lazySingleton<_i1040.AppleMusicMetadataProvider>(
+      () => _i1040.AppleMusicMetadataProvider(gh<_i39.ItunesMetadataService>()),
+    );
+    gh.lazySingleton<_i1038.MetadataAddonManager>(
+      () => _i1038.MetadataAddonManager(
+        gh<_i183.TorBoxSettingsRepository>(),
+        gh<_i1039.DeezerMetadataProvider>(),
+        gh<_i1040.AppleMusicMetadataProvider>(),
+        gh<_i615.MusicBrainzService>(),
+      ),
     );
     gh.lazySingleton<_i1006.PluginManager>(
       () => _i1006.PluginManager(gh<_i361.Dio>()),
