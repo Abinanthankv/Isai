@@ -186,14 +186,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Clean Flutter ephemeral cache (symlink workaround)
+      - name: Convert plugin symlinks to copies (Windows tar compat)
         run: |
-          if (Test-Path "windows\flutter\ephemeral") {
-            Remove-Item -Recurse -Force "windows\flutter\ephemeral"
+          $dir = "windows\flutter\ephemeral\.plugin_symlinks"
+          if (Test-Path $dir) {
+            Get-ChildItem $dir | ForEach-Object {
+              if ($_.LinkType -eq "SymbolicLink" -or $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                $target = $_.Target
+                if ($target) {
+                  Write-Output "Converting symlink: $($_.Name) -> $target"
+                  Remove-Item $_.FullName -Force
+                  Copy-Item -Recurse $target $_.FullName -Force
+                }
+              }
+            }
           }
 
       - name: Build Windows
         run: flutter build windows --release
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNING
 
       - name: Package Windows Bundle
         run: |
@@ -206,46 +218,9 @@ jobs:
           name: windows-app
           path: build/windows-release/isai-windows-x64.zip
 
-  build-ios:
-    name: Build iOS App
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.x'
-          channel: 'stable'
-          cache: true
-
-      - name: Regenerate iOS platform (CocoaPods compatibility)
-        run: |
-          rm -rf ios
-          flutter create --platforms=ios --project-name isai .
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build iOS (debug, no codesign)
-        run: flutter build ios --debug --no-codesign
-
-      - name: Package iOS App
-        run: |
-          mkdir -p build/ios-release
-          cd build/ios/iphoneos
-          zip -r ../../ios-release/isai-ios-debug.zip Runner.app
-
-      - name: Upload iOS Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-app
-          path: build/ios-release/isai-ios-debug.zip
-
   release:
     name: Create GitHub Release
-    needs: [build-android, build-linux, build-windows, build-ios]
+    needs: [build-android, build-linux, build-windows]
     runs-on: ubuntu-latest
 
     steps:
@@ -268,12 +243,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-app
-          path: release-assets/
-
-      - name: Download iOS Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-app
           path: release-assets/
 
       - name: Extract Latest Changelog Entry
