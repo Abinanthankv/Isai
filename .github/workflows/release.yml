@@ -186,6 +186,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Clean Flutter ephemeral cache (symlink workaround)
+        run: |
+          if (Test-Path "windows\flutter\ephemeral") {
+            Remove-Item -Recurse -Force "windows\flutter\ephemeral"
+          }
+
       - name: Build Windows
         run: flutter build windows --release
 
