@@ -34,8 +34,9 @@ class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
   factory PodcastNowPlayingScreen.fromMediaItem() {
     final item = audioHandler.mediaItem.value;
     final extras = item?.extras ?? {};
+    final epId = extras['episodeId'] as String? ?? item?.id ?? '';
     final ep = PodcastEpisode(
-      id: item?.id ?? '',
+      id: epId,
       title: extras['episodeTitle'] as String? ?? item?.title ?? '',
       description: extras['episodeDescription'] as String?,
       audioUrl: item?.id,
@@ -68,10 +69,14 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   DateTime? _sleepTimerEnd;
   int _lastSleepDisplayMinutes = -1;
   bool _wasPlaying = false;
+  ContinueListeningData? _savedEpisodeData;
   PodcastProgressNotifier? _progressNotifier;
   LastPlayedPodcastNotifier? _lastPlayedNotifier;
   bool _chaptersExpanded = false;
   bool _descriptionExpanded = false;
+  Timer? _saveDebounceTimer;
+  int _lastSavedPosition = 0;
+  bool _isLoading = false;
 
   static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -81,9 +86,13 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     _progressNotifier = ref.read(podcastProgressProvider.notifier);
     _lastPlayedNotifier = ref.read(lastPlayedPodcastProvider.notifier);
     final current = audioHandler.mediaItem.value;
-    final isAlreadyPlaying = current?.id == widget.episode.audioUrl;
+    final currentId = current?.id;
+    final currentEpId = current?.extras?['episodeId'] as String?;
+    final isAlreadyPlaying = currentId == widget.episode.audioUrl
+        || currentEpId == widget.episode.id;
     if (!isAlreadyPlaying) {
-      _play().catchError((_) {});
+      _isLoading = true;
+      _play().catchError((_) { if (mounted) setState(() => _isLoading = false); });
     }
     _playbackStateSub = audioHandler.playbackState.listen((state) {
       if (_sleepTimerEnd != null && !state.playing && _sleepTimer != null) {
@@ -94,6 +103,24 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
       if (_wasPlaying && !state.playing) {
         _saveProgress();
       }
+      if (!_wasPlaying && state.playing) {
+        _savedEpisodeData = ContinueListeningData(
+          podcastTitle: widget.podcastTitle,
+          podcastArtist: widget.podcastArtist,
+          podcastArtwork: widget.podcastArtwork,
+          episodeArtwork: widget.episode.artworkUrl,
+          episodeTitle: widget.episode.title,
+          episodeId: widget.episode.id,
+          audioUrl: widget.episode.audioUrl ?? widget.episode.id,
+          duration: audioHandler.mediaItem.value?.duration
+              ?? Duration(seconds: widget.episode.durationSec ?? 0),
+          feedUrl: widget.feedUrl,
+          primaryGenre: widget.primaryGenre,
+        );
+      }
+      if (_isLoading && state.playing) {
+        if (mounted) setState(() => _isLoading = false);
+      }
       _wasPlaying = state.playing;
     });
   }
@@ -102,36 +129,54 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   void dispose() {
     _playbackStateSub?.cancel();
     _sleepTimer?.cancel();
-    Future(() => _saveProgress());
+    _saveDebounceTimer?.cancel();
+    _saveNow();
     super.dispose();
   }
 
-  Future<void> _saveProgress() async {
+  void _saveProgress() {
+    final data = _savedEpisodeData;
+    if (data == null) return;
     final state = audioHandler.playbackState.value;
     final pos = state.position.inMilliseconds;
-    if (pos > 5000) {
-      final key = '${widget.podcastTitle}_${widget.episode.id}';
+    if (pos < 5000 || pos == _lastSavedPosition) return;
+    _lastSavedPosition = pos;
+    final key = data.episodeKey;
+    final savedData = data.copyWith(
+      position: Duration(milliseconds: pos),
+      lastPlayedAt: DateTime.now(),
+    );
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
       _progressNotifier?.save(key, pos);
-      final actualDuration = audioHandler.mediaItem.value?.duration
-          ?? Duration(seconds: widget.episode.durationSec ?? 0);
-      _lastPlayedNotifier?.save(ContinueListeningData(
-        podcastTitle: widget.podcastTitle,
-        podcastArtist: widget.podcastArtist,
-        podcastArtwork: widget.podcastArtwork,
-        episodeArtwork: widget.episode.artworkUrl,
-        episodeTitle: widget.episode.title,
-        episodeId: widget.episode.id,
-        audioUrl: widget.episode.audioUrl ?? widget.episode.id,
-        duration: actualDuration,
-        position: Duration(milliseconds: pos),
-        feedUrl: widget.feedUrl,
-        primaryGenre: widget.primaryGenre,
-      ));
-    }
+      _lastPlayedNotifier?.save(savedData);
+    });
+  }
+
+  void _saveNow() {
+    final data = _savedEpisodeData;
+    if (data == null) return;
+    final state = audioHandler.playbackState.value;
+    final pos = state.position.inMilliseconds;
+    if (pos < 5000 || pos == _lastSavedPosition) return;
+    _lastSavedPosition = pos;
+    _progressNotifier?.save(data.episodeKey, pos);
+    _lastPlayedNotifier?.save(data.copyWith(
+      position: Duration(milliseconds: pos),
+      lastPlayedAt: DateTime.now(),
+    ));
   }
 
   Future<void> _play() async {
     var episode = widget.episode;
+    var audioUrl = episode.audioUrl;
+    if (audioUrl != null && audioUrl.isNotEmpty) {
+      final resolved = await PodcastApiService.resolveAudioUrl(audioUrl);
+      if (resolved.isNotEmpty) {
+        await _startPlayback(resolved);
+        return;
+      }
+    }
     if (widget.feedUrl != null && widget.feedUrl!.isNotEmpty) {
       final fresh = await PodcastApiService().fetchEpisodes(widget.feedUrl!);
       final match = fresh.where((e) =>
@@ -142,6 +187,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     }
     final url = episode.audioUrl ?? '';
     final resolved = url.isNotEmpty ? await PodcastApiService.resolveAudioUrl(url) : url;
+    if (resolved.isNotEmpty) {
+      await _startPlayback(resolved);
+    }
+  }
+
+  Future<void> _startPlayback(String resolved) async {
     await audioHandler.customAction('play', {
       'url': resolved,
       'title': widget.episode.title,
@@ -154,6 +205,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'podcastTitle': widget.podcastTitle,
         'podcastArtist': widget.podcastArtist,
         'podcastArtwork': widget.podcastArtwork ?? '',
+        'episodeId': widget.episode.id,
         'episodeTitle': widget.episode.title,
         'episodeDescription': widget.episode.description ?? '',
         'episodeDuration': widget.episode.durationSec,
@@ -166,7 +218,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   }
 
   Future<void> _playEpisode(PodcastEpisode episode, int index) async {
-    await _saveProgress();
+    _saveProgress();
     if (widget.feedUrl != null && widget.feedUrl!.isNotEmpty) {
       final fresh = await PodcastApiService().fetchEpisodes(widget.feedUrl!);
       final match = fresh.where((e) =>
@@ -189,6 +241,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'podcastTitle': widget.podcastTitle,
         'podcastArtist': widget.podcastArtist,
         'podcastArtwork': widget.podcastArtwork ?? '',
+        'episodeId': episode.id,
         'episodeTitle': episode.title,
         'episodeDuration': episode.durationSec,
         'feedUrl': widget.feedUrl ?? '',
@@ -306,7 +359,6 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     _PodcastProgressBar(
                       onPreviousEpisode: _previousEpisode,
                       onNextEpisode: _nextEpisode,
-                      onSaveProgress: _saveProgress,
                     ),
                     const SizedBox(height: 24),
                     _buildChaptersSection(context),
@@ -385,6 +437,21 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
               ),
             ),
           ),
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text('Loading episode…',
+                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -626,12 +693,10 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 class _PodcastProgressBar extends StatefulWidget {
   final VoidCallback onPreviousEpisode;
   final VoidCallback onNextEpisode;
-  final VoidCallback onSaveProgress;
 
   const _PodcastProgressBar({
     required this.onPreviousEpisode,
     required this.onNextEpisode,
-    required this.onSaveProgress,
   });
 
   @override
@@ -644,7 +709,6 @@ class _PodcastProgressBarState extends State<_PodcastProgressBar> {
   Duration _currentPosition = Duration.zero;
   Duration? _initialSeekPosition;
   int _accumulatedSeekSeconds = 0;
-  bool _wasPlaying = false;
 
   @override
   void initState() {
@@ -722,11 +786,6 @@ class _PodcastProgressBarState extends State<_PodcastProgressBar> {
         final playing = state?.playing ?? false;
         final mediaItem = audioHandler.mediaItem.value;
         final duration = mediaItem?.duration ?? Duration.zero;
-
-        if (_wasPlaying && !playing) {
-          widget.onSaveProgress();
-        }
-        _wasPlaying = playing;
 
         double sliderValue = 0.0;
         if (duration.inMilliseconds > 0) {

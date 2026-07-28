@@ -22,6 +22,7 @@ class PodcastsSubScreen extends ConsumerStatefulWidget {
 class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
+  String? _loadingEpisodeId;
 
   static const Map<String, IconData> _genreIcons = {
     'Comedy': Icons.theater_comedy_rounded,
@@ -300,54 +301,67 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
         current: current,
         progress: progress,
         subtitle: remainingStr,
-        trailing: Icon(
-          Icons.play_circle_fill_rounded,
-          color: Theme.of(context).colorScheme.primary,
-          size: 36,
-        ),
-        onTap: () async {
-          final isSame = audioHandler.mediaItem.value?.id == current.audioUrl
-              || audioHandler.mediaItem.value?.id == current.episodeId;
-          if (isSame) {
-            await audioHandler.play();
-            await audioHandler.seek(current.position);
-          } else {
-            var audioUrl = current.audioUrl;
-            if (current.feedUrl != null && current.feedUrl!.isNotEmpty) {
-              final fresh = await PodcastApiService().fetchEpisodes(current.feedUrl!);
-              final match = fresh.where((e) =>
-                e.title == current.episodeTitle || e.id == current.episodeId
-              ).firstOrNull;
-              if (match?.audioUrl != null) audioUrl = match!.audioUrl!;
-            }
-            final resolved = audioUrl.isNotEmpty ? await PodcastApiService.resolveAudioUrl(audioUrl) : audioUrl;
-            await audioHandler.customAction('play', {
-              'url': resolved,
-              'title': current.episodeTitle,
-              'artist': current.podcastArtist,
-              'artworkUrl': current.podcastArtwork ?? '',
-              'forceReplace': true,
-              'mediaType': 'podcast',
-              'extras': {
-                'mediaType': 'podcast',
-                'podcastTitle': current.podcastTitle,
-                'podcastArtist': current.podcastArtist,
-                'podcastArtwork': current.podcastArtwork ?? '',
-                'episodeTitle': current.episodeTitle,
-                'episodeDuration': current.duration.inSeconds,
-                'feedUrl': current.feedUrl ?? '',
-              },
-            });
-            await Future.delayed(const Duration(milliseconds: 500));
-            await audioHandler.seek(current.position);
-          }
-          if (context.mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => PodcastNowPlayingScreen.fromMediaItem(),
+        trailing: _loadingEpisodeId == current.episodeId
+            ? const SizedBox(
+                width: 36, height: 36,
+                child: Center(child: SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5))),
+              )
+            : Icon(
+                Icons.play_circle_fill_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 36,
               ),
-            );
+        onTap: () async {
+          if (_loadingEpisodeId != null) return;
+          setState(() => _loadingEpisodeId = current.episodeId);
+          try {
+            final isSame = audioHandler.mediaItem.value?.id == current.audioUrl
+                || audioHandler.mediaItem.value?.id == current.episodeId;
+            if (isSame) {
+              await audioHandler.play();
+              await audioHandler.seek(current.position);
+            } else {
+              var audioUrl = current.audioUrl;
+              if (current.feedUrl != null && current.feedUrl!.isNotEmpty) {
+                final fresh = await PodcastApiService().fetchEpisodes(current.feedUrl!);
+                final match = fresh.where((e) =>
+                  e.title == current.episodeTitle || e.id == current.episodeId
+                ).firstOrNull;
+                if (match?.audioUrl != null) audioUrl = match!.audioUrl!;
+              }
+              final resolved = audioUrl.isNotEmpty ? await PodcastApiService.resolveAudioUrl(audioUrl) : audioUrl;
+              await audioHandler.customAction('play', {
+                'url': resolved,
+                'title': current.episodeTitle,
+                'artist': current.podcastArtist,
+                'artworkUrl': current.podcastArtwork ?? '',
+                'forceReplace': true,
+                'mediaType': 'podcast',
+                'extras': {
+                  'mediaType': 'podcast',
+                  'podcastTitle': current.podcastTitle,
+                  'podcastArtist': current.podcastArtist,
+                  'podcastArtwork': current.podcastArtwork ?? '',
+                  'episodeId': current.episodeId,
+                  'episodeTitle': current.episodeTitle,
+                  'episodeDuration': current.duration.inSeconds,
+                  'feedUrl': current.feedUrl ?? '',
+                },
+              });
+              await Future.delayed(const Duration(milliseconds: 500));
+              await audioHandler.seek(current.position);
+            }
+            if (context.mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PodcastNowPlayingScreen.fromMediaItem(),
+                ),
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _loadingEpisodeId = null);
           }
         },
         onLongPress: () => _confirmRemove(current),

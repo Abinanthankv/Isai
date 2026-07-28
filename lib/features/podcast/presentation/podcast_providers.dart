@@ -239,6 +239,12 @@ class PodcastProgressNotifier extends StateNotifier<Map<String, int>> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    const versionKey = 'podcast_progress_ver';
+    if (prefs.getInt(versionKey) != 1) {
+      await prefs.remove('podcast_progress');
+      await prefs.setInt(versionKey, 1);
+      return;
+    }
     final raw = prefs.getString('podcast_progress');
     if (raw != null) {
       try {
@@ -358,6 +364,13 @@ class LastPlayedPodcastNotifier extends StateNotifier<Map<String, ContinueListen
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    const verKey = 'podcast_last_played_ver';
+    if (prefs.getInt(verKey) != 1) {
+      await prefs.remove('podcast_last_played');
+      await prefs.remove('podcast_progress');
+      await prefs.setInt(verKey, 1);
+      return;
+    }
     final raw = prefs.getString('podcast_last_played');
     if (raw == null) return;
     try {
@@ -413,6 +426,7 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
 
   if (isLive) {
     final extras = mediaItem!.extras!;
+    final epId = extras['episodeId'] as String? ?? mediaItem.id;
     final epArtwork = (extras['episodeArtwork'] as String?)?.isNotEmpty == true
         ? extras['episodeArtwork'] as String?
         : null;
@@ -422,7 +436,7 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
       podcastArtwork: extras['podcastArtwork'] as String?,
       episodeArtwork: epArtwork,
       episodeTitle: mediaItem.title,
-      episodeId: mediaItem.id,
+      episodeId: epId,
       audioUrl: mediaItem.id,
       duration: mediaItem.duration ?? Duration.zero,
       feedUrl: extras['feedUrl'] as String?,
@@ -430,7 +444,7 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
     ));
   }
 
-  final liveKey = isLive ? '${mediaItem!.extras!['podcastTitle'] as String? ?? ''}_${mediaItem.id}' : null;
+  final liveKey = isLive ? '${mediaItem!.extras!['podcastTitle'] as String? ?? ''}_${mediaItem.extras!['episodeId'] as String? ?? mediaItem.id}' : null;
 
   final saved = all.entries.toList()
     ..sort((a, b) => (b.value.lastPlayedAt ?? DateTime(0))

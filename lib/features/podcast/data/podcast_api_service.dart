@@ -8,6 +8,8 @@ import 'podcast_models.dart';
 class PodcastApiService {
   final Dio _dio;
   static final _resolvedCache = <String, _ResolvedUrl>{};
+  static final _episodeCache = <String, _CachedFeed>{};
+  static const _feedTtl = Duration(seconds: 30);
 
   PodcastApiService() : _dio = Dio(BaseOptions(
     headers: {'User-Agent': 'Isai-Podcast/1.0'},
@@ -67,6 +69,8 @@ class PodcastApiService {
   }
 
   Future<List<PodcastEpisode>> fetchEpisodes(String feedUrl) async {
+    final cached = _episodeCache[feedUrl];
+    if (cached != null && !cached.isExpired) return cached.episodes;
     try {
       final res = await _dio.get<String>(feedUrl);
       final raw = res.data;
@@ -79,7 +83,7 @@ class PodcastApiService {
       final artwork = _artworkFromChannel(channel);
 
       final ns = 'https://podcastindex.org/namespace/1.0';
-      return channel.findElements('item').map((item) {
+      final episodes = channel.findElements('item').map((item) {
         final enclosure = item.findElements('enclosure').firstOrNull;
         final audioUrl = enclosure?.getAttribute('url') ?? '';
         final guid = item.findElements('guid').firstOrNull?.text;
@@ -104,6 +108,8 @@ class PodcastApiService {
           guid: guid,
         );
       }).toList();
+      _episodeCache[feedUrl] = _CachedFeed(episodes);
+      return episodes;
     } catch (e) {
       print('[PodcastApi] RSS parse error for $feedUrl: $e');
       return [];
@@ -351,37 +357,25 @@ class PodcastApiService {
   static Future<String> resolveAudioUrl(String url) async {
     final cached = _resolvedCache[url];
     if (cached != null && !cached.isExpired) return cached.url;
+    final client = HttpClient();
+    client.autoUncompress = false;
+    client.connectionTimeout = const Duration(seconds: 5);
     try {
-      final client = HttpClient();
-      client.autoUncompress = false;
-      client.connectionTimeout = const Duration(seconds: 5);
-      var currentUrl = url;
-      int? finalStatus;
-      for (var i = 0; i < 5; i++) {
-        final request = await client.getUrl(Uri.parse(currentUrl));
-        request.followRedirects = false;
-        final response = await request.close().timeout(const Duration(seconds: 5));
-        finalStatus = response.statusCode;
-        if (response.statusCode >= 300 && response.statusCode < 400) {
-          final location = response.headers.value('location');
-          if (location == null) break;
-          currentUrl = Uri.parse(currentUrl).resolve(location).toString();
-          await response.drain();
-        } else {
-          await response.drain();
-          break;
-        }
-      }
+      final request = await client.getUrl(Uri.parse(url));
+      request.followRedirects = true;
+      final response = await request.close().timeout(const Duration(seconds: 10));
+      final status = response.statusCode;
+      final resolvedUrl = response.redirects.isNotEmpty
+          ? response.redirects.last.location.toString()
+          : url;
       client.close(force: true);
-      if (finalStatus != null && finalStatus >= 200 && finalStatus < 400) {
-        _resolvedCache[url] = _ResolvedUrl(currentUrl);
-      } else if (finalStatus != null && finalStatus == 403) {
-        final stallUrl = currentUrl;
-        _resolvedCache[url] = _ResolvedUrl(stallUrl);
-        return stallUrl;
+      if (status >= 200 && status < 400) {
+        _resolvedCache[url] = _ResolvedUrl(resolvedUrl);
+        return resolvedUrl;
       }
-      return currentUrl;
+      return '';
     } catch (_) {
+      client.close(force: true);
       _resolvedCache[url] = _ResolvedUrl(url);
       return url;
     }
@@ -394,6 +388,16 @@ class _ResolvedUrl {
   static const _ttl = Duration(hours: 1);
 
   _ResolvedUrl(this.url) : cachedAt = DateTime.now();
+
+  bool get isExpired => DateTime.now().difference(cachedAt) > _ttl;
+}
+
+class _CachedFeed {
+  final List<PodcastEpisode> episodes;
+  final DateTime cachedAt;
+  static const _ttl = Duration(seconds: 30);
+
+  _CachedFeed(this.episodes) : cachedAt = DateTime.now();
 
   bool get isExpired => DateTime.now().difference(cachedAt) > _ttl;
 }
