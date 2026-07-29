@@ -1140,6 +1140,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         await _playlist.add(nextSource);
         _originalItems.add(nextItem);
         
+        if (_isMediaKit) {
+          _broadcastLinuxQueue();
+        }
+        
         print('[AudioHandler] Autoplay: Added "${nextItem.title}" to queue end.');
         
         // Enrich it fully in the background
@@ -1154,10 +1158,19 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   // Helper to resolve a lazy track and update the playlist
   Future<bool> _resolveTrack(int index) async {
-    final sequence = _player.sequence;
-    if (sequence == null || index >= sequence.length) return false;
-    
-    final item = sequence[index].tag as MediaItem;
+    // On mediaKit, _playlist is not connected to _player, so _player.sequence
+    // is null. Get the item from _playlist instead.
+    MediaItem item;
+    if (_isMediaKit) {
+      if (index >= _playlist.length) return false;
+      final source = _playlist.children[index];
+      if (source is! IndexedAudioSource || source.tag is! MediaItem) return false;
+      item = source.tag as MediaItem;
+    } else {
+      final sequence = _player.sequence;
+      if (sequence == null || index >= sequence.length) return false;
+      item = sequence[index].tag as MediaItem;
+    }
     final isLazy = item.id.contains('lazy.torbox.internal') || 
                    item.id.contains('lazy.flac.internal') || 
                    item.id.contains('lazy.plugin.internal') ||
@@ -1422,11 +1435,15 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
         // IMPORTANT: If this is the active track, update mediaItem so UI changes
         if (isActive) {
+          if (_isMediaKit) {
+            // Set source first so playbackEvent queries are valid
+            final singleSource = await _createAudioSource(newItem);
+            await _player.setAudioSource(singleSource);
+          }
           mediaItem.add(newItem);
           playbackState.add(_transformEvent(_player.playbackEvent));
           if (_isMediaKit) {
-            final singleSource = await _createAudioSource(newItem);
-            await _player.setAudioSource(singleSource);
+            // already set above
           }
         }
 
@@ -1630,7 +1647,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       // updateQueue already plays it on Linux
       return;
     }
-    if (item.id.contains('lazy.torbox.internal') || item.id.contains('lazy.flac.internal')) {
+    if (item.id.contains('lazy.torbox.internal') || item.id.contains('lazy.flac.internal') || item.id.contains('lazy.plugin.internal')) {
       print('[AudioHandler] playMediaItem: Pre-resolving track 0 before play()');
       await _resolveTrack(0);
     }
@@ -1972,7 +1989,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           await _player.seek(Duration.zero, index: 0);
           _consecutiveFailures = 0; // Reset on new play request
           
-          if (rotatedItems.first.id.contains('lazy.torbox.internal') || rotatedItems.first.id.contains('lazy.flac.internal')) {
+          if (rotatedItems.first.id.contains('lazy.torbox.internal') || 
+              rotatedItems.first.id.contains('lazy.flac.internal') || 
+              rotatedItems.first.id.contains('lazy.plugin.internal')) {
             print('[AudioHandler] play: Pre-resolving track 0 for rotated items');
             await _resolveTrack(0);
           }
@@ -2040,6 +2059,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             await _playlist.insert(targetIndex + 1, newSource);
             await _playlist.removeAt(targetIndex);
           }
+          if (_isMediaKit) _broadcastLinuxQueue();
           if (wasPlaying) _player.play();
         } else {
           // Default: Play Next logic
@@ -2055,6 +2075,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           final insertAt = _player.currentIndex! + 1;
           await _playlist.insert(insertAt, source);
           _originalItems.insert(insertAt, item);
+          if (_isMediaKit) _broadcastLinuxQueue();
           print('[AudioHandler] Play Next: Added "${item.title}" at $insertAt');
           _enrichTrackMetadata(insertAt);
         }
@@ -2135,7 +2156,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
         _originalItems.addAll(newItems);
         
-        // The queue is updated by _playlist listeners automatically.
+        if (_isMediaKit) _broadcastLinuxQueue();
+        
         if (newItems.isNotEmpty) {
            _enrichQueueInRange(currentIndex + 1);
         }
@@ -2266,17 +2288,41 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     print('[AudioHandler] _createAudioSource: "${item.title}" (isYouTube: $isYouTube, linkType: ${extras['linkType']})');
 
     if (isYouTube) {
-       print('[AudioHandler] _createAudioSource: Returning _YouTubeStreamAudioSource for "${item.title}"');
-       return _YouTubeStreamAudioSource(
-         this, // Pass handler for access to _yt
-         item,
-       );
+      if (_isMediaKit) {
+        print('[AudioHandler] _createAudioSource: Resolving YouTube URL for mediaKit...');
+        final resolvedUrl = await _resolveYouTubeUrl(item.id);
+        if (resolvedUrl != null) {
+          print('[AudioHandler] _createAudioSource: Using direct URI source for mpv');
+          return AudioSource.uri(
+            Uri.parse(resolvedUrl),
+            tag: item,
+            headers: {
+              'User-Agent': _ytUrlCache[item.id]?.userAgent ?? 'com.google.ios.youtube/20.10.4 (iPhone; U; iOS 18.0; en_US)',
+            },
+          );
+        }
+        print('[AudioHandler] _createAudioSource: URL resolution failed, falling back to StreamAudioSource');
+      }
+      print('[AudioHandler] _createAudioSource: Returning _YouTubeStreamAudioSource for "${item.title}"');
+      return _YouTubeStreamAudioSource(
+        this, // Pass handler for access to _yt
+        item,
+      );
     }
 
     if (item.id.contains('lazy.torbox.internal') || 
         item.id.contains('lazy.flac.internal') || 
         item.id.contains('lazy.plugin.internal') ||
         (item.extras?['linkType'] == 'soundcloud' && !item.id.startsWith('http'))) {
+        if (_isMediaKit) {
+          // On mediaKit, resolve lazy sources eagerly instead of using
+          // _StallingAudioSource (StreamAudioSource doesn't work with mpv).
+          final resolvedSource = await _resolveLazySource(item, uri);
+          if (resolvedSource != null) return resolvedSource;
+          // Fallback: use URI placeholder (mpv will error but won't crash)
+          print('[AudioHandler] _createAudioSource: Using URI placeholder for "${item.title}" (mediaKit)');
+          return AudioSource.uri(uri, tag: item);
+        }
         print('[AudioHandler] _createAudioSource: Returning _StallingAudioSource for "${item.title}" pending resolution');
         return _StallingAudioSource(item);
     }
@@ -2522,8 +2568,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     
     // Update mediaItem
     mediaItem.add(tagItem);
-    playbackState.add(_transformEvent(_player.playbackEvent));
-    
+    try {
+      playbackState.add(_transformEvent(_player.playbackEvent));
+    } catch (_) {}
+
     // Stalling / Resolution for lazy sources
     final isLazy = tagItem.id.contains('lazy.torbox.internal') || 
                    tagItem.id.contains('lazy.flac.internal') || 
@@ -2532,17 +2580,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                    
     if (isLazy) {
       print('[AudioHandler] Linux resolving track $index: ${tagItem.title}');
-      final wasPlaying = _player.playing;
-      _player.pause();
+      if (_player.playing) try { _player.pause(); } catch (_) {}
       final resolved = await _resolveTrack(index);
       if (resolved) {
         // Re-read tag item after resolution
         final updatedSource = _playlist.children[index];
         tagItem = (updatedSource as IndexedAudioSource).tag as MediaItem;
-        if (wasPlaying) _player.play();
       } else {
-        await _player.stop();
+        try { await _player.stop(); } catch (_) {}
         return;
+      }
+      try { await _player.play(); } catch (e) {
+        print('[AudioHandler] _playLinuxTrack play failed: $e');
       }
     } else {
       // Create native single AudioSource
@@ -2574,6 +2623,136 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         .toList();
     queue.add(List.unmodifiable(items));
   }
+
+  /// Resolve a lazy source (plugin/torbox/flac) on mediaKit eagerly.
+  /// Returns the real AudioSource or null if resolution is needed later.
+  Future<AudioSource?> _resolveLazySource(MediaItem item, Uri uri) async {
+    final host = uri.host;
+    try {
+      if (host == 'lazy.plugin.internal') {
+        final pluginId = uri.pathSegments[0];
+        final trackId = Uri.decodeComponent(uri.pathSegments[1]);
+        print('[AudioHandler] _resolveLazySource: Resolving plugin $pluginId for "${item.title}"');
+        final pluginManager = getIt<PluginManager>();
+        String? realUrl;
+        if (pluginId.startsWith('eclipse_')) {
+          realUrl = await pluginManager.resolveEclipseStream(pluginId.replaceFirst('eclipse_', ''), trackId);
+        } else {
+          realUrl = await pluginManager.resolveStream(pluginId, trackId);
+        }
+        if (realUrl == null || realUrl.isEmpty) {
+          // Try fallback plugins (similar to _resolveTrack)
+          final prioritized = pluginManager.prioritizedActiveAddons;
+          final title = item.title;
+          final artist = item.artist ?? '';
+          for (final altPlugin in prioritized) {
+            final altId = altPlugin is JsPlugin ? altPlugin.id : 'eclipse_${(altPlugin as EclipseAddon).id}';
+            if (altId == pluginId) continue;
+            try {
+              List<ScraperResult> results;
+              if (altId.startsWith('eclipse_')) {
+                results = await pluginManager.searchEclipse(altId.replaceFirst('eclipse_', ''), '$artist $title');
+              } else {
+                results = await pluginManager.search(altId, '$artist $title');
+              }
+              if (results.isNotEmpty) {
+                final match = results.first;
+                final altTrackId = match.extras?['trackId'] as String? ?? match.url;
+                if (altId.startsWith('eclipse_')) {
+                  realUrl = await pluginManager.resolveEclipseStream(altId.replaceFirst('eclipse_', ''), altTrackId);
+                } else {
+                  realUrl = await pluginManager.resolveStream(altId, altTrackId);
+                }
+                if (realUrl != null && realUrl.isNotEmpty) break;
+              }
+            } catch (_) {}
+          }
+        }
+        if (realUrl != null && realUrl.isNotEmpty) {
+          print('[AudioHandler] _resolveLazySource: Resolved plugin URL: ${realUrl.length > 80 ? realUrl.substring(0, 80) : realUrl}');
+          final newItem = item.copyWith(
+            id: realUrl,
+            extras: {...?item.extras, 'originalId': item.id},
+          );
+          return AudioSource.uri(Uri.parse(realUrl), tag: newItem);
+        }
+      } else if (host == 'lazy.torbox.internal') {
+        final torrentId = int.parse(uri.pathSegments[0]);
+        final fileId = int.parse(uri.pathSegments[1]);
+        final repo = getIt<MusicRepository>();
+        final realUrl = await repo.getStreamUrl(torrentId, fileId);
+        if (realUrl != null) {
+          final newItem = item.copyWith(
+            id: realUrl,
+            extras: {...?item.extras, 'torrentId': torrentId, 'fileId': fileId, 'originalId': item.id},
+          );
+          return AudioSource.uri(Uri.parse(realUrl), tag: newItem);
+        }
+      } else if (host == 'lazy.flac.internal') {
+        final title = uri.queryParameters['title'] ?? item.title;
+        final artist = uri.queryParameters['artist'] ?? item.artist ?? '';
+        final query = '$artist $title'.trim();
+        final repo = getIt<MusicRepository>();
+        final results = await repo.searchFLAC(query);
+        final result = results.isEmpty ? null : results.firstWhere(
+          (r) => r.isGoodMatch(title, artist),
+          orElse: () => results.first,
+        );
+        if (result != null) {
+          final newItem = item.copyWith(
+            id: result.url,
+            extras: {...?item.extras, 'linkType': result.linkType, 'originalId': item.id},
+          );
+          return AudioSource.uri(Uri.parse(result.url), tag: newItem);
+        }
+      }
+    } catch (e) {
+      print('[AudioHandler] _resolveLazySource failed for "${item.title}": $e');
+    }
+    return null;
+  }
+
+  Future<String?> _resolveYouTubeUrl(String videoId) async {
+    final cached = _ytUrlCache[videoId];
+    if (cached != null && DateTime.now().isBefore(cached.expiry)) {
+      return cached.url;
+    }
+    try {
+      final manifest = await _yt.videos.streamsClient.getManifest(
+        videoId,
+        ytClients: _ytClients,
+      );
+      final streamInfo = manifest.audioOnly
+          .where((s) => s.container.toString().toLowerCase().contains('mp4'))
+          .withHighestBitrate();
+      final url = streamInfo.url.toString();
+      _ytUrlCache[videoId] = (
+        url: url,
+        expiry: DateTime.now().add(const Duration(hours: 5)),
+        contentLength: streamInfo.size.totalBytes,
+        userAgent: 'com.google.ios.youtube/20.10.4 (iPhone; U; iOS 18.0; en_US)',
+      );
+      return url;
+    } catch (e) {
+      print('[AudioHandler] youtube_explode failed for $videoId: $e');
+      try {
+        final service = YoutubeVideoService();
+        final res = await service.resolveAudioUrlInnerTube(videoId);
+        if (res != null) {
+          _ytUrlCache[videoId] = (
+            url: res.url,
+            expiry: DateTime.now().add(const Duration(hours: 5)),
+            contentLength: null,
+            userAgent: res.userAgent,
+          );
+          return res.url;
+        }
+      } catch (e2) {
+        print('[AudioHandler] All YouTube resolution methods failed for $videoId: $e2');
+      }
+    }
+    return null;
+  }
 }
 
 class _StallingAudioSource extends StreamAudioSource {
@@ -2591,6 +2770,7 @@ class _StallingAudioSource extends StreamAudioSource {
     throw Exception('Stalled source timed out');
   }
 }
+
 
 
 
