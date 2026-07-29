@@ -1304,12 +1304,16 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
 
           // Update the playlist with the new source
-          if (index + 1 < _playlist.length) {
-            await _playlist.insert(index + 1, newSource);
-            await _playlist.removeAt(index);
-          } else {
-            await _playlist.add(newSource);
-            await _playlist.removeAt(index);
+          // On mediaKit platforms, playback uses setAudioSource(singleSource)
+          // directly, so playlist surgery is unnecessary and may throw.
+          if (!_isMediaKit) {
+            if (index + 1 < _playlist.length) {
+              await _playlist.insert(index + 1, newSource);
+              await _playlist.removeAt(index);
+            } else {
+              await _playlist.add(newSource);
+              await _playlist.removeAt(index);
+            }
           }
 
           if (isActive) {
@@ -1385,13 +1389,16 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         final currentPos = isActive ? _player.position : Duration.zero;
         final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
 
-        // If we're at the end, just add. Otherwise, insert at index + 1
-        if (index + 1 < _playlist.length) {
-          await _playlist.insert(index + 1, newSource);
-          await _playlist.removeAt(index);
-        } else {
-          await _playlist.add(newSource);
-          await _playlist.removeAt(index);
+        // On mediaKit platforms, playback uses setAudioSource(singleSource)
+        // directly, so playlist surgery is unnecessary and may throw.
+        if (!_isMediaKit) {
+          if (index + 1 < _playlist.length) {
+            await _playlist.insert(index + 1, newSource);
+            await _playlist.removeAt(index);
+          } else {
+            await _playlist.add(newSource);
+            await _playlist.removeAt(index);
+          }
         }
 
         if (isActive) {
@@ -2534,8 +2541,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         tagItem = (updatedSource as IndexedAudioSource).tag as MediaItem;
         if (wasPlaying) _player.play();
       } else {
-        // Skip next
-        await skipToNext();
+        await _player.stop();
         return;
       }
     } else {
