@@ -67,8 +67,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   Future<void> _init() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
+    if (!io.Platform.isWindows) {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+    }
 
     // Initialize cache path
     final cacheDir = await getTemporaryDirectory();

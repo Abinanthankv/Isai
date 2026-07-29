@@ -59,7 +59,7 @@ void main() async {
     }
   }
   
-  if (Platform.isLinux) {
+  if (Platform.isLinux || Platform.isWindows) {
     JustAudioMediaKit.ensureInitialized();
   }
   
@@ -70,16 +70,20 @@ void main() async {
 
   await LiquidGlassWidgets.initialize();
 
-  audioHandler = await AudioService.init(
-    builder: () => MyAudioHandler(),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.isai.music.channel.audio',
-      androidNotificationChannelName: 'Music Playback',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
-      androidNotificationIcon: 'drawable/ic_stat_music',
-    ),
-  );
+  if (Platform.isWindows) {
+    audioHandler = MyAudioHandler();
+  } else {
+    audioHandler = await AudioService.init(
+      builder: () => MyAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.isai.music.channel.audio',
+        androidNotificationChannelName: 'Music Playback',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+        androidNotificationIcon: 'drawable/ic_stat_music',
+      ),
+    );
+  }
 
   ShareHandlerService.init();
 
