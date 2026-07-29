@@ -61,6 +61,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   int? _lastIndex;
   Duration? _lastKnownPosition;
   bool _isLoopingBack = false;
+  
+  bool get _isMediaKit => io.Platform.isLinux || io.Platform.isWindows;
 
   MyAudioHandler() {
     _init();
@@ -81,7 +83,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     }
 
     // 1. Set the initial empty playlist
-    if (!io.Platform.isLinux) {
+    if (!_isMediaKit) {
       await _player.setAudioSource(_playlist);
     }
     print('[AudioHandler] Initialized with cache at: $_cachePath');
@@ -119,7 +121,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           }
         }
 
-        if (io.Platform.isLinux) {
+        if (_isMediaKit) {
           await skipToNext();
         } else {
           pause();
@@ -451,7 +453,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
 
     _player.currentIndexStream.listen((index) async {
-      if (io.Platform.isLinux) return;
+      if (_isMediaKit) return;
 
       if (_isLoopingBack) {
         _isLoopingBack = false;
@@ -692,7 +694,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
     // 5. Update queue when playlist changes
     _player.sequenceStream.listen((sequence) {
-      if (io.Platform.isLinux) return;
+      if (_isMediaKit) return;
       if (sequence == null) return;
       final items = sequence
           .map((s) => s.tag as MediaItem?)
@@ -1297,7 +1299,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             tag: newItem,
           );
           
-          final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
+          final isActive = _isMediaKit ? (_linuxIndex == index) : (_player.currentIndex == index);
           final currentPos = isActive ? _player.position : Duration.zero;
           final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
 
@@ -1333,7 +1335,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           if (isActive) {
             mediaItem.add(newItem);
             playbackState.add(_transformEvent(_player.playbackEvent));
-            if (io.Platform.isLinux) {
+            if (_isMediaKit) {
               final singleSource = await _createAudioSource(newItem);
               await _player.setAudioSource(singleSource);
             }
@@ -1346,7 +1348,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       }
       
       if (realUrl != null) {
-        if (io.Platform.isLinux) {
+        if (_isMediaKit) {
           if (index >= _playlist.length) return false;
           final currentItem = (_playlist.children[index] as IndexedAudioSource).tag as MediaItem;
           if (currentItem.id != item.id) return false;
@@ -1379,7 +1381,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         // we append the new one and then remove the old one if needed.
         // Or if it's the current track, we can use a more surgical approach.
         
-        final isActive = io.Platform.isLinux ? (_linuxIndex == index) : (_player.currentIndex == index);
+        final isActive = _isMediaKit ? (_linuxIndex == index) : (_player.currentIndex == index);
         final currentPos = isActive ? _player.position : Duration.zero;
         final initialPosMillis = item.extras?['initialPositionMillis'] as int?;
 
@@ -1415,7 +1417,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         if (isActive) {
           mediaItem.add(newItem);
           playbackState.add(_transformEvent(_player.playbackEvent));
-          if (io.Platform.isLinux) {
+          if (_isMediaKit) {
             final singleSource = await _createAudioSource(newItem);
             await _player.setAudioSource(singleSource);
           }
@@ -1555,7 +1557,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       if (_linuxIndex + 1 < _playlist.length) {
         await _playLinuxTrack(_linuxIndex + 1);
       } else {
@@ -1571,7 +1573,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     print('[AudioHandler] Moving queue item from $index to $newIndex');
     try {
       await _playlist.move(index, newIndex);
-      if (io.Platform.isLinux) {
+      if (_isMediaKit) {
         _broadcastLinuxQueue();
       }
     } catch (e) {
@@ -1581,7 +1583,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       if (_player.position.inSeconds > 3) {
         await seek(Duration.zero);
       } else if (_linuxIndex > 0) {
@@ -1594,7 +1596,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToQueueItem(int index) async {
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       await _playLinuxTrack(index);
     } else {
       await _player.seek(Duration.zero, index: index);
@@ -1617,7 +1619,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     
     // Legacy support for single track play
     await updateQueue([item]);
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       // updateQueue already plays it on Linux
       return;
     }
@@ -1655,7 +1657,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     
     _originalItems.add(item);
     print('[AudioHandler] Item added to queue: ${item.title}');
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       _broadcastLinuxQueue();
     }
   }
@@ -1672,7 +1674,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       _originalItems.removeAt(index);
     }
 
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       _broadcastLinuxQueue();
     } else {
       final newQueue = List<MediaItem>.from(queue.value);
@@ -1699,7 +1701,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     await _playlist.addAll(sources);
     print('[AudioHandler] Queue updated: ${items.length} items');
     
-    if (io.Platform.isLinux) {
+    if (_isMediaKit) {
       _broadcastLinuxQueue();
       if (items.isNotEmpty) {
         await _playLinuxTrack(0);
@@ -2276,7 +2278,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
 
-    if (!io.Platform.isLinux && !isYouTube && torrentId != null && fileId != null) {
+    if (!_isMediaKit && !isYouTube && torrentId != null && fileId != null) {
       String ext = '.mp3';
       final db = getIt<AppDatabase>();
       final dbFile = await (db.select(db.files)
