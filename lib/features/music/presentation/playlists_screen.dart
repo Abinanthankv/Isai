@@ -21,11 +21,21 @@ import 'metadata_picker_sheet.dart';
 import 'track_action_sheet.dart';
 import 'music_providers.dart';
 
-class PlaylistsScreen extends ConsumerWidget {
+class PlaylistsScreen extends ConsumerStatefulWidget {
   const PlaylistsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PlaylistsScreen> createState() => _PlaylistsScreenState();
+}
+
+enum _PlaylistSortOption { name, newest, songCount }
+
+class _PlaylistsScreenState extends ConsumerState<PlaylistsScreen> {
+  String _searchQuery = '';
+  _PlaylistSortOption _sortBy = _PlaylistSortOption.newest;
+
+  @override
+  Widget build(BuildContext context) {
     final playlistsAsync = ref.watch(playlistProvider);
     ref.listen(settingsProvider, (prev, next) {
       if (next.eclipseIsValid && (prev == null || !prev.eclipseIsValid)) {
@@ -66,6 +76,46 @@ class PlaylistsScreen extends ConsumerWidget {
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
+                PopupMenuButton<_PlaylistSortOption>(
+                  icon: Icon(Icons.sort_rounded, color: Theme.of(context).colorScheme.primary),
+                  onSelected: (option) {
+                    setState(() {
+                      _sortBy = option;
+                    });
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: _PlaylistSortOption.newest,
+                      child: Row(
+                        children: [
+                          Icon(Icons.history_rounded, size: 18, color: _sortBy == _PlaylistSortOption.newest ? Theme.of(context).colorScheme.primary : Colors.grey),
+                          const SizedBox(width: 8),
+                          Text('Newest', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == _PlaylistSortOption.newest ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _PlaylistSortOption.name,
+                      child: Row(
+                        children: [
+                          Icon(Icons.sort_by_alpha_rounded, size: 18, color: _sortBy == _PlaylistSortOption.name ? Theme.of(context).colorScheme.primary : Colors.grey),
+                          const SizedBox(width: 8),
+                          Text('Name (A-Z)', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == _PlaylistSortOption.name ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _PlaylistSortOption.songCount,
+                      child: Row(
+                        children: [
+                          Icon(Icons.music_note_rounded, size: 18, color: _sortBy == _PlaylistSortOption.songCount ? Theme.of(context).colorScheme.primary : Colors.grey),
+                          const SizedBox(width: 8),
+                          Text('Song Count', style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: _sortBy == _PlaylistSortOption.songCount ? FontWeight.bold : FontWeight.normal)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
                 IconButton(
                   icon: Icon(Icons.add_circle_outline, color: Theme.of(context).colorScheme.primary),
                   onPressed: () => _showImportOptions(context, ref),
@@ -83,9 +133,48 @@ class PlaylistsScreen extends ConsumerWidget {
                 titlePadding: const EdgeInsetsDirectional.only(start: 48, bottom: 16),
               ),
             ),
+
+            // Search Bar
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: GlassContainer(
+                  child: TextField(
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    decoration: InputDecoration(
+                      hintText: 'Search playlists...',
+                      hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black38),
+                      prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.black38),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                  ),
+                ),
+              ),
+            ),
+
             playlistsAsync.when(
               data: (allPlaylists) {
-                final playlists = allPlaylists.where((p) => p.playlist.sourceUrl == null || !p.playlist.sourceUrl!.contains('album_')).toList();
+                var playlists = allPlaylists.where((p) => p.playlist.sourceUrl == null || !p.playlist.sourceUrl!.contains('album_')).toList();
+
+                // Apply search filter
+                if (_searchQuery.isNotEmpty) {
+                  final query = _searchQuery.toLowerCase();
+                  playlists = playlists.where((p) =>
+                    p.playlist.name.toLowerCase().contains(query)
+                  ).toList();
+                }
+
+                // Apply sort
+                if (_sortBy == _PlaylistSortOption.name) {
+                  playlists.sort((a, b) => a.playlist.name.toLowerCase().compareTo(b.playlist.name.toLowerCase()));
+                } else if (_sortBy == _PlaylistSortOption.newest) {
+                  playlists.sort((a, b) => b.playlist.id.compareTo(a.playlist.id));
+                } else if (_sortBy == _PlaylistSortOption.songCount) {
+                  playlists.sort((a, b) => b.count.compareTo(a.count));
+                }
+
                 final isEmpty = playlists.isEmpty;
                 
                 return isEmpty
