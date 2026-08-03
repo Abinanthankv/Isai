@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/injection.dart';
 import 'package:isai/core/utils/string_utils.dart';
 import '../../settings/data/torbox_settings_repository.dart';
@@ -54,6 +55,18 @@ import '../data/metadata/metadata_addon_manager.dart';
   }
   return (title: name.trim(), artist: '');
 }
+
+/// Discover screen section ids in their default display order.
+const List<String> kDefaultDiscoverSectionOrder = [
+  'genre_pills',
+  'trending',
+  'vibe_swipe',
+  'new_releases',
+  'global_trends',
+  'genres',
+  'jiosaavn',
+  'apple_music',
+];
 
 // ─── Settings Provider ───────────────────────────────────────────────────────
 final settingsProvider = NotifierProvider<SettingsNotifier, SettingsState>(() {
@@ -130,6 +143,8 @@ class SettingsState {
   final String? eclipseEmail;
   final String? eclipseAvatarUrl;
   final bool eclipseScrobbleEnabled;
+  final List<String> discoverSectionOrder;
+  final List<String> disabledDiscoverSections;
 
   bool get hardcoverHasKey => hardcoverApiKey.isNotEmpty;
 
@@ -201,6 +216,8 @@ class SettingsState {
     this.eclipseEmail,
     this.eclipseAvatarUrl,
     this.eclipseScrobbleEnabled = false,
+    this.discoverSectionOrder = kDefaultDiscoverSectionOrder,
+    this.disabledDiscoverSections = const [],
   });
 
   SettingsState copyWith({
@@ -271,6 +288,8 @@ class SettingsState {
     String? eclipseEmail,
     String? eclipseAvatarUrl,
     bool? eclipseScrobbleEnabled,
+    List<String>? discoverSectionOrder,
+    List<String>? disabledDiscoverSections,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -340,6 +359,8 @@ class SettingsState {
       eclipseEmail: eclipseEmail ?? this.eclipseEmail,
       eclipseAvatarUrl: eclipseAvatarUrl ?? this.eclipseAvatarUrl,
       eclipseScrobbleEnabled: eclipseScrobbleEnabled ?? this.eclipseScrobbleEnabled,
+      discoverSectionOrder: discoverSectionOrder ?? this.discoverSectionOrder,
+      disabledDiscoverSections: disabledDiscoverSections ?? this.disabledDiscoverSections,
     );
   }
 }
@@ -418,6 +439,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
       eclipseScrobbleEnabled: _eclipseSettings.scrobbleEnabled,
       appleMusicMetadataEnabled: _settings.isMetadataProviderEnabled('apple_music'),
       deezerMetadataEnabled: _settings.isMetadataProviderEnabled('deezer'),
+      discoverSectionOrder: _settings.discoverSectionOrder.isNotEmpty
+          ? _settings.discoverSectionOrder
+          : kDefaultDiscoverSectionOrder,
+      disabledDiscoverSections: _settings.disabledDiscoverSections,
     );
   }
 
@@ -434,6 +459,22 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setAddonPriority(List<String> priority) async {
     await _settings.setAddonPriority(priority);
     state = state.copyWith(addonPriority: priority);
+  }
+
+  Future<void> setDiscoverSectionOrder(List<String> order) async {
+    await _settings.setDiscoverSectionOrder(order);
+    state = state.copyWith(discoverSectionOrder: order);
+  }
+
+  Future<void> setDiscoverSectionEnabled(String id, bool enabled) async {
+    final current = [...state.disabledDiscoverSections];
+    if (enabled) {
+      current.remove(id);
+    } else if (!current.contains(id)) {
+      current.add(id);
+    }
+    await _settings.setDisabledDiscoverSections(current);
+    state = state.copyWith(disabledDiscoverSections: current);
   }
 
   Future<void> setAppThemeStyle(String style) async {
@@ -2578,10 +2619,41 @@ final isOfflineProvider = Provider<bool>((ref) {
 });
 
 class SelectedRegionNotifier extends Notifier<String> {
+  static const String _regionKey = 'discover_selected_region';
+  static const String _defaultRegion = 'in';
+  bool _loaded = false;
+
   @override
-  String build() => 'in';
-  
-  void set(String region) => state = region;
+  String build() {
+    _loadRegion();
+    return _defaultRegion;
+  }
+
+  Future<void> _loadRegion() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_regionKey);
+      if (!_loaded && saved != null && saved.isNotEmpty) {
+        state = saved;
+      }
+      _loaded = true;
+    } catch (_) {
+      _loaded = true;
+    }
+  }
+
+  void set(String region) {
+    _loaded = true;
+    state = region;
+    _persistRegion(region);
+  }
+
+  Future<void> _persistRegion(String region) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_regionKey, region);
+    } catch (_) {}
+  }
 }
 
 final selectedRegionProvider = NotifierProvider<SelectedRegionNotifier, String>(() {

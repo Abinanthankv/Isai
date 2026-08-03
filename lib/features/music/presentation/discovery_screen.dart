@@ -40,15 +40,30 @@ class DiscoveryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final topSongs = ref.watch(cachedTrendingSongsProvider);
     final selectedRegion = ref.watch(selectedRegionProvider);
     final isOffline = ref.watch(isOfflineProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final newReleases = ref.watch(newReleasesProvider(selectedRegion));
-    final genres = ref.watch(genresProvider);
-    final playlists = ref.watch(regionalPlaylistsProvider(selectedRegion));
-    final selectedJioLanguage = ref.watch(selectedJioSaavnLanguageProvider);
-    final jioPlaylistsAsync = ref.watch(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage));
+    final selectedTab = ref.watch(discoveryTabProvider);
+    final discoverSettings = ref.watch(settingsProvider);
+    final disabledSections = discoverSettings.disabledDiscoverSections.toSet();
+
+    final enabledSections = discoverSettings.discoverSectionOrder
+        .where((id) => !disabledSections.contains(id))
+        .toList();
+
+    final showGenreSections =
+        enabledSections.contains('genre_pills') || enabledSections.contains('genres');
+    final showNewReleases = enabledSections.contains('new_releases');
+    final showJioSaavn = enabledSections.contains('jiosaavn');
+
+    final genres =
+        showGenreSections ? ref.watch(genresProvider) : null;
+    final newReleases = showNewReleases ? ref.watch(newReleasesProvider(selectedRegion)) : null;
+    final selectedJioLanguage =
+        showJioSaavn ? ref.watch(selectedJioSaavnLanguageProvider) : 'english';
+    final jioPlaylistsAsync = showJioSaavn
+        ? ref.watch(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage))
+        : null;
 
     if (isOffline) {
       return Scaffold(
@@ -67,7 +82,6 @@ class DiscoveryScreen extends ConsumerWidget {
     }
 
     final regionName = RegionPickerSheet.getCountryName(selectedRegion);
-    final selectedTab = ref.watch(discoveryTabProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -83,17 +97,44 @@ class DiscoveryScreen extends ConsumerWidget {
           } else if (selectedTab == 'podcast') {
             ref.invalidate(podcastRecentProvider);
           } else {
-            ref.invalidate(cachedTrendingSongsProvider);
-            ref.invalidate(newReleasesProvider(selectedRegion));
-            ref.invalidate(genresProvider);
-            ref.invalidate(regionalPlaylistsProvider(selectedRegion));
-            ref.invalidate(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage));
-            await Future.wait([
-              ref.read(newReleasesProvider(selectedRegion).future).catchError((_) => <ItunesTrack>[]),
-              ref.read(genresProvider.future).catchError((_) => <DeezerGenre>[]),
-              ref.read(regionalPlaylistsProvider(selectedRegion).future).catchError((_) => <AppleMusicPlaylist>[]),
-              ref.read(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage).future).catchError((_) => <AppleMusicPlaylist>[]),
-            ]);
+            final discover = ref.read(settingsProvider);
+            final disabled = discover.disabledDiscoverSections.toSet();
+            final enabled = discover.discoverSectionOrder
+                .where((id) => !disabled.contains(id))
+                .toList();
+            final futures = <Future>[];
+            if (enabled.contains('trending')) {
+              ref.invalidate(cachedTrendingSongsProvider);
+            }
+            if (enabled.contains('new_releases')) {
+              ref.invalidate(newReleasesProvider(selectedRegion));
+              futures.add(
+                ref.read(newReleasesProvider(selectedRegion).future)
+                    .catchError((_) => <ItunesTrack>[]),
+              );
+            }
+            if (enabled.contains('genre_pills') || enabled.contains('genres')) {
+              ref.invalidate(genresProvider);
+              futures.add(
+                ref.read(genresProvider.future).catchError((_) => <DeezerGenre>[]),
+              );
+            }
+            if (enabled.contains('apple_music')) {
+              ref.invalidate(regionalPlaylistsProvider(selectedRegion));
+              futures.add(
+                ref.read(regionalPlaylistsProvider(selectedRegion).future)
+                    .catchError((_) => <AppleMusicPlaylist>[]),
+              );
+            }
+            if (enabled.contains('jiosaavn')) {
+              final lang = ref.read(selectedJioSaavnLanguageProvider);
+              ref.invalidate(jiosaavnFeaturedPlaylistsProvider(lang));
+              futures.add(
+                ref.read(jiosaavnFeaturedPlaylistsProvider(lang).future)
+                    .catchError((_) => <AppleMusicPlaylist>[]),
+              );
+            }
+            await Future.wait(futures);
           }
         },
         child: CustomScrollView(
@@ -113,37 +154,22 @@ class DiscoveryScreen extends ConsumerWidget {
                 child: PodcastsSubScreen(),
               )
             else ...[
-              SliverToBoxAdapter(
-                child: _buildQuickGenrePills(context, ref, genres, isDark),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildTrendingSongsSection(context, ref),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildVibeSwipeBanner(context, ref, isDark),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildNewReleasesSection(context, ref, newReleases, isDark),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildGlobalTrendsSection(context, ref),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildGenreBrowseSection(context, ref, genres, isDark),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildJioSaavnPlaylistsSection(context, ref, selectedJioLanguage, jioPlaylistsAsync, isDark),
-              ),
-
-              SliverToBoxAdapter(
-                child: _buildAppleMusicPlaylistsSection(context, ref, isDark),
-              ),
+              ...enabledSections.map((id) {
+                final section = _buildDiscoverSection(
+                  id,
+                  context,
+                  ref,
+                  isDark,
+                  genres,
+                  newReleases,
+                  selectedJioLanguage,
+                  jioPlaylistsAsync,
+                );
+                if (section == null) {
+                  return const SliverToBoxAdapter(child: SizedBox.shrink());
+                }
+                return SliverToBoxAdapter(child: section);
+              }),
 
               const SliverToBoxAdapter(child: SizedBox(height: 140)),
             ],
@@ -151,6 +177,39 @@ class DiscoveryScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget? _buildDiscoverSection(
+    String id,
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    AsyncValue<List<DeezerGenre>>? genres,
+    AsyncValue<List<ItunesTrack>>? newReleases,
+    String selectedJioLanguage,
+    AsyncValue<List<AppleMusicPlaylist>>? jioPlaylistsAsync,
+  ) {
+    switch (id) {
+      case 'genre_pills':
+        return _buildQuickGenrePills(context, ref, genres!, isDark);
+      case 'trending':
+        return _buildTrendingSongsSection(context, ref);
+      case 'vibe_swipe':
+        return _buildVibeSwipeBanner(context, ref, isDark);
+      case 'new_releases':
+        return _buildNewReleasesSection(context, ref, newReleases!, isDark);
+      case 'global_trends':
+        return _buildGlobalTrendsSection(context, ref);
+      case 'genres':
+        return _buildGenreBrowseSection(context, ref, genres!, isDark);
+      case 'jiosaavn':
+        return _buildJioSaavnPlaylistsSection(
+            context, ref, selectedJioLanguage, jioPlaylistsAsync!, isDark);
+      case 'apple_music':
+        return _buildAppleMusicPlaylistsSection(context, ref, isDark);
+      default:
+        return null;
+    }
   }
 
   List<Color> _getGradientForIndex(int index) {

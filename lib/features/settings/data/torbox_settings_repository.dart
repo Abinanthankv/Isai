@@ -150,6 +150,12 @@ abstract class TorBoxSettingsRepository {
 
   Future<void> setAudiobookFolder(String? folder);
   String? get audiobookFolder;
+
+  Future<void> setDiscoverSectionOrder(List<String> order);
+  List<String> get discoverSectionOrder;
+
+  Future<void> setDisabledDiscoverSections(List<String> ids);
+  List<String> get disabledDiscoverSections;
 }
 
 @LazySingleton(as: TorBoxSettingsRepository)
@@ -462,4 +468,19 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
     if (folder == null) return _prefs.remove('audiobook_folder');
     return _prefs.setString('audiobook_folder', folder);
   }
+
+  @override
+  List<String> get discoverSectionOrder => _prefs.getStringList('discover_section_order') ?? [];
+
+  @override
+  Future<void> setDiscoverSectionOrder(List<String> order) =>
+      _prefs.setStringList('discover_section_order', order);
+
+  @override
+  List<String> get disabledDiscoverSections =>
+      _prefs.getStringList('disabled_discover_sections') ?? [];
+
+  @override
+  Future<void> setDisabledDiscoverSections(List<String> ids) =>
+      _prefs.setStringList('disabled_discover_sections', ids);
 }

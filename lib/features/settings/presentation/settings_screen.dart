@@ -13,6 +13,7 @@ import 'dart:io' as io;
 import 'package:url_launcher/url_launcher.dart';
 import '../../music/presentation/lastfm_provider.dart';
 import '../../music/presentation/player_customization_screen.dart';
+import '../../music/presentation/discover_customization_screen.dart';
 import 'plugin_management_screen.dart';
 import 'storage_settings_screen.dart';
 import 'lastfm_settings_screen.dart';
@@ -132,6 +133,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                           title: 'Customize Player',
                           subtitle: 'Artwork shape, background & glow',
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerCustomizationScreen())),
+                        ),
+                        const Divider(height: 1, indent: 52),
+                        _SettingsTile(
+                          icon: Icons.dashboard_customize_outlined,
+                          title: 'Customize Discover Screen',
+                          subtitle: 'Reorder & toggle Discover sections',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscoverCustomizationScreen())),
                         ),
                       ],
                     ),
