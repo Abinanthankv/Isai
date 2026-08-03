@@ -460,6 +460,7 @@ final outsideYourBubbleProvider = FutureProvider<List<ItunesTrack>>((ref) async 
     if (results.length >= 15) break;
   }
 
+  await _enrichTrackArtwork(results);
   return results;
 });
 
@@ -519,22 +520,8 @@ final freshAndDifferentProvider = FutureProvider<List<ItunesTrack>>((ref) async 
     }
   }
 
-  // Fill missing artwork via iTunes
-  final itunes = getIt<ItunesMetadataService>();
-  final artworkFixes = <int>{};
-  for (int i = 0; i < results.length; i++) {
-    if (results[i].artworkUrl.isEmpty) artworkFixes.add(i);
-  }
-  await Future.wait(artworkFixes.map((i) async {
-    try {
-      final meta = await itunes.fetchMeta(results[i].trackName, results[i].artistName);
-      if (meta?.artworkUrlHigh != null || meta?.artworkUrlLow != null) {
-        results[i] = results[i].copyWith(
-          artworkUrl: meta!.artworkUrlHigh ?? meta.artworkUrlLow ?? '',
-        );
-      }
-    } catch (_) {}
-  }));
+  // Fill missing artwork via iTunes, then Deezer
+  await _enrichTrackArtwork(results);
 
   return results;
 });
@@ -662,6 +649,60 @@ List<ItunesTrack> _deezerTracksToItunes(List<Map<String, dynamic>> deezerTracks)
       trackTimeMillis: ((t['duration'] as num?)?.toInt() ?? 0) * 1000,
     );
   }).where((t) => t.trackName != 'Unknown').toList();
+}
+
+/// Fills missing or unreliable artwork for tracks using iTunes first, then Deezer.
+///
+/// Returns true when every track filled with a URL (used to short-circuit more work).
+Future<void> _enrichTrackArtwork(List<ItunesTrack> results) async {
+  final itunes = getIt<ItunesMetadataService>();
+  final deezer = getIt<DeezerService>();
+
+  // Only fix tracks that are missing art OR carry a Last.fm image (often broken).
+  final toFix = <int>[];
+  for (int i = 0; i < results.length; i++) {
+    final url = results[i].artworkUrl;
+    if (url.isEmpty) {
+      toFix.add(i);
+    } else if (url.contains('lastfm') || url.contains('last.fm')) {
+      toFix.add(i);
+    }
+  }
+
+  await Future.wait(toFix.map((i) async {
+    final track = results[i];
+
+    // 1) iTunes gives the best artwork.
+    try {
+      final meta = await itunes.fetchMeta(track.trackName, track.artistName);
+      final high = meta?.artworkUrlHigh;
+      final low = meta?.artworkUrlLow;
+      if (high != null && high.isNotEmpty) {
+        results[i] = track.copyWith(artworkUrl: high);
+        return;
+      }
+      if (low != null && low.isNotEmpty) {
+        results[i] = track.copyWith(artworkUrl: low);
+        return;
+      }
+    } catch (_) {}
+
+    // 2) Fall back to Deezer album art.
+    try {
+      final query = '${track.trackName} ${track.artistName}'.trim();
+      if (query.isEmpty) return;
+      final found = await deezer.searchTracks(query);
+      if (found.isEmpty) return;
+      final album = found.first['album'] as Map<String, dynamic>? ?? {};
+      final artist = found.first['artist'] as Map<String, dynamic>? ?? {};
+      final art = (album['cover_big'] as String?) ??
+          (album['cover_medium'] as String?) ??
+          (artist['picture_big'] as String?);
+      if (art != null && art.isNotEmpty) {
+        results[i] = track.copyWith(artworkUrl: art);
+      }
+    } catch (_) {}
+  }));
 }
 
 /// Decade + genre mixes from Deezer, paired from the user's listening history.
