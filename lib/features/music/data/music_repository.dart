@@ -21,6 +21,7 @@ import 'scrapers/eclipse_addon_scraper.dart';
 import 'package:drift/drift.dart';
 import 'package:isai/core/database/database.dart';
 import 'lastfm_service.dart';
+import '../utils/filename_parser.dart';
 
 
 abstract class MusicRepository {
@@ -1458,16 +1459,8 @@ class MusicRepositoryImpl implements MusicRepository {
   }
 
   ({String title, String artist}) _parseFilename(String displayName) {
-    var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-    name = name.replaceAll(RegExp(r'^\d+\s*[-.]? \s*'), '');
-    final match = RegExp(r' [-–] ').firstMatch(name);
-    if (match != null) {
-      return (
-        artist: name.substring(0, match.start).trim(),
-        title: name.substring(match.end).trim(),
-      );
-    }
-    return (title: name.trim(), artist: '');
+    final parsed = parseFilename(displayName);
+    return (title: parsed.title, artist: parsed.artist);
   }
 
   // ─── Recommendations ────────────────────────────────────────────────────────

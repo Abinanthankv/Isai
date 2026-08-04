@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../data/music_models.dart';
 import 'music_providers.dart';
 import 'now_playing_screen.dart';
+import '../utils/filename_parser.dart';
 import 'downloads_screen.dart';
 import 'liked_songs_screen.dart';
 import '../../../core/theme/apple_music_theme.dart';
@@ -787,7 +788,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
 
   @override
   Widget build(BuildContext context) {
-    final parsed = _parseFilename(widget.file.displayName);
+    final parsed = parseFilename(widget.file.displayName);
     final meta = widget.meta;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -1014,19 +1015,6 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
       ),
       child: const Icon(Icons.music_note, color: Colors.white38),
     );
-  }
-
-  ({String title, String artist}) _parseFilename(String displayName) {
-    var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-    name = name.replaceAll(RegExp(r'^\d+\s*[-.]? \s*'), '');
-    final match = RegExp(r' [-–] ').firstMatch(name);
-    if (match != null) {
-      return (
-        artist: name.substring(0, match.start).trim(),
-        title: name.substring(match.end).trim(),
-      );
-    }
-    return (title: name.trim(), artist: '');
   }
 
   String _formatPlayedAt(int playedAt) {

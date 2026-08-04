@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'music_providers.dart';
 import '../data/itunes_metadata_service.dart';
 import '../data/music_models.dart';
+import '../utils/filename_parser.dart';
 import '../../../core/theme/apple_music_components.dart';
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/glassmorphism.dart';
@@ -175,7 +176,7 @@ class _DownloadTrackTileState extends ConsumerState<_DownloadTrackTile> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final meta = widget.meta;
-    final parsed = _parseFilename(widget.file.displayName);
+    final parsed = parseFilename(widget.file.displayName);
     
     return AppleMusicListTile(
       title: meta?.trackName ?? parsed.title,
@@ -209,7 +210,7 @@ class _DownloadTrackTileState extends ConsumerState<_DownloadTrackTile> {
         );
       },
       onLongPress: () {
-        final parsed = _parseFilename(widget.file.displayName);
+        final parsed = parseFilename(widget.file.displayName);
         final itunesTrack = ItunesTrack(
           trackId: widget.file.id,
           trackName: widget.meta?.trackName ?? parsed.title,
@@ -230,18 +231,4 @@ class _DownloadTrackTileState extends ConsumerState<_DownloadTrackTile> {
       },
     );
   }
-}
-
-// Reuse from library_screen.dart (should be moved to utils)
-({String title, String artist}) _parseFilename(String displayName) {
-  var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-  name = name.replaceAll(RegExp(r'^\d+\s*[-.]? \s*'), '');
-  final match = RegExp(r' [-–] ').firstMatch(name);
-  if (match != null) {
-    return (
-      artist: name.substring(0, match.start).trim(),
-      title: name.substring(match.end).trim(),
-    );
-  }
-  return (title: name.trim(), artist: '');
 }

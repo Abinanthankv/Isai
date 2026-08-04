@@ -7,6 +7,7 @@ import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/apple_music_components.dart';
 import '../data/music_models.dart';
 import '../data/itunes_metadata_service.dart';
+import '../utils/filename_parser.dart';
 import 'music_providers.dart';
 import 'now_playing_screen.dart';
 import 'torrent_picker_sheet.dart';
@@ -504,17 +505,12 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
     );
   }
 
-  ({String title, String artist}) _parseFilename(String displayName) {
-    var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-    name = name.replaceAll(RegExp(r'^\d+\s*[-.]?\s*'), '');
-    final match = RegExp(r' [-–] ').firstMatch(name);
-    if (match != null) {
-      return (
-        artist: name.substring(0, match.start).trim(),
-        title: name.substring(match.end).trim(),
-      );
+  ParsedFileName _parseFilename(String displayName) {
+    final parsed = parseFilename(displayName);
+    if (parsed.artist.isEmpty) {
+      return ParsedFileName(title: parsed.title, artist: 'Unknown');
     }
-    return (artist: 'Unknown', title: name);
+    return parsed;
   }
 
   String _limitArtists(String artist) {

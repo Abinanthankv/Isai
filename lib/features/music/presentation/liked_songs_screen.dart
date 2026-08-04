@@ -11,6 +11,7 @@ import '../../../core/theme/theme_provider.dart';
 import '../../player/presentation/player_providers.dart';
 import 'music_providers.dart';
 import 'now_playing_screen.dart';
+import '../utils/filename_parser.dart';
 
 import '../../music/data/music_models.dart';
 import 'package:isai/main.dart'; // for navigatorKey and audioHandler
@@ -110,7 +111,7 @@ class LikedSongsScreen extends ConsumerWidget {
                       final entry = entries[adjustedIndex];
                       final trackMeta = entry.meta;
                       final file = entry.file;
-                      final parsed = _parseFilename(file.displayName);
+                      final parsed = parseFilename(file.displayName);
 
                       return AppleMusicListTile(
                         title: trackMeta.trackName ?? parsed.title,
@@ -158,7 +159,7 @@ class LikedSongsScreen extends ConsumerWidget {
                             'queue': entries.map((e) {
                               final qFile = e.file;
                               final qMeta = e.meta;
-                              final qParsed = _parseFilename(qFile.displayName);
+                              final qParsed = parseFilename(qFile.displayName);
                               String fUrl = 'https://lazy.torbox.internal/${qFile.torrentId}/${qFile.id}';
                               if (qFile.torrentId == -1) {
                                 fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qMeta.trackName ?? qParsed.title)}&artist=${Uri.encodeComponent(qMeta.artistName ?? qParsed.artist)}';
@@ -246,16 +247,4 @@ Widget _buildLastfmFolder(BuildContext context, String username) {
       ),
     ],
   );
-}
-({String title, String artist}) _parseFilename(String displayName) {
-  var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-  name = name.replaceAll(RegExp(r'^\d+\s*[-.]? \s*'), '');
-  final match = RegExp(r' [-–] ').firstMatch(name);
-  if (match != null) {
-    return (
-      artist: name.substring(0, match.start).trim(),
-      title: name.substring(match.end).trim(),
-    );
-  }
-  return (title: name.trim(), artist: '');
 }

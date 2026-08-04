@@ -33,28 +33,7 @@ import '../../settings/data/lastfm_repository.dart';
 import 'lastfm_provider.dart';
 import 'package:audiotags/audiotags.dart';
 import '../data/metadata/metadata_addon_manager.dart';
-
-
-/// Parses a raw audio filename like "Artist - Title.mp3" or "Title.mp3"
-/// and returns (title, artist).
-({String title, String artist}) parseFilename(String displayName) {
-  // 1. Strip extension
-  var name = displayName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '').trim();
-
-  // 2. Strip common track number patterns at the start (e.g. "01 - ", "01. ", "01 ")
-  name = name.replaceAll(RegExp(r'^\d+\s*[-.]? \s*'), '');
-
-  // 3. Common pattern: "Artist - Title" or "Artist – Title"
-  final sep = RegExp(r' [-–] ');
-  final match = sep.firstMatch(name);
-  if (match != null) {
-    return (
-      artist: name.substring(0, match.start).trim(),
-      title: name.substring(match.end).trim(),
-    );
-  }
-  return (title: name.trim(), artist: '');
-}
+import '../utils/filename_parser.dart';
 
 /// Discover screen section ids in their default display order.
 const List<String> kDefaultDiscoverSectionOrder = [
@@ -1643,7 +1622,11 @@ class LibraryNotifier extends Notifier<LibraryState> {
   late final AppDatabase _db;
   late final MetadataAddonManager _addonManager;
 
-  final Set<int> _enrichingIds = {};
+  /// Maximum number of external metadata requests allowed at once. Caps the
+  /// burst fired when a list first renders so we don't trip iTunes/MusicBrainz/
+  /// Deezer rate limits (429) and keep responses ordered & snappy.
+  static const int _maxConcurrentEnrich = 4;
+  int _activeEnrichFetches = 0;
   int? _lastKnownHash;
 
   @override
@@ -1903,20 +1886,34 @@ class LibraryNotifier extends Notifier<LibraryState> {
     }
   }
 
+  /// Serializes external metadata requests so we never exceed
+  /// [_maxConcurrentEnrich] simultaneous network calls.
+  Future<T> _gateEnrichment<T>(Future<T> Function() action) async {
+    while (_activeEnrichFetches >= _maxConcurrentEnrich) {
+      await Future.delayed(const Duration(milliseconds: 30));
+    }
+    _activeEnrichFetches++;
+    try {
+      return await action();
+    } finally {
+      _activeEnrichFetches--;
+    }
+  }
+
   /// On-demand enrichment for a single file. Usually called when the ListTile is bound or manually.
   Future<void> enrichTrack(TorBoxFile file) async {
     final key = '${file.torrentId}-${file.id}';
-    // Skip if already enriched OR already enriching
-    if (state.metadata.containsKey(key)) {
-      final existingMeta = state.metadata[key];
-      if (existingMeta != null && 
-          existingMeta.genre != null && existingMeta.genre!.isNotEmpty &&
-          existingMeta.album != null && existingMeta.album!.isNotEmpty) {
-        return;
-      }
+    // Skip if already enriched.
+    final existingMeta = state.metadata[key];
+    if (existingMeta != null &&
+        existingMeta.genre != null && existingMeta.genre!.isNotEmpty &&
+        existingMeta.album != null && existingMeta.album!.isNotEmpty) {
+      return;
     }
-    final enriching = Set<String>.from(state.enrichingKeys);
-    enriching.add(key);
+    // Skip if another caller is already enriching this exact file.
+    if (state.enrichingKeys.contains(key)) return;
+
+    final enriching = Set<String>.from(state.enrichingKeys)..add(key);
     state = state.copyWith(isEnriching: true, enrichingKeys: enriching);
 
     try {
@@ -1977,9 +1974,11 @@ class LibraryNotifier extends Notifier<LibraryState> {
 
       // 3. Try metadata addons (Apple Music, Deezer, etc.)
       try {
-        final addonMeta = await _addonManager.enrich(
-          dbMeta?.trackTitle ?? parsed.title,
-          dbMeta?.artist ?? parsed.artist,
+        final addonMeta = await _gateEnrichment(
+          () => _addonManager.enrich(
+            dbMeta?.trackTitle ?? parsed.title,
+            dbMeta?.artist ?? parsed.artist,
+          ),
         );
         if (addonMeta != null) {
           final extras = <String, dynamic>{
@@ -2030,10 +2029,14 @@ class LibraryNotifier extends Notifier<LibraryState> {
         }
       } catch (_) {}
 
-      // 4. Fetch from iTunes as last resort
-      // Politeness delay to prevent 429 lockout if scrolling fast
-      await Future.delayed(const Duration(milliseconds: 400));
-      final res = await _itunes.fetchMeta(dbMeta?.trackTitle ?? parsed.title, dbMeta?.artist ?? parsed.artist);
+      // 4. Fetch from iTunes as last resort. Rate limiting is handled by the
+      // shared concurrency gate above, so no fixed politeness delay is needed.
+      final res = await _gateEnrichment(
+        () => _itunes.fetchMeta(
+          dbMeta?.trackTitle ?? parsed.title,
+          dbMeta?.artist ?? parsed.artist,
+        ),
+      );
 
       if (res != null) {
         final existingStateMeta = state.metadata[key];

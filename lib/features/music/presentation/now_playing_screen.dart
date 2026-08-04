@@ -17,6 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:isai/main.dart';
 import 'music_providers.dart';
+import '../utils/filename_parser.dart';
 import 'player_visuals.dart';
 import 'share_card_widget.dart';
 import '../../music/data/music_models.dart';
