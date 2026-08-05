@@ -12,5 +12,6 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    AudioFxController.register(with: engineBridge.pluginRegistry.registrar(forPlugin: "AudioFxController"))
   }
 }

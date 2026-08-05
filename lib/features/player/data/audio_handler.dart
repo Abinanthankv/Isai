@@ -24,6 +24,7 @@ import 'package:drift/drift.dart';
 import '../../music/data/lastfm_service.dart';
 import '../../settings/data/lastfm_repository.dart';
 import 'audio_metadata_service.dart';
+import 'audio_fx_service.dart';
 import '../../audiobooks/data/audiobook_repository.dart';
 import '../../audiobooks/data/audiobook_models.dart';
 
@@ -87,6 +88,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await _player.setAudioSource(_playlist);
     }
     print('[AudioHandler] Initialized with cache at: $_cachePath');
+
+    // Apply persisted audio effects whenever the ExoPlayer audio session changes.
+    if (io.Platform.isAndroid) {
+      _player.androidAudioSessionIdStream
+          .where((id) => id != null && id > 0)
+          .cast<int>()
+          .listen((id) => AudioFxService().applySession(id));
+    }
 
     // 2. Listen for playback events (playing, position, buffered, processingState)
     _player.playbackEventStream.listen((_) {}, onError: (e) {

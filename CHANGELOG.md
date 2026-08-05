@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.12] - August 2026
+
+### Added
+- **Discover Screen Customization**: Reorder and toggle sections on the Discover page, and skip background fetches for sections you've turned off.
+- **Playlists Search & Sort**: Search bar filters playlists by name; sort by Newest, Name (A–Z), or Song Count.
+- **Missing Artwork Enrichment**: Fresh & Different and Outside Your Bubble tracks with no artwork now get cover art via iTunes, then Deezer fallback.
+- **Audio Effects (Android)**: New Sound Effects screen — 10-band graphic EQ (31 Hz–16 kHz, falls back to the device's built-in equalizer bands), Bass Boost, Loudness, Reverb presets, and a dynamic-range limiter. Settings persist between sessions.
+- **Windows & iOS Build Pipelines**: Added GitHub Actions jobs so Windows and iOS builds are checked automatically on every release.
+
+### Changed
+- **Faster Library Metadata Enrichment**: Requests are now deduplicated and run concurrently with a global gate instead of a fixed 400 ms delay — the library fills in artist info and artwork noticeably faster.
+- **One Filename Parser**: Six duplicate filename parsers were consolidated into a single shared parser.
+- **Better TorBox Filename Parsing**: Release noise (years, FLAC/WEB/Hi-Res tags, edition/soundtrack markers, track numbers) is stripped so TorBox files get the correct song metadata.
+
+### Fixed
+- **Podcast Playback**: Added a loading overlay while an episode prepares, fixed progress/position mixing between episodes, stopped URL resolution from downloading entire episodes, and added a 30-second feed cache. A one-time migration clears corrupted progress data from earlier versions.
+- **Linux/Windows Playback (mediaKit)**: YouTube and lazy-addon sources now resolve eagerly instead of failing, track resolution order is corrected, and queue updates are broadcast properly.
+- **Windows Audio**: Added the Windows audio library, initialized media_kit audio on Windows, and guarded audio session/service calls on unsupported platforms so nothing crashes.
+- **Windows Build**: CI now pins a compatible Windows runner and recreates plugin symlinks before compiling — the build no longer fails on CMake/extraction errors.
+- **iOS Build**: Regenerated platform files with CocoaPods support so the flutter_js FFI dependency compiles.
+
 ## [1.0.11] - July 2026
 
 ### Added

@@ -33,6 +33,8 @@ import 'torrent_picker_sheet.dart';
 import 'package:isai/core/theme/apple_music_components.dart';
 import '../data/itunes_metadata_service.dart';
 import 'package:isai/features/player/presentation/player_providers.dart';
+import 'package:isai/features/player/presentation/audio_fx_sheet.dart';
+import 'package:isai/features/player/data/audio_fx_service.dart';
 import 'package:isai/features/settings/presentation/settings_screen.dart';
 import 'package:drift/drift.dart' as drift;
 import 'lyrics_provider.dart';
@@ -1555,6 +1557,22 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                       },
                     ),
 
+                    // 11b. Sound Effects (Android audiofx only)
+                    if (io.Platform.isAndroid)
+                      ListTile(
+                        leading: Icon(
+                          Icons.equalizer_rounded,
+                          color: AudioFxService().state.enabled
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.white,
+                        ),
+                        title: Text('Sound Effects', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _showAudioFxSheet();
+                        },
+                      ),
+
                     // 12. Fix Metadata
                     ListTile(
                       leading: const Icon(Icons.edit_note_rounded, color: Colors.white),
@@ -1583,6 +1601,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           );
         }
       ),
+    );
+  }
+
+  void _showAudioFxSheet() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AudioFxSheet()),
     );
   }
 
@@ -2897,6 +2922,26 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             child: Icon(
               (_sleepTimer != null || _sleepAtEndOfTrack) ? Icons.bedtime : Icons.bedtime_outlined,
               color: (_sleepTimer != null || _sleepAtEndOfTrack) ? colorScheme.primary : Colors.white,
+              size: 22,
+            ),
+          ),
+        ),
+      // Sound Effects (EQ / bass / reverb) — Android audiofx only
+      if (io.Platform.isAndroid)
+        GestureDetector(
+          onTap: _showAudioFxSheet,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AudioFxService().state.enabled
+                  ? colorScheme.primary.withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.08),
+            ),
+            child: Icon(
+              Icons.equalizer_rounded,
+              color: AudioFxService().state.enabled ? colorScheme.primary : Colors.white,
               size: 22,
             ),
           ),

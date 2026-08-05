@@ -11,11 +11,13 @@ import android.os.Build
 
 class MainActivity: AudioServiceActivity() {
     private var visualizerPlugin: AudioVisualizerPlugin? = null
+    private var audioFxPlugin: AudioFxPlugin? = null
     private val CHANNEL = "com.isai.music/updater"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         visualizerPlugin = AudioVisualizerPlugin(flutterEngine)
+        audioFxPlugin = AudioFxPlugin(flutterEngine)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "installApk") {
@@ -64,6 +66,7 @@ class MainActivity: AudioServiceActivity() {
 
     override fun onDestroy() {
         visualizerPlugin?.dispose()
+        audioFxPlugin?.dispose()
         super.onDestroy()
     }
 }
