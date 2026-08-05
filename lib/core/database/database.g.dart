@@ -824,6 +824,15 @@ class $TrackMetadataTable extends TrackMetadata
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isrcMeta = const VerificationMeta('isrc');
+  @override
+  late final GeneratedColumn<String> isrc = GeneratedColumn<String>(
+    'isrc',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     fileId,
@@ -837,6 +846,7 @@ class $TrackMetadataTable extends TrackMetadata
     artworkUrlHigh,
     trackTimeMillis,
     isLiked,
+    isrc,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -932,6 +942,12 @@ class $TrackMetadataTable extends TrackMetadata
         isLiked.isAcceptableOrUnknown(data['is_liked']!, _isLikedMeta),
       );
     }
+    if (data.containsKey('isrc')) {
+      context.handle(
+        _isrcMeta,
+        isrc.isAcceptableOrUnknown(data['isrc']!, _isrcMeta),
+      );
+    }
     return context;
   }
 
@@ -985,6 +1001,10 @@ class $TrackMetadataTable extends TrackMetadata
         DriftSqlType.bool,
         data['${effectivePrefix}is_liked'],
       )!,
+      isrc: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}isrc'],
+      ),
     );
   }
 
@@ -1006,6 +1026,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
   final String? artworkUrlHigh;
   final int? trackTimeMillis;
   final bool isLiked;
+  final String? isrc;
   const DbTrackMetadata({
     required this.fileId,
     required this.torrentId,
@@ -1018,6 +1039,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
     this.artworkUrlHigh,
     this.trackTimeMillis,
     required this.isLiked,
+    this.isrc,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1049,6 +1071,9 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
       map['track_time_millis'] = Variable<int>(trackTimeMillis);
     }
     map['is_liked'] = Variable<bool>(isLiked);
+    if (!nullToAbsent || isrc != null) {
+      map['isrc'] = Variable<String>(isrc);
+    }
     return map;
   }
 
@@ -1081,6 +1106,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
           ? const Value.absent()
           : Value(trackTimeMillis),
       isLiked: Value(isLiked),
+      isrc: isrc == null && nullToAbsent ? const Value.absent() : Value(isrc),
     );
   }
 
@@ -1101,6 +1127,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
       artworkUrlHigh: serializer.fromJson<String?>(json['artworkUrlHigh']),
       trackTimeMillis: serializer.fromJson<int?>(json['trackTimeMillis']),
       isLiked: serializer.fromJson<bool>(json['isLiked']),
+      isrc: serializer.fromJson<String?>(json['isrc']),
     );
   }
   @override
@@ -1118,6 +1145,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
       'artworkUrlHigh': serializer.toJson<String?>(artworkUrlHigh),
       'trackTimeMillis': serializer.toJson<int?>(trackTimeMillis),
       'isLiked': serializer.toJson<bool>(isLiked),
+      'isrc': serializer.toJson<String?>(isrc),
     };
   }
 
@@ -1133,6 +1161,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
     Value<String?> artworkUrlHigh = const Value.absent(),
     Value<int?> trackTimeMillis = const Value.absent(),
     bool? isLiked,
+    Value<String?> isrc = const Value.absent(),
   }) => DbTrackMetadata(
     fileId: fileId ?? this.fileId,
     torrentId: torrentId ?? this.torrentId,
@@ -1151,6 +1180,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
         ? trackTimeMillis.value
         : this.trackTimeMillis,
     isLiked: isLiked ?? this.isLiked,
+    isrc: isrc.present ? isrc.value : this.isrc,
   );
   DbTrackMetadata copyWithCompanion(TrackMetadataCompanion data) {
     return DbTrackMetadata(
@@ -1175,6 +1205,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
           ? data.trackTimeMillis.value
           : this.trackTimeMillis,
       isLiked: data.isLiked.present ? data.isLiked.value : this.isLiked,
+      isrc: data.isrc.present ? data.isrc.value : this.isrc,
     );
   }
 
@@ -1191,7 +1222,8 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
           ..write('artworkUrlLow: $artworkUrlLow, ')
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('trackTimeMillis: $trackTimeMillis, ')
-          ..write('isLiked: $isLiked')
+          ..write('isLiked: $isLiked, ')
+          ..write('isrc: $isrc')
           ..write(')'))
         .toString();
   }
@@ -1209,6 +1241,7 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
     artworkUrlHigh,
     trackTimeMillis,
     isLiked,
+    isrc,
   );
   @override
   bool operator ==(Object other) =>
@@ -1224,7 +1257,8 @@ class DbTrackMetadata extends DataClass implements Insertable<DbTrackMetadata> {
           other.artworkUrlLow == this.artworkUrlLow &&
           other.artworkUrlHigh == this.artworkUrlHigh &&
           other.trackTimeMillis == this.trackTimeMillis &&
-          other.isLiked == this.isLiked);
+          other.isLiked == this.isLiked &&
+          other.isrc == this.isrc);
 }
 
 class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
@@ -1239,6 +1273,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
   final Value<String?> artworkUrlHigh;
   final Value<int?> trackTimeMillis;
   final Value<bool> isLiked;
+  final Value<String?> isrc;
   final Value<int> rowid;
   const TrackMetadataCompanion({
     this.fileId = const Value.absent(),
@@ -1252,6 +1287,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
     this.artworkUrlHigh = const Value.absent(),
     this.trackTimeMillis = const Value.absent(),
     this.isLiked = const Value.absent(),
+    this.isrc = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TrackMetadataCompanion.insert({
@@ -1266,6 +1302,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
     this.artworkUrlHigh = const Value.absent(),
     this.trackTimeMillis = const Value.absent(),
     this.isLiked = const Value.absent(),
+    this.isrc = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : fileId = Value(fileId),
        torrentId = Value(torrentId);
@@ -1281,6 +1318,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
     Expression<String>? artworkUrlHigh,
     Expression<int>? trackTimeMillis,
     Expression<bool>? isLiked,
+    Expression<String>? isrc,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1295,6 +1333,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
       if (artworkUrlHigh != null) 'artwork_url_high': artworkUrlHigh,
       if (trackTimeMillis != null) 'track_time_millis': trackTimeMillis,
       if (isLiked != null) 'is_liked': isLiked,
+      if (isrc != null) 'isrc': isrc,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1311,6 +1350,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
     Value<String?>? artworkUrlHigh,
     Value<int?>? trackTimeMillis,
     Value<bool>? isLiked,
+    Value<String?>? isrc,
     Value<int>? rowid,
   }) {
     return TrackMetadataCompanion(
@@ -1325,6 +1365,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
       artworkUrlHigh: artworkUrlHigh ?? this.artworkUrlHigh,
       trackTimeMillis: trackTimeMillis ?? this.trackTimeMillis,
       isLiked: isLiked ?? this.isLiked,
+      isrc: isrc ?? this.isrc,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1365,6 +1406,9 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
     if (isLiked.present) {
       map['is_liked'] = Variable<bool>(isLiked.value);
     }
+    if (isrc.present) {
+      map['isrc'] = Variable<String>(isrc.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1385,6 +1429,7 @@ class TrackMetadataCompanion extends UpdateCompanion<DbTrackMetadata> {
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('trackTimeMillis: $trackTimeMillis, ')
           ..write('isLiked: $isLiked, ')
+          ..write('isrc: $isrc, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3765,6 +3810,15 @@ class $ExternalTrackMetadataTable extends ExternalTrackMetadata
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isrcMeta = const VerificationMeta('isrc');
+  @override
+  late final GeneratedColumn<String> isrc = GeneratedColumn<String>(
+    'isrc',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     trackUrl,
@@ -3777,6 +3831,7 @@ class $ExternalTrackMetadataTable extends ExternalTrackMetadata
     artworkUrlHigh,
     trackTimeMillis,
     lastUpdated,
+    isrc,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3873,6 +3928,12 @@ class $ExternalTrackMetadataTable extends ExternalTrackMetadata
     } else if (isInserting) {
       context.missing(_lastUpdatedMeta);
     }
+    if (data.containsKey('isrc')) {
+      context.handle(
+        _isrcMeta,
+        isrc.isAcceptableOrUnknown(data['isrc']!, _isrcMeta),
+      );
+    }
     return context;
   }
 
@@ -3925,6 +3986,10 @@ class $ExternalTrackMetadataTable extends ExternalTrackMetadata
         DriftSqlType.int,
         data['${effectivePrefix}last_updated'],
       )!,
+      isrc: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}isrc'],
+      ),
     );
   }
 
@@ -3946,6 +4011,7 @@ class DbExternalTrackMetadata extends DataClass
   final String? artworkUrlHigh;
   final int? trackTimeMillis;
   final int lastUpdated;
+  final String? isrc;
   const DbExternalTrackMetadata({
     required this.trackUrl,
     required this.trackTitle,
@@ -3957,6 +4023,7 @@ class DbExternalTrackMetadata extends DataClass
     this.artworkUrlHigh,
     this.trackTimeMillis,
     required this.lastUpdated,
+    this.isrc,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3983,6 +4050,9 @@ class DbExternalTrackMetadata extends DataClass
       map['track_time_millis'] = Variable<int>(trackTimeMillis);
     }
     map['last_updated'] = Variable<int>(lastUpdated);
+    if (!nullToAbsent || isrc != null) {
+      map['isrc'] = Variable<String>(isrc);
+    }
     return map;
   }
 
@@ -4010,6 +4080,7 @@ class DbExternalTrackMetadata extends DataClass
           ? const Value.absent()
           : Value(trackTimeMillis),
       lastUpdated: Value(lastUpdated),
+      isrc: isrc == null && nullToAbsent ? const Value.absent() : Value(isrc),
     );
   }
 
@@ -4029,6 +4100,7 @@ class DbExternalTrackMetadata extends DataClass
       artworkUrlHigh: serializer.fromJson<String?>(json['artworkUrlHigh']),
       trackTimeMillis: serializer.fromJson<int?>(json['trackTimeMillis']),
       lastUpdated: serializer.fromJson<int>(json['lastUpdated']),
+      isrc: serializer.fromJson<String?>(json['isrc']),
     );
   }
   @override
@@ -4045,6 +4117,7 @@ class DbExternalTrackMetadata extends DataClass
       'artworkUrlHigh': serializer.toJson<String?>(artworkUrlHigh),
       'trackTimeMillis': serializer.toJson<int?>(trackTimeMillis),
       'lastUpdated': serializer.toJson<int>(lastUpdated),
+      'isrc': serializer.toJson<String?>(isrc),
     };
   }
 
@@ -4059,6 +4132,7 @@ class DbExternalTrackMetadata extends DataClass
     Value<String?> artworkUrlHigh = const Value.absent(),
     Value<int?> trackTimeMillis = const Value.absent(),
     int? lastUpdated,
+    Value<String?> isrc = const Value.absent(),
   }) => DbExternalTrackMetadata(
     trackUrl: trackUrl ?? this.trackUrl,
     trackTitle: trackTitle ?? this.trackTitle,
@@ -4076,6 +4150,7 @@ class DbExternalTrackMetadata extends DataClass
         ? trackTimeMillis.value
         : this.trackTimeMillis,
     lastUpdated: lastUpdated ?? this.lastUpdated,
+    isrc: isrc.present ? isrc.value : this.isrc,
   );
   DbExternalTrackMetadata copyWithCompanion(
     ExternalTrackMetadataCompanion data,
@@ -4103,6 +4178,7 @@ class DbExternalTrackMetadata extends DataClass
       lastUpdated: data.lastUpdated.present
           ? data.lastUpdated.value
           : this.lastUpdated,
+      isrc: data.isrc.present ? data.isrc.value : this.isrc,
     );
   }
 
@@ -4118,7 +4194,8 @@ class DbExternalTrackMetadata extends DataClass
           ..write('artworkUrlLow: $artworkUrlLow, ')
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('trackTimeMillis: $trackTimeMillis, ')
-          ..write('lastUpdated: $lastUpdated')
+          ..write('lastUpdated: $lastUpdated, ')
+          ..write('isrc: $isrc')
           ..write(')'))
         .toString();
   }
@@ -4135,6 +4212,7 @@ class DbExternalTrackMetadata extends DataClass
     artworkUrlHigh,
     trackTimeMillis,
     lastUpdated,
+    isrc,
   );
   @override
   bool operator ==(Object other) =>
@@ -4149,7 +4227,8 @@ class DbExternalTrackMetadata extends DataClass
           other.artworkUrlLow == this.artworkUrlLow &&
           other.artworkUrlHigh == this.artworkUrlHigh &&
           other.trackTimeMillis == this.trackTimeMillis &&
-          other.lastUpdated == this.lastUpdated);
+          other.lastUpdated == this.lastUpdated &&
+          other.isrc == this.isrc);
 }
 
 class ExternalTrackMetadataCompanion
@@ -4164,6 +4243,7 @@ class ExternalTrackMetadataCompanion
   final Value<String?> artworkUrlHigh;
   final Value<int?> trackTimeMillis;
   final Value<int> lastUpdated;
+  final Value<String?> isrc;
   final Value<int> rowid;
   const ExternalTrackMetadataCompanion({
     this.trackUrl = const Value.absent(),
@@ -4176,6 +4256,7 @@ class ExternalTrackMetadataCompanion
     this.artworkUrlHigh = const Value.absent(),
     this.trackTimeMillis = const Value.absent(),
     this.lastUpdated = const Value.absent(),
+    this.isrc = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ExternalTrackMetadataCompanion.insert({
@@ -4189,6 +4270,7 @@ class ExternalTrackMetadataCompanion
     this.artworkUrlHigh = const Value.absent(),
     this.trackTimeMillis = const Value.absent(),
     required int lastUpdated,
+    this.isrc = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : trackUrl = Value(trackUrl),
        trackTitle = Value(trackTitle),
@@ -4205,6 +4287,7 @@ class ExternalTrackMetadataCompanion
     Expression<String>? artworkUrlHigh,
     Expression<int>? trackTimeMillis,
     Expression<int>? lastUpdated,
+    Expression<String>? isrc,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -4218,6 +4301,7 @@ class ExternalTrackMetadataCompanion
       if (artworkUrlHigh != null) 'artwork_url_high': artworkUrlHigh,
       if (trackTimeMillis != null) 'track_time_millis': trackTimeMillis,
       if (lastUpdated != null) 'last_updated': lastUpdated,
+      if (isrc != null) 'isrc': isrc,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4233,6 +4317,7 @@ class ExternalTrackMetadataCompanion
     Value<String?>? artworkUrlHigh,
     Value<int?>? trackTimeMillis,
     Value<int>? lastUpdated,
+    Value<String?>? isrc,
     Value<int>? rowid,
   }) {
     return ExternalTrackMetadataCompanion(
@@ -4246,6 +4331,7 @@ class ExternalTrackMetadataCompanion
       artworkUrlHigh: artworkUrlHigh ?? this.artworkUrlHigh,
       trackTimeMillis: trackTimeMillis ?? this.trackTimeMillis,
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      isrc: isrc ?? this.isrc,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4283,6 +4369,9 @@ class ExternalTrackMetadataCompanion
     if (lastUpdated.present) {
       map['last_updated'] = Variable<int>(lastUpdated.value);
     }
+    if (isrc.present) {
+      map['isrc'] = Variable<String>(isrc.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4302,6 +4391,7 @@ class ExternalTrackMetadataCompanion
           ..write('artworkUrlHigh: $artworkUrlHigh, ')
           ..write('trackTimeMillis: $trackTimeMillis, ')
           ..write('lastUpdated: $lastUpdated, ')
+          ..write('isrc: $isrc, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6623,6 +6713,7 @@ typedef $$TrackMetadataTableCreateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       Value<int?> trackTimeMillis,
       Value<bool> isLiked,
+      Value<String?> isrc,
       Value<int> rowid,
     });
 typedef $$TrackMetadataTableUpdateCompanionBuilder =
@@ -6638,6 +6729,7 @@ typedef $$TrackMetadataTableUpdateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       Value<int?> trackTimeMillis,
       Value<bool> isLiked,
+      Value<String?> isrc,
       Value<int> rowid,
     });
 
@@ -6702,6 +6794,11 @@ class $$TrackMetadataTableFilterComposer
 
   ColumnFilters<bool> get isLiked => $composableBuilder(
     column: $table.isLiked,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get isrc => $composableBuilder(
+    column: $table.isrc,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6769,6 +6866,11 @@ class $$TrackMetadataTableOrderingComposer
     column: $table.isLiked,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get isrc => $composableBuilder(
+    column: $table.isrc,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TrackMetadataTableAnnotationComposer
@@ -6822,6 +6924,9 @@ class $$TrackMetadataTableAnnotationComposer
 
   GeneratedColumn<bool> get isLiked =>
       $composableBuilder(column: $table.isLiked, builder: (column) => column);
+
+  GeneratedColumn<String> get isrc =>
+      $composableBuilder(column: $table.isrc, builder: (column) => column);
 }
 
 class $$TrackMetadataTableTableManager
@@ -6866,6 +6971,7 @@ class $$TrackMetadataTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 Value<int?> trackTimeMillis = const Value.absent(),
                 Value<bool> isLiked = const Value.absent(),
+                Value<String?> isrc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TrackMetadataCompanion(
                 fileId: fileId,
@@ -6879,6 +6985,7 @@ class $$TrackMetadataTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 trackTimeMillis: trackTimeMillis,
                 isLiked: isLiked,
+                isrc: isrc,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -6894,6 +7001,7 @@ class $$TrackMetadataTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 Value<int?> trackTimeMillis = const Value.absent(),
                 Value<bool> isLiked = const Value.absent(),
+                Value<String?> isrc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TrackMetadataCompanion.insert(
                 fileId: fileId,
@@ -6907,6 +7015,7 @@ class $$TrackMetadataTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 trackTimeMillis: trackTimeMillis,
                 isLiked: isLiked,
+                isrc: isrc,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -8286,6 +8395,7 @@ typedef $$ExternalTrackMetadataTableCreateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       Value<int?> trackTimeMillis,
       required int lastUpdated,
+      Value<String?> isrc,
       Value<int> rowid,
     });
 typedef $$ExternalTrackMetadataTableUpdateCompanionBuilder =
@@ -8300,6 +8410,7 @@ typedef $$ExternalTrackMetadataTableUpdateCompanionBuilder =
       Value<String?> artworkUrlHigh,
       Value<int?> trackTimeMillis,
       Value<int> lastUpdated,
+      Value<String?> isrc,
       Value<int> rowid,
     });
 
@@ -8359,6 +8470,11 @@ class $$ExternalTrackMetadataTableFilterComposer
 
   ColumnFilters<int> get lastUpdated => $composableBuilder(
     column: $table.lastUpdated,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get isrc => $composableBuilder(
+    column: $table.isrc,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8421,6 +8537,11 @@ class $$ExternalTrackMetadataTableOrderingComposer
     column: $table.lastUpdated,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get isrc => $composableBuilder(
+    column: $table.isrc,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ExternalTrackMetadataTableAnnotationComposer
@@ -8473,6 +8594,9 @@ class $$ExternalTrackMetadataTableAnnotationComposer
     column: $table.lastUpdated,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get isrc =>
+      $composableBuilder(column: $table.isrc, builder: (column) => column);
 }
 
 class $$ExternalTrackMetadataTableTableManager
@@ -8531,6 +8655,7 @@ class $$ExternalTrackMetadataTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 Value<int?> trackTimeMillis = const Value.absent(),
                 Value<int> lastUpdated = const Value.absent(),
+                Value<String?> isrc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExternalTrackMetadataCompanion(
                 trackUrl: trackUrl,
@@ -8543,6 +8668,7 @@ class $$ExternalTrackMetadataTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 trackTimeMillis: trackTimeMillis,
                 lastUpdated: lastUpdated,
+                isrc: isrc,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8557,6 +8683,7 @@ class $$ExternalTrackMetadataTableTableManager
                 Value<String?> artworkUrlHigh = const Value.absent(),
                 Value<int?> trackTimeMillis = const Value.absent(),
                 required int lastUpdated,
+                Value<String?> isrc = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ExternalTrackMetadataCompanion.insert(
                 trackUrl: trackUrl,
@@ -8569,6 +8696,7 @@ class $$ExternalTrackMetadataTableTableManager
                 artworkUrlHigh: artworkUrlHigh,
                 trackTimeMillis: trackTimeMillis,
                 lastUpdated: lastUpdated,
+                isrc: isrc,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

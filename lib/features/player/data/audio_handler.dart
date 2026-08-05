@@ -864,6 +864,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             artworkUrlHigh: libMeta.artworkUrlHigh,
             artworkUrlLow: libMeta.artworkUrlLow,
             trackTimeMillis: libMeta.trackTimeMillis,
+            extras: {if (libMeta.isrc != null) 'isrc': libMeta.isrc},
           );
         }
       }
@@ -884,6 +885,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               artworkUrlHigh: cached.artworkUrlHigh,
               artworkUrlLow: cached.artworkUrlLow,
               trackTimeMillis: cached.trackTimeMillis,
+              extras: {if (cached.isrc != null) 'isrc': cached.isrc},
             );
           } else if (isVirtualTrack || needsEnrichment) {
             // 3a. Try metadata addons
@@ -937,6 +939,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                 artworkUrlHigh: Value(meta.artworkUrlHigh),
                 artworkUrlLow: Value(meta.artworkUrlLow),
                 trackTimeMillis: Value(meta.trackTimeMillis),
+                isrc: Value(meta.extras?['isrc'] as String?),
                 lastUpdated: DateTime.now().millisecondsSinceEpoch,
               ));
               if (torrentId > 0) {
@@ -951,6 +954,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                   artworkUrlLow: Value(meta.artworkUrlLow),
                   artworkUrlHigh: Value(meta.artworkUrlHigh),
                   trackTimeMillis: Value(meta.trackTimeMillis),
+                  isrc: Value(meta.extras?['isrc'] as String?),
                 ));
               }
             }

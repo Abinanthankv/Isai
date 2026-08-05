@@ -58,6 +58,7 @@ class TrackMetadata extends Table {
   TextColumn get artworkUrlHigh => text().nullable()();
   IntColumn get trackTimeMillis => integer().nullable()();
   BoolColumn get isLiked => boolean().withDefault(const Constant(false))();
+  TextColumn get isrc => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {fileId, torrentId};
@@ -117,6 +118,7 @@ class ExternalTrackMetadata extends Table {
   TextColumn get artworkUrlHigh => text().nullable()();
   IntColumn get trackTimeMillis => integer().nullable()();
   IntColumn get lastUpdated => integer()(); // timestamp
+  TextColumn get isrc => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {trackUrl};
@@ -179,11 +181,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
+          if (from < 18) {
+            await m.addColumn(externalTrackMetadata, externalTrackMetadata.isrc);
+            await m.addColumn(trackMetadata, trackMetadata.isrc);
+          }
           if (from < 17) {
             await m.addColumn(playbackHistory, playbackHistory.releaseYear);
           }

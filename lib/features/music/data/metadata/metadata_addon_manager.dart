@@ -46,32 +46,52 @@ class MetadataAddonManager {
       {String? isrc}) async {
     _ensureInitialized();
 
+    TrackMeta? result;
+    String? resolvedIsrc = isrc;
+
+    // Pass 1: primary metadata from enabled providers (first non-null wins,
+    // keeping the provider order preference such as Apple first).
     for (final provider in _providers) {
       if (!isEnabled(provider.id)) continue;
 
       try {
-        final result = await (isrc != null
-            ? provider.enrichByIsrc(isrc)
+        final meta = await (resolvedIsrc != null
+            ? provider.enrichByIsrc(resolvedIsrc)
             : provider.enrich(title, artist));
-        if (result != null) return result;
+        if (meta != null) {
+          result ??= meta;
+          if (meta.isrc != null) resolvedIsrc = meta.isrc;
+        }
       } catch (e) {
         print('[MetadataAddon] ${provider.id} failed: $e');
       }
+    }
 
-      if (isrc == null && provider.id == 'deezer') {
-        try {
-          final isrcs = await _musicBrainz.lookupIsrc(title, artist);
-          for (final resolvedIsrc in isrcs) {
-            final result =
-                await provider.enrichByIsrc(resolvedIsrc);
-            if (result != null) return result;
+    // Pass 2: even when a provider (e.g. Apple Music) already returned
+    // metadata, try to attach an ISRC via MusicBrainz -> Deezer when Deezer
+    // is enabled, since the iTunes API never exposes ISRC.
+    if (resolvedIsrc == null && isEnabled('deezer')) {
+      try {
+        final isrcs = await _musicBrainz.lookupIsrc(title, artist);
+        for (final candidate in isrcs) {
+          final meta = await _deezer.enrichByIsrc(candidate);
+          if (meta != null) {
+            result ??= meta;
+            if (meta.isrc != null) {
+              resolvedIsrc = meta.isrc;
+              break;
+            }
           }
-        } catch (e) {
-          print('[MetadataAddon] ${provider.id} ISRC resolution failed: $e');
         }
+      } catch (e) {
+        print('[MetadataAddon] ISRC resolution failed: $e');
       }
     }
-    return null;
+
+    if (result != null && result.isrc == null && resolvedIsrc != null) {
+      result = result.copyWith(isrc: resolvedIsrc);
+    }
+    return result;
   }
 
   Future<TrackMeta?> enrichByIsrc(String isrc) async {

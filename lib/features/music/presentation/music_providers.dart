@@ -1934,6 +1934,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           genre: dbMeta.genre,
           releaseYear: dbMeta.releaseYear,
           trackTimeMillis: dbMeta.trackTimeMillis,
+          extras: {if (dbMeta.isrc != null) 'isrc': dbMeta.isrc},
         );
         state = state.copyWith(metadata: metaMap);
         return;
@@ -1952,6 +1953,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           genre: (dbMeta?.genre == null || dbMeta!.genre!.isEmpty) ? cached.genre : dbMeta.genre,
           releaseYear: dbMeta?.releaseYear ?? cached.releaseYear,
           trackTimeMillis: dbMeta?.trackTimeMillis ?? cached.trackTimeMillis,
+          extras: {if (cached.isrc != null) 'isrc': cached.isrc},
         );
         final metaMap = Map<String, ItunesMeta>.from(state.metadata);
         metaMap[key] = meta;
@@ -1968,6 +1970,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
           genre: Value(meta.genre),
           releaseYear: Value(meta.releaseYear),
           trackTimeMillis: Value(meta.trackTimeMillis),
+          isrc: Value(meta.extras?['isrc'] as String?),
         ));
         return;
       }
@@ -2024,6 +2027,7 @@ class LibraryNotifier extends Notifier<LibraryState> {
             genre: Value(meta.genre),
             releaseYear: Value(meta.releaseYear),
             trackTimeMillis: Value(meta.trackTimeMillis),
+            isrc: Value(meta.extras?['isrc'] as String?),
           ));
           return;
         }
