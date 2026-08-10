@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -127,6 +128,54 @@ class AudioFxDeviceParameters {
   }
 }
 
+/// A user-created equalizer preset saved locally. Gains are stored against the
+/// standard 10-band layout (see [AudioFxService.eqFrequencies]) so they can be
+/// resampled onto any device's band count when applied.
+@immutable
+class CustomEqPreset {
+  const CustomEqPreset({
+    required this.name,
+    required this.gains,
+    this.bassStrength = 0,
+    this.loudnessGain = 0,
+    this.reverbPreset = 0,
+    this.dynamicsEnabled = false,
+    this.dynamicsThreshold = -10,
+  });
+
+  final String name;
+
+  /// 10-point gain profile in dB aligned to [AudioFxService.eqFrequencies].
+  final List<double> gains;
+  final double bassStrength;
+  final double loudnessGain;
+  final int reverbPreset;
+  final bool dynamicsEnabled;
+  final double dynamicsThreshold;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'gains': gains,
+        'bass': bassStrength,
+        'loudness': loudnessGain,
+        'reverb': reverbPreset,
+        'dynamics': dynamicsEnabled,
+        'dynamics_threshold': dynamicsThreshold,
+      };
+
+  factory CustomEqPreset.fromJson(Map<String, dynamic> json) => CustomEqPreset(
+        name: json['name'] as String? ?? 'Preset',
+        gains: (json['gains'] as List<dynamic>? ?? [])
+            .map((e) => (e as num?)?.toDouble() ?? 0)
+            .toList(),
+        bassStrength: (json['bass'] as num?)?.toDouble() ?? 0,
+        loudnessGain: (json['loudness'] as num?)?.toDouble() ?? 0,
+        reverbPreset: (json['reverb'] as num?)?.toInt() ?? 0,
+        dynamicsEnabled: json['dynamics'] == true,
+        dynamicsThreshold: (json['dynamics_threshold'] as num?)?.toDouble() ?? -10,
+      );
+}
+
 /// Dart-side bridge to the native Android audiofx plugin.
 ///
 /// Owns the persisted effect settings (SharedPreferences), streams state to the
@@ -218,7 +267,7 @@ class AudioFxService {
         _deviceParams = AudioFxDeviceParameters.fromMap(raw);
         // Align the stored gains with the device band count.
         if (_deviceParams!.bandCount > 0 && _current.eqGains.length != _deviceParams!.bandCount) {
-          _current = _current.copyWith(eqGains: _resampleGains(_current.eqGains, _deviceParams!.bandCount));
+          _current = _current.copyWith(eqGains: resampleGains(_current.eqGains, _deviceParams!.bandCount));
         }
         await _pushAll();
       }
@@ -239,7 +288,7 @@ class AudioFxService {
     await _ensurePrefsLoaded();
     final bands = await _bandCount();
     final gains = index >= 0 && index < eqPresets.length
-        ? _resampleGains(eqPresets[index].$2, bands)
+        ? resampleGains(eqPresets[index].$2, bands)
         : _current.eqGains;
     _current = _current.copyWith(eqPresetIndex: index, eqGains: gains);
     await _persist();
@@ -258,9 +307,20 @@ class AudioFxService {
     await _pushAll();
   }
 
+  /// Tag the current EQ state as custom without changing the gains. Used when
+  /// the user taps the "Custom" pill.
+  Future<void> markCustom() async {
+    await _ensurePrefsLoaded();
+    if (_current.eqPresetIndex != -1) {
+      _current = _current.copyWith(eqPresetIndex: -1);
+      await _persist();
+      _stateController.add(_current);
+    }
+  }
+
   Future<void> setBassStrength(double strength) async {
     await _ensurePrefsLoaded();
-    _current = _current.copyWith(bassStrength: strength.clamp(0, 1));
+    _current = _current.copyWith(eqPresetIndex: -1, bassStrength: strength.clamp(0, 1));
     await _persist();
     _stateController.add(_current);
     await _pushAll();
@@ -268,7 +328,7 @@ class AudioFxService {
 
   Future<void> setLoudnessGain(double gainDb) async {
     await _ensurePrefsLoaded();
-    _current = _current.copyWith(loudnessGain: gainDb);
+    _current = _current.copyWith(eqPresetIndex: -1, loudnessGain: gainDb);
     await _persist();
     _stateController.add(_current);
     await _pushAll();
@@ -276,7 +336,7 @@ class AudioFxService {
 
   Future<void> setReverbPreset(int preset) async {
     await _ensurePrefsLoaded();
-    _current = _current.copyWith(reverbPreset: preset);
+    _current = _current.copyWith(eqPresetIndex: -1, reverbPreset: preset);
     await _persist();
     _stateController.add(_current);
     await _pushAll();
@@ -284,7 +344,7 @@ class AudioFxService {
 
   Future<void> setDynamicsEnabled(bool enabled) async {
     await _ensurePrefsLoaded();
-    _current = _current.copyWith(dynamicsEnabled: enabled);
+    _current = _current.copyWith(eqPresetIndex: -1, dynamicsEnabled: enabled);
     await _persist();
     _stateController.add(_current);
     await _pushAll();
@@ -292,10 +352,93 @@ class AudioFxService {
 
   Future<void> setDynamicsThreshold(double thresholdDb) async {
     await _ensurePrefsLoaded();
-    _current = _current.copyWith(dynamicsThreshold: thresholdDb);
+    _current = _current.copyWith(eqPresetIndex: -1, dynamicsThreshold: thresholdDb);
     await _persist();
     _stateController.add(_current);
     await _pushAll();
+  }
+
+  // ─── Custom Presets ────────────────────────────────────────────────────────
+
+  Future<List<CustomEqPreset>> loadCustomPresets() async {
+    await _ensurePrefsLoaded();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_k('custom_presets'));
+      if (raw == null || raw.isEmpty) return [];
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => CustomEqPreset.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('[AudioFxService] failed to load custom presets: $e');
+      return [];
+    }
+  }
+
+  /// Persist the current effect state (normalized to the 10-band layout) as a
+  /// named preset. Overwrites an existing preset with the same name.
+  Future<bool> saveCustomPreset(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return false;
+    await _ensurePrefsLoaded();
+    final standardGains = resampleGains(_current.eqGains, eqFrequencies.length);
+    final presets = await loadCustomPresets();
+    final preset = CustomEqPreset(
+      name: trimmed,
+      gains: standardGains,
+      bassStrength: _current.bassStrength,
+      loudnessGain: _current.loudnessGain,
+      reverbPreset: _current.reverbPreset,
+      dynamicsEnabled: _current.dynamicsEnabled,
+      dynamicsThreshold: _current.dynamicsThreshold,
+    );
+    final existing = presets.indexWhere((p) => p.name == trimmed);
+    if (existing >= 0) {
+      presets[existing] = preset;
+    } else {
+      presets.add(preset);
+    }
+    await _saveCustomPresets(presets);
+    return true;
+  }
+
+  /// Apply a saved preset, restoring its full effect profile.
+  Future<void> applyCustomPreset(String name) async {
+    final presets = await loadCustomPresets();
+    final preset = presets.where((p) => p.name == name).firstOrNull;
+    if (preset == null) return;
+    final bands = await _bandCount();
+    _current = _current.copyWith(
+      eqPresetIndex: -1,
+      eqGains: resampleGains(preset.gains, bands),
+      bassStrength: preset.bassStrength,
+      loudnessGain: preset.loudnessGain,
+      reverbPreset: preset.reverbPreset,
+      dynamicsEnabled: preset.dynamicsEnabled,
+      dynamicsThreshold: preset.dynamicsThreshold,
+    );
+    await _persist();
+    _stateController.add(_current);
+    await _pushAll();
+  }
+
+  Future<void> deleteCustomPreset(String name) async {
+    final presets = await loadCustomPresets();
+    presets.removeWhere((p) => p.name == name);
+    await _saveCustomPresets(presets);
+  }
+
+  Future<void> _saveCustomPresets(List<CustomEqPreset> presets) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _k('custom_presets'),
+        jsonEncode(presets.map((e) => e.toJson()).toList()),
+      );
+    } catch (e) {
+      debugPrint('[AudioFxService] failed to save custom presets: $e');
+    }
   }
 
   Future<int> _bandCount() async {
@@ -304,7 +447,7 @@ class AudioFxService {
   }
 
   /// Resample a gain profile onto [count] bands by linear position.
-  List<double> _resampleGains(List<double> profile, int count) {
+  static List<double> resampleGains(List<double> profile, int count) {
     if (count <= 0) return List.of(profile);
     if (count == profile.length) return List.of(profile);
     if (count == 1) return [profile.length > 2 ? profile[2] : profile.first];
@@ -317,6 +460,16 @@ class AudioFxService {
       out[i] = profile[low] + (profile[high] - profile[low]) * frac;
     }
     return out;
+  }
+
+  /// Whether two gain profiles are effectively identical within [epsilon] dB.
+  /// Used to detect that a "Custom" state matches a saved preset.
+  static bool gainsClose(List<double> a, List<double> b, {double epsilon = 0.05}) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if ((a[i] - b[i]).abs() > epsilon) return false;
+    }
+    return true;
   }
 
   Future<void> _pushAll() async {
@@ -368,7 +521,7 @@ class AudioFxService {
       _current = AudioFxState(
         enabled: enabled,
         eqPresetIndex: preset,
-        eqGains: gains.length == count || count == 0 ? gains : _resampleGains(gains, count),
+        eqGains: gains.length == count || count == 0 ? gains : resampleGains(gains, count),
         bassStrength: prefs.getDouble(_k('bass')) ?? 0,
         loudnessGain: prefs.getDouble(_k('loudness')) ?? 0,
         reverbPreset: prefs.getInt(_k('reverb')) ?? 0,

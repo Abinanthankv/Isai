@@ -35,6 +35,7 @@ import '../data/itunes_metadata_service.dart';
 import 'package:isai/features/player/presentation/player_providers.dart';
 import 'package:isai/features/player/presentation/audio_fx_sheet.dart';
 import 'package:isai/features/player/data/audio_fx_service.dart';
+import 'package:isai/features/player/presentation/cast_button.dart';
 import 'package:isai/features/settings/presentation/settings_screen.dart';
 import 'package:drift/drift.dart' as drift;
 import 'lyrics_provider.dart';
@@ -965,7 +966,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                         if (isMinimized)
                           _buildCanvasMinimizedControls(displayTitle, displayArtist, displayArtwork, hasArtwork)
                         else ...[
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 20),
 
                           // Track info + controls
                           Padding(
@@ -1022,7 +1023,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1035,9 +1036,14 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
               Text('NOW PLAYING', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54, letterSpacing: 1.5)),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.white),
-            onPressed: () => _showOptionsMenu(context),
+          Row(
+            children: [
+              const CastButton(),
+              IconButton(
+                icon: const Icon(Icons.more_horiz, color: Colors.white),
+                onPressed: () => _showOptionsMenu(context),
+              ),
+            ],
           ),
         ],
       ),

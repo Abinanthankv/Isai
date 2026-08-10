@@ -10,6 +10,9 @@
     <!-- Required by Android's Visualizer API to read audio output for real-time visualization -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Required by Google Cast framework for device discovery (Android 13+) -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
 
     <application
         android:label="Isai"
@@ -62,6 +65,17 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <!-- Google Cast framework configuration (flutter_chrome_cast) -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.felnanuke.google_cast.GoogleCastOptionsProvider" />
+
+        <!-- Media notification service for cast controls -->
+        <service
+            android:name="com.google.android.gms.cast.framework.media.MediaNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

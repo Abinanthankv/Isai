@@ -8,6 +8,7 @@ import '../data/podcast_api_service.dart';
 import 'podcast_providers.dart';
 import 'podcast_artwork.dart';
 import 'package:isai/main.dart';
+import '../../player/presentation/cast_button.dart';
 
 class PodcastNowPlayingScreen extends ConsumerStatefulWidget {
   final PodcastEpisode episode;
@@ -275,6 +276,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         ),
         centerTitle: true,
         actions: [
+          const CastButton(),
           IconButton(
             icon: _sleepTimerMinutes != null
                 ? Stack(

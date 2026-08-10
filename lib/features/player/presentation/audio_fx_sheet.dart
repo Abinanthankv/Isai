@@ -19,11 +19,18 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
   final AudioFxService _service = AudioFxService();
   Future<AudioFxDeviceParameters>? _paramsFuture;
   List<int>? _bandCountFor; // band count used when building sliders
+  List<CustomEqPreset> _customPresets = [];
 
   @override
   void initState() {
     super.initState();
     _paramsFuture = _service.ensureParameters();
+    _loadCustomPresets();
+  }
+
+  Future<void> _loadCustomPresets() async {
+    final presets = await _service.loadCustomPresets();
+    if (mounted) setState(() => _customPresets = presets);
   }
 
   @override
@@ -176,18 +183,55 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
                               showCheckmark: false,
                             ),
                           ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: const Text('Custom'),
+                            selected: state.enabled && _isCustomActive(state),
+                            onSelected: (_) => _service.markCustom(),
+                            showCheckmark: false,
+                            avatar: const Icon(Icons.tune, size: 16),
+                          ),
+                        ),
+                        for (final preset in _customPresets)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: GestureDetector(
+                              onLongPress: () => _confirmDeletePreset(preset.name),
+                              child: ChoiceChip(
+                                label: Text(preset.name),
+                                selected: state.enabled &&
+                                    state.eqPresetIndex == -1 &&
+                                    _isPresetActive(state, preset),
+                                onSelected: (_) => _service.applyCustomPreset(preset.name),
+                                showCheckmark: false,
+                                avatar: const Icon(Icons.bookmark_outlined, size: 16),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      params.eq10
-                          ? '10-band Precision EQ · 31 Hz – 16 kHz'
-                          : 'Device EQ (${params.bandCount}-band)',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[400]),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        params.eq10
+                            ? '10-band Precision EQ · 31 Hz – 16 kHz'
+                            : 'Device EQ (${params.bandCount}-band)',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                      ),
+                      TextButton.icon(
+                        onPressed: state.enabled ? _saveCurrentAsPreset : null,
+                        icon: const Icon(Icons.save_outlined, size: 16),
+                        label: const Text('Save as Preset'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   // Vertical sliders per band.
@@ -339,6 +383,66 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
   }
 
   bool get _hasSession => _service.hasSession;
+
+  bool _isPresetActive(AudioFxState state, CustomEqPreset preset) {
+    final resampled = AudioFxService.resampleGains(preset.gains, state.eqGains.length);
+    return AudioFxService.gainsClose(resampled, state.eqGains);
+  }
+
+  bool _isAnyPresetActive(AudioFxState state) {
+    return _customPresets.any((p) => _isPresetActive(state, p));
+  }
+
+  bool _isCustomActive(AudioFxState state) {
+    return state.eqPresetIndex == -1 && !_isAnyPresetActive(state);
+  }
+
+  Future<void> _saveCurrentAsPreset() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Save Preset'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Preset name'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    await _service.saveCustomPreset(name);
+    await _loadCustomPresets();
+  }
+
+  Future<void> _confirmDeletePreset(String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Preset'),
+        content: Text('Delete "$name"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _service.deleteCustomPreset(name);
+      await _loadCustomPresets();
+    }
+  }
 
   String? _unsupportedMessage(AudioFxState state) {
     if (defaultTargetPlatform != TargetPlatform.android) {

@@ -24,6 +24,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'core/services/share_handler_service.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' show LiquidGlassWidgets;
 import 'package:flutter_displaymode/flutter_displaymode.dart';
+import 'dart:async';
+
+import 'features/player/data/cast_controller.dart';
 
 import 'core/theme/dynamic_color_provider.dart';
 import 'package:dynamic_color/dynamic_color.dart';
@@ -86,6 +89,9 @@ void main() async {
   }
 
   ShareHandlerService.init();
+
+  // Initialize the Chromecast context (Android only; no-op elsewhere).
+  unawaited(CastPlaybackController.instance.initialize());
 
   runApp(LiquidGlassWidgets.wrap(child: const ProviderScope(child: MyApp())));
 }

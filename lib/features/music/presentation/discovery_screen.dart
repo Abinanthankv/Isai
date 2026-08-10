@@ -93,7 +93,7 @@ class DiscoveryScreen extends ConsumerWidget {
             await Future.wait([
               ref.read(audiobookCatalogProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
               ref.read(localAudiobooksProvider.future).timeout(const Duration(seconds: 8)).catchError((_) => <AudiobookResult>[]),
-            ]).catchError((_) => []);
+            ]).catchError((_) => <List<AudiobookResult>>[]);
           } else if (selectedTab == 'podcast') {
             ref.invalidate(podcastRecentProvider);
           } else {

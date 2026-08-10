@@ -25,6 +25,8 @@ import '../../music/data/lastfm_service.dart';
 import '../../settings/data/lastfm_repository.dart';
 import 'audio_metadata_service.dart';
 import 'audio_fx_service.dart';
+import 'cast_controller.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import '../../audiobooks/data/audiobook_repository.dart';
 import '../../audiobooks/data/audiobook_models.dart';
 
@@ -37,6 +39,13 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   double get volume => _player.volume;
   Stream<double> get volumeStream => _player.volumeStream;
   final _playlist = ConcatenatingAudioSource(children: []);
+
+  /// Chromecast controller used to route playback to a receiver while a cast
+  /// session is active. No-op on desktop platforms.
+  final CastPlaybackController cast = CastPlaybackController.instance;
+
+  /// Whether playback is currently being controlled by a Cast receiver.
+  bool get _isCasting => cast.isConnected.value;
   final Set<int> _resolvingIndices = {}; // resolution lock
   final Map<String, MediaItem> _enrichedItems = {}; // cache to persist metadata across sequence updates
   late final String _cachePath;
@@ -64,6 +73,9 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool _isLoopingBack = false;
   
   bool get _isMediaKit => io.Platform.isLinux || io.Platform.isWindows;
+
+  int? _lastCastResumeIndex;
+  Duration _lastCastResumePosition = Duration.zero;
 
   MyAudioHandler() {
     _init();
@@ -96,6 +108,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           .cast<int>()
           .listen((id) => AudioFxService().applySession(id));
     }
+
+    // Mirror Cast receiver state into the audio_service surfaces while casting.
+    cast.isConnected.addListener(_onCastConnectionChanged);
+    cast.playerState.addListener(_onCastStateOrPositionChanged);
 
     // 2. Listen for playback events (playing, position, buffered, processingState)
     _player.playbackEventStream.listen((_) {}, onError: (e) {
@@ -140,6 +156,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
 
     _player.playbackEventStream.map(_transformEvent).listen((state) {
+      if (_isCasting) {
+        _emitCastState();
+        return;
+      }
       playbackState.add(state);
     });
 
@@ -154,18 +174,40 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                   ..where((t) => t.torrentId.equals(torrentId) & t.fileId.equals(fileId)))
                 .getSingleOrNull();
             _isCurrentTrackLiked = file?.isLiked ?? false;
-            playbackState.add(_transformEvent(_player.playbackEvent));
+            if (_isCasting) {
+              final isLazyPlaceholder = item.id.contains('lazy.torbox.internal') ||
+                  item.id.contains('lazy.flac.internal') ||
+                  item.id.contains('lazy.plugin.internal');
+              if (!isLazyPlaceholder && cast.currentTrack.value?.id != item.id) {
+                unawaited(cast.playSingleTrack(item));
+              }
+              _emitCastState();
+            } else {
+              playbackState.add(_transformEvent(_player.playbackEvent));
+            }
           } catch (_) {
             _isCurrentTrackLiked = false;
-            playbackState.add(_transformEvent(_player.playbackEvent));
+            if (_isCasting) {
+              _emitCastState();
+            } else {
+              playbackState.add(_transformEvent(_player.playbackEvent));
+            }
           }
         } else {
           _isCurrentTrackLiked = false;
-          playbackState.add(_transformEvent(_player.playbackEvent));
+          if (_isCasting) {
+            _emitCastState();
+          } else {
+            playbackState.add(_transformEvent(_player.playbackEvent));
+          }
         }
       } else {
         _isCurrentTrackLiked = false;
-        playbackState.add(_transformEvent(_player.playbackEvent));
+        if (_isCasting) {
+          _emitCastState();
+        } else {
+          playbackState.add(_transformEvent(_player.playbackEvent));
+        }
       }
     });
 
@@ -1155,6 +1197,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         
         if (_isMediaKit) {
           _broadcastLinuxQueue();
+        } else if (_isCasting) {
+          // Keep the receiver queue in sync with the phone's auto-extended queue.
+          print('[AudioHandler] Autoplay extended queue, reloading cast queue');
+          _reloadCastQueue();
         }
         
         print('[AudioHandler] Autoplay: Added "${nextItem.title}" to queue end.');
@@ -1546,10 +1592,22 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (_isCasting) {
+      await cast.play();
+      _emitCastState();
+      return;
+    }
+    await _player.play();
+  }
 
   @override
   Future<void> pause() async {
+    if (_isCasting) {
+      await cast.pause();
+      _emitCastState();
+      return;
+    }
     await _saveAudiobookProgressIfNeeded();
     // Hardcover sync runs in background so pause is not blocked by HTTP.
     _syncHardcoverProgressIfNeeded();
@@ -1560,6 +1618,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
     _repeatModeState = repeatMode;
+    if (_isCasting) {
+      _emitCastState();
+      return;
+    }
     switch (repeatMode) {
       case AudioServiceRepeatMode.none:
         await _player.setLoopMode(LoopMode.off);
@@ -1579,10 +1641,23 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    if (_isCasting) {
+      _lastCastResumePosition = position;
+      await cast.seek(position);
+      _emitCastState();
+      return;
+    }
+    await _player.seek(position);
+  }
 
   @override
   Future<void> stop() async {
+    if (_isCasting) {
+      await cast.stop();
+      _emitCastState();
+      return;
+    }
     await _saveAudiobookProgressIfNeeded();
     // Hardcover sync runs in background so stop is not blocked by HTTP.
     _syncHardcoverProgressIfNeeded();
@@ -1594,6 +1669,20 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToNext() async {
+    if (_isCasting) {
+      if (_isMediaKit) {
+        if (_linuxIndex + 1 < _originalItems.length) _linuxIndex++;
+      } else {
+        if (_player.hasNext) await _player.seekToNext();
+      }
+      final nextIndex = _player.currentIndex ?? _linuxIndex;
+      final nextItem = _originalItemAt(nextIndex) ?? mediaItem.value;
+      if (nextItem != null) {
+        await cast.playSingleTrack(nextItem);
+      }
+      _emitCastState();
+      return;
+    }
     if (_isMediaKit) {
       if (_linuxIndex + 1 < _playlist.length) {
         await _playLinuxTrack(_linuxIndex + 1);
@@ -1620,6 +1709,20 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
+    if (_isCasting) {
+      if (_isMediaKit) {
+        if (_linuxIndex > 0) _linuxIndex--;
+      } else {
+        if (_player.hasPrevious) await _player.seekToPrevious();
+      }
+      final prevIndex = _player.currentIndex ?? _linuxIndex;
+      final prevItem = _originalItemAt(prevIndex) ?? mediaItem.value;
+      if (prevItem != null) {
+        await cast.playSingleTrack(prevItem);
+      }
+      _emitCastState();
+      return;
+    }
     if (_isMediaKit) {
       if (_player.position.inSeconds > 3) {
         await seek(Duration.zero);
@@ -1633,6 +1736,22 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    if (_isCasting) {
+      _lastCastResumeIndex = index;
+      if (!_isMediaKit) {
+        try {
+          await _player.seek(Duration.zero, index: index);
+        } catch (_) {}
+      } else {
+        _linuxIndex = index;
+      }
+      final targetItem = _originalItemAt(index) ?? mediaItem.value;
+      if (targetItem != null) {
+        await cast.playSingleTrack(targetItem);
+      }
+      _emitCastState();
+      return;
+    }
     if (_isMediaKit) {
       await _playLinuxTrack(index);
     } else {
@@ -1664,6 +1783,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       print('[AudioHandler] playMediaItem: Pre-resolving track 0 before play()');
       await _resolveTrack(0);
     }
+    if (_isCasting) {
+      final activeItem = mediaItem.value ?? item;
+      await cast.playSingleTrack(activeItem);
+      _emitCastState();
+      return;
+    }
     try {
       final initialPos = item.extras?['initialPositionMillis'] as int?;
       if (initialPos != null && initialPos > 0) {
@@ -1675,7 +1800,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
       }
       print('[AudioHandler] playMediaItem: Calling _player.play()');
-      await _player.play();
+      await _startLocalPlayback();
       print('[AudioHandler] playMediaItem: _player.play() returned');
     } catch (e) {
       print('[AudioHandler] Playback failed: $e');
@@ -1697,6 +1822,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (_isMediaKit) {
       _broadcastLinuxQueue();
     }
+    _reloadCastQueue();
   }
 
   Future<void> removeQueueItemAt(int index) async {
@@ -1728,6 +1854,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (isCurrent) {
       await skipToNext();
     }
+    _reloadCastQueue();
   }  @override
   Future<void> updateQueue(List<MediaItem> items) async {
     _originalItems = List.from(items);
@@ -1737,6 +1864,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     final sources = await Future.wait(items.map((item) => _createAudioSource(item)));
     await _playlist.addAll(sources);
     print('[AudioHandler] Queue updated: ${items.length} items');
+
+    if (_isCasting) {
+      // Keep the local player silent; play the first track on the Cast receiver.
+      await _player.pause();
+      if (items.isNotEmpty) {
+        unawaited(cast.playSingleTrack(items.first, playPosition: Duration.zero));
+      }
+    }
     
     if (_isMediaKit) {
       _broadcastLinuxQueue();
@@ -2008,7 +2143,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             print('[AudioHandler] play: Pre-resolving track 0 for rotated items');
             await _resolveTrack(0);
           }
-          await _player.play();
+          await _startLocalPlayback();
           _enrichQueueInRange(0);
         } else {
           final item = MediaItem(
@@ -2073,7 +2208,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             await _playlist.removeAt(targetIndex);
           }
           if (_isMediaKit) _broadcastLinuxQueue();
-          if (wasPlaying) _player.play();
+          if (wasPlaying) await _startLocalPlayback();
+          _reloadCastQueue();
         } else {
           // Default: Play Next logic
           final item = MediaItem(
@@ -2091,6 +2227,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           if (_isMediaKit) _broadcastLinuxQueue();
           print('[AudioHandler] Play Next: Added "${item.title}" at $insertAt');
           _enrichTrackMetadata(insertAt);
+          _reloadCastQueue();
         }
         return;
       }
@@ -2186,6 +2323,118 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       return true;
     }
     return super.customAction(name, extras);
+  }
+
+  void _onCastConnectionChanged() {
+    if (_isCasting) {
+      _lastCastResumeIndex = _player.currentIndex ?? 0;
+      _lastCastResumePosition = _player.position;
+      print('[AudioHandler] Cast connected. Sending single current track to Cast receiver.');
+      unawaited(_player.pause());
+
+      final current = mediaItem.value ?? _originalItemAt(_lastCastResumeIndex);
+      if (current != null) {
+        unawaited(cast.playSingleTrack(current, playPosition: _lastCastResumePosition));
+      }
+      _emitCastState();
+    } else {
+      if (_originalItems.isNotEmpty) {
+        final resumeIndex = (_lastCastResumeIndex ?? 0)
+            .clamp(0, _originalItems.length - 1);
+        try {
+          unawaited(_player.seek(_lastCastResumePosition, index: resumeIndex));
+        } catch (_) {}
+        unawaited(_player.play());
+      }
+    }
+  }
+
+  void _onCastStateOrPositionChanged() {
+    if (!_isCasting) return;
+    _emitCastState();
+
+    if (cast.playerState.value == CastMediaPlayerState.idle &&
+        cast.mediaStatus?.idleReason == GoogleCastMediaIdleReason.finished) {
+      print('[AudioHandler] Cast track finished playing. Advancing to next track...');
+      unawaited(skipToNext());
+    }
+  }
+
+  void _emitCastState() {
+    if (!_isCasting) return;
+    final idx = _player.currentIndex ?? _lastCastResumeIndex ?? 0;
+    _lastCastResumeIndex = idx;
+    final playing = cast.isPlaying;
+    final loading = cast.isBuffering;
+    playbackState.add(PlaybackState(
+      controls: [
+        MediaControl.skipToPrevious,
+        playing ? MediaControl.pause : MediaControl.play,
+        MediaControl.skipToNext,
+        if (_originalItems.isNotEmpty) MediaControl.stop,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+      },
+      androidCompactActionIndices: const [0, 1, 2],
+      processingState: loading
+          ? AudioProcessingState.loading
+          : AudioProcessingState.ready,
+      playing: playing,
+      updatePosition: cast.position.value,
+      bufferedPosition: cast.position.value,
+      speed: 1.0,
+      queueIndex: idx,
+      shuffleMode: _shuffleModeState,
+      repeatMode: _repeatModeState,
+    ));
+  }
+
+  /// Plays locally unless a cast session is active, in which case the local
+  /// player stays paused so the receiver is the only active output.
+  Future<void> _startLocalPlayback() async {
+    if (_isCasting) {
+      await _player.pause();
+      return;
+    }
+    await _player.play();
+  }
+
+  MediaItem? _originalItemAt(int? index) {
+    if (index == null || index < 0 || index >= _originalItems.length) {
+      return null;
+    }
+    return _withEnrichedMetadata(_originalItems[index]);
+  }
+
+  void _reloadCastQueue() {
+    // No-op for single track cast mode
+  }
+
+  /// Returns [item] with any enriched metadata (duration, artwork, artist,
+  /// album) merged in from the enrichment cache.
+  MediaItem _withEnrichedMetadata(MediaItem item) {
+    final key = item.extras?['originalId'] as String? ?? item.id;
+    final enr = _enrichedItems[key];
+    if (enr == null) return item;
+    final enrArtist = enr.artist;
+    return item.copyWith(
+      title: enr.title == null || enr.title == 'Unknown' ? item.title : enr.title,
+      artist: enrArtist != null &&
+              enrArtist.isNotEmpty &&
+              enrArtist.toLowerCase() != 'torbox' &&
+              enrArtist.toLowerCase() != 'unknown'
+          ? enrArtist
+          : item.artist,
+      album: enr.album ?? item.album,
+      artUri: enr.artUri ?? item.artUri,
+      duration: (enr.duration?.inMilliseconds ?? 0) > 0
+          ? enr.duration
+          : item.duration,
+      extras: {...?item.extras, ...?enr.extras},
+    );
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {

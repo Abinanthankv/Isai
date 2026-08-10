@@ -34,6 +34,7 @@ import 'lastfm_provider.dart';
 import 'package:audiotags/audiotags.dart';
 import '../data/metadata/metadata_addon_manager.dart';
 import '../utils/filename_parser.dart';
+import 'download_notifications.dart';
 
 /// Discover screen section ids in their default display order.
 const List<String> kDefaultDiscoverSectionOrder = [
@@ -1629,6 +1630,8 @@ class LibraryNotifier extends Notifier<LibraryState> {
   int _activeEnrichFetches = 0;
   int? _lastKnownHash;
 
+  final MusicDownloadNotifier _downloadNotifications = MusicDownloadNotifier();
+
   @override
   LibraryState build() {
     _repo = getIt<MusicRepository>();
@@ -2202,12 +2205,22 @@ class LibraryNotifier extends Notifier<LibraryState> {
           return;
         }
       }
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
     }
 
     final key = '${file.torrentId}-${file.id}';
     if (state.downloadingIds.contains(key)) return;
 
     state = state.copyWith(downloadingIds: {...state.downloadingIds, key});
+
+    final notifId = key.hashCode.abs();
+    final preMeta = state.metadata[key];
+    final preParsed = parseFilename(file.name);
+    final notifTitle = preMeta?.trackName ?? preParsed.title;
+    final notifArtist = preMeta?.artistName ?? (preParsed.artist.isNotEmpty ? preParsed.artist : 'TorBox');
+    final notifArtwork = preMeta?.artworkUrlHigh ?? preMeta?.artworkUrlLow;
 
     try {
       final url = await _repo.getStreamUrl(file.torrentId, file.id);
@@ -2233,13 +2246,21 @@ class LibraryNotifier extends Notifier<LibraryState> {
       final savePath = p.join(downloadDirPath, fileName);
 
       print('[LibraryNotifier] Downloading ${file.name} to $savePath');
-      
+
+      await _downloadNotifications.showProgress(
+        id: notifId,
+        title: notifTitle,
+        artist: notifArtist,
+        artworkUrl: notifArtwork,
+      );
+
       final client = io.HttpClient();
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
       
       final contentLength = response.contentLength;
       int downloaded = 0;
+      int lastPercent = -1;
       
       final fileToSave = io.File(savePath);
       final sink = fileToSave.openWrite();
@@ -2249,16 +2270,34 @@ class LibraryNotifier extends Notifier<LibraryState> {
         downloaded += data.length;
         if (contentLength > 0) {
           final progress = downloaded / contentLength;
-          // Throttle updates to avoid excessive state rebuilds
-          if ((progress * 100).toInt() % 2 == 0) {
+          final percent = (progress * 100).toInt();
+          // Throttle updates to avoid excessive state rebuilds/notifications
+          if (percent != lastPercent && percent % 2 == 0) {
+            lastPercent = percent;
             state = state.copyWith(
               downloadProgress: {...state.downloadProgress, key: progress},
+            );
+            await _downloadNotifications.showProgress(
+              id: notifId,
+              title: notifTitle,
+              artist: notifArtist,
+              artworkUrl: notifArtwork,
+              progress: progress,
+              downloadedBytes: downloaded,
+              totalBytes: contentLength,
             );
           }
         }
       }
       await sink.flush();
       await sink.close();
+
+      await _downloadNotifications.showComplete(
+        id: notifId,
+        title: notifTitle,
+        artworkUrl: notifArtwork,
+        totalBytes: downloaded,
+      );
 
       print('[LibraryNotifier] Download complete: $savePath');
       await _db.updateFileLocalPath(file.torrentId, file.id, savePath);
@@ -2285,6 +2324,12 @@ class LibraryNotifier extends Notifier<LibraryState> {
     } catch (e) {
       print('[LibraryNotifier] Download failed: $e');
       state = state.copyWith(downloadError: 'Download failed: $e');
+      await _downloadNotifications.showError(
+        id: notifId,
+        title: notifTitle,
+        artworkUrl: notifArtwork,
+        message: 'Download failed: $e',
+      );
     } finally {
       state = state.copyWith(
         downloadingIds: state.downloadingIds.where((id) => id != key).toSet(),
@@ -2318,6 +2363,9 @@ class LibraryNotifier extends Notifier<LibraryState> {
           return;
         }
       }
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
     }
 
     final effectiveFileId = fileId ?? (title.hashCode ^ artist.hashCode ^ url.hashCode);
@@ -2325,6 +2373,8 @@ class LibraryNotifier extends Notifier<LibraryState> {
     if (state.downloadingIds.contains(key)) return;
 
     state = state.copyWith(downloadingIds: {...state.downloadingIds, key});
+
+    final notifId = key.hashCode.abs();
 
     try {
       final downloadDirPath = settings.selectedDownloadFolder!;
@@ -2338,13 +2388,21 @@ class LibraryNotifier extends Notifier<LibraryState> {
       final savePath = p.join(downloadDirPath, fileName);
 
       print('[LibraryNotifier] Downloading local track $title to $savePath');
-      
+
+      await _downloadNotifications.showProgress(
+        id: notifId,
+        title: title,
+        artist: artist,
+        artworkUrl: artworkUrl,
+      );
+
       final client = io.HttpClient();
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
       
       final contentLength = response.contentLength;
       int downloaded = 0;
+      int lastPercent = -1;
       
       final fileToSave = io.File(savePath);
       final sink = fileToSave.openWrite();
@@ -2354,15 +2412,33 @@ class LibraryNotifier extends Notifier<LibraryState> {
         downloaded += data.length;
         if (contentLength > 0) {
           final progress = downloaded / contentLength;
-          if ((progress * 100).toInt() % 2 == 0) {
+          final percent = (progress * 100).toInt();
+          if (percent != lastPercent && percent % 2 == 0) {
+            lastPercent = percent;
             state = state.copyWith(
               downloadProgress: {...state.downloadProgress, key: progress},
+            );
+            await _downloadNotifications.showProgress(
+              id: notifId,
+              title: title,
+              artist: artist,
+              artworkUrl: artworkUrl,
+              progress: progress,
+              downloadedBytes: downloaded,
+              totalBytes: contentLength,
             );
           }
         }
       }
       await sink.flush();
       await sink.close();
+
+      await _downloadNotifications.showComplete(
+        id: notifId,
+        title: title,
+        artworkUrl: artworkUrl,
+        totalBytes: downloaded,
+      );
 
       // Save to Files table
       await _db.into(_db.files).insertOnConflictUpdate(FilesCompanion.insert(
@@ -2405,6 +2481,12 @@ class LibraryNotifier extends Notifier<LibraryState> {
     } catch (e) {
       print('[LibraryNotifier] Local download failed: $e');
       state = state.copyWith(downloadError: 'Local download failed: $e');
+      await _downloadNotifications.showError(
+        id: notifId,
+        title: title,
+        artworkUrl: artworkUrl,
+        message: 'Download failed: $e',
+      );
     } finally {
       state = state.copyWith(
         downloadingIds: state.downloadingIds.where((v) => v != key).toSet(),

@@ -87,6 +87,7 @@ dependencies:
   flutter_displaymode: ^0.6.0
   shimmer: ^3.0.0
   flutter_cache_manager: ^3.4.1
+  flutter_chrome_cast: ^1.4.6
 
 
 dev_dependencies:
