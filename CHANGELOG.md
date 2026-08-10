@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.13] - August 2026
+
+### Added
+- **Chromecast Playback**: Cast music and podcasts to any Google Cast device (Chromecast / Google TV) from the Now Playing header and podcast player. The full queue is cast as metadata and each track's audio URL is resolved just like the local player — only when the track is about to play. Includes play/pause/seek/next/prev, repeat mode, phone↔receiver current-song sync, and automatic receiver-queue growth when the phone's autoplay extends the queue.
+- **Cast Artwork & Duration**: Cast queue items ship with artwork and playback duration (via a quick enrichment pass), so the receiver shows the correct cover art and track time.
+- **EQ Custom Presets (Android)**: Save your current 10-band EQ / Bass Boost / Loudness / Reverb setup as a named preset, apply it with one tap (long-press to delete), plus a "Custom" pill for the live state. Presets persist between sessions.
+- **Silent Download Notifications**: Track downloads now show a notification with artwork and live progress, a completion notification, and an error notification on failure. Android 13+ notification permission is requested when needed.
+
+### Fixed
+- **Now Playing Layout**: Fixed the portrait overflow when the Cast button was added to the header.
+- **Cast Queue Selection**: Selecting a song while casting reloads the receiver queue from that track, so the chosen song actually plays instead of staying on the stale queue.
+
 ## [1.0.12] - August 2026
 
 ### Added
