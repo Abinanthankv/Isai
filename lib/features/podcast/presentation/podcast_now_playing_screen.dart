@@ -86,6 +86,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     super.initState();
     _progressNotifier = ref.read(podcastProgressProvider.notifier);
     _lastPlayedNotifier = ref.read(lastPlayedPodcastProvider.notifier);
+
+    final currentSpeed = audioHandler.playbackState.value.speed;
+    if (currentSpeed > 0.0) {
+      _playbackSpeed = currentSpeed;
+    }
+
     final current = audioHandler.mediaItem.value;
     final currentId = current?.id;
     final currentEpId = current?.extras?['episodeId'] as String?;
@@ -96,6 +102,9 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
       _play().catchError((_) { if (mounted) setState(() => _isLoading = false); });
     }
     _playbackStateSub = audioHandler.playbackState.listen((state) {
+      if (state.speed > 0.0 && state.speed != _playbackSpeed) {
+        if (mounted) setState(() => _playbackSpeed = state.speed);
+      }
       if (_sleepTimerEnd != null && !state.playing && _sleepTimer != null) {
         _sleepTimer?.cancel();
         _sleepTimer = null;
@@ -238,6 +247,9 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
       },
     });
+    if (_playbackSpeed != 1.0) {
+      await audioHandler.customAction('setSpeed', {'speed': _playbackSpeed});
+    }
   }
 
   Future<void> _playEpisode(PodcastEpisode episode, int index) async {
