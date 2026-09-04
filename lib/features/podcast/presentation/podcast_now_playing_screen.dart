@@ -400,6 +400,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     _buildChaptersSection(context),
                     if (widget.episode.description != null && widget.episode.description!.isNotEmpty) ...[
                       const SizedBox(height: 16),
+                      _buildTimestampChipsSection(context, _extractDescriptionTimestamps(widget.episode.description!)),
                       _buildSectionHeader('About this Episode'),
                       const SizedBox(height: 8),
                       AnimatedCrossFade(
@@ -407,20 +408,24 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                         crossFadeState: _descriptionExpanded
                             ? CrossFadeState.showSecond
                             : CrossFadeState.showFirst,
-                        firstChild: Text(
-                          widget.episode.description!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                            height: 1.5,
+                        firstChild: Text.rich(
+                          TextSpan(
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              height: 1.5,
+                            ),
+                            children: _buildDescriptionSpans(context, widget.episode.description!),
                           ),
                           maxLines: 5,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        secondChild: Text(
-                          widget.episode.description!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                            height: 1.5,
+                        secondChild: Text.rich(
+                          TextSpan(
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                              height: 1.5,
+                            ),
+                            children: _buildDescriptionSpans(context, widget.episode.description!),
                           ),
                         ),
                       ),
@@ -929,4 +934,190 @@ class _PodcastProgressBarState extends State<_PodcastProgressBar> {
     if (h > 0) return '${h}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
     return '${m}:${s.toString().padLeft(2, '0')}';
   }
+}
+
+class _DescriptionTimestamp {
+  final String timeString;
+  final int seconds;
+  final String label;
+
+  _DescriptionTimestamp({
+    required this.timeString,
+    required this.seconds,
+    required this.label,
+  });
+}
+
+String _cleanHtmlDescription(String text) {
+  return text
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'<[^>]*>'), '')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'");
+}
+
+int _parseTimestampToSeconds(String timeStr) {
+  final parts = timeStr.split(':').map((p) => int.tryParse(p) ?? 0).toList();
+  if (parts.length == 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length == 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+List<InlineSpan> _buildDescriptionSpans(BuildContext context, String description) {
+  final cleanText = _cleanHtmlDescription(description);
+  final spans = <InlineSpan>[];
+  final regex = RegExp(r'(?:\b|(?<=\[|\(|\s|^))(\d{1,2}:[0-5]\d(?::[0-5]\d)?)(?:\b|(?=\]|\)|\s|$))');
+
+  int lastIndex = 0;
+  for (final match in regex.allMatches(cleanText)) {
+    if (match.start > lastIndex) {
+      spans.add(TextSpan(text: cleanText.substring(lastIndex, match.start)));
+    }
+    final timeStr = match.group(1)!;
+    final seconds = _parseTimestampToSeconds(timeStr);
+
+    spans.add(
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: GestureDetector(
+          onTap: () {
+            audioHandler.seek(Duration(seconds: seconds));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Jumped to $timeStr'),
+                duration: const Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.play_arrow_rounded,
+                  size: 12,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  timeStr,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    lastIndex = match.end;
+  }
+
+  if (lastIndex < cleanText.length) {
+    spans.add(TextSpan(text: cleanText.substring(lastIndex)));
+  }
+
+  return spans;
+}
+
+List<_DescriptionTimestamp> _extractDescriptionTimestamps(String description) {
+  final cleanText = _cleanHtmlDescription(description);
+  final lines = cleanText.split('\n');
+  final regex = RegExp(r'(?:\b|(?<=\[|\(|\s|^))(\d{1,2}:[0-5]\d(?::[0-5]\d)?)(?:\b|(?=\]|\)|\s|$))');
+  final results = <_DescriptionTimestamp>[];
+
+  for (final line in lines) {
+    final trimmed = line.trim();
+    final match = regex.firstMatch(trimmed);
+    if (match != null) {
+      final timeStr = match.group(1)!;
+      final seconds = _parseTimestampToSeconds(timeStr);
+      var label = trimmed.replaceAll(match.group(0)!, '').trim();
+      label = label.replaceAll(RegExp(r'^[\s:\-–—\(\)\[\]]+'), '').trim();
+      if (label.isEmpty) {
+        label = 'Timestamp $timeStr';
+      }
+      results.add(_DescriptionTimestamp(
+        timeString: timeStr,
+        seconds: seconds,
+        label: label,
+      ));
+    }
+  }
+  return results;
+}
+
+Widget _buildTimestampChipsSection(BuildContext context, List<_DescriptionTimestamp> timestamps) {
+  if (timestamps.isEmpty) return const SizedBox.shrink();
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.schedule_rounded,
+              size: 18,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Timestamps & Highlights',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(
+        height: 40,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: timestamps.length,
+          itemBuilder: (context, index) {
+            final ts = timestamps[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ActionChip(
+                avatar: const Icon(Icons.play_arrow_rounded, size: 16),
+                label: Text('${ts.timeString} • ${ts.label}'),
+                visualDensity: VisualDensity.compact,
+                onPressed: () {
+                  audioHandler.seek(Duration(seconds: ts.seconds));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Jumped to ${ts.timeString}'),
+                      duration: const Duration(seconds: 1),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+    ],
+  );
 }
