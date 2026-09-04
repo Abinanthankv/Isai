@@ -28,6 +28,7 @@ final podcastRepositoryProvider = Provider<PodcastRepository>((ref) {
 
 final subscribedPodcastsProvider = StreamProvider<List<DbPodcastSubscription>>((ref) {
   final repo = ref.watch(podcastRepositoryProvider);
+  repo.checkAndNotifyNewEpisodes();
   return repo.watchSubscribedPodcasts();
 });
 
@@ -221,14 +222,28 @@ class PodcastFollowedNotifier extends StateNotifier<Set<int>> {
     }
   }
 
-  Future<void> toggle(int collectionId) async {
+  Future<void> add(int collectionId) async {
+    if (!state.contains(collectionId)) {
+      state = {...state, collectionId};
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('podcast_followed', jsonEncode(state.toList()));
+    }
+  }
+
+  Future<void> remove(int collectionId) async {
     if (state.contains(collectionId)) {
       state = {...state}..remove(collectionId);
-    } else {
-      state = {...state, collectionId};
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('podcast_followed', jsonEncode(state.toList()));
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('podcast_followed', jsonEncode(state.toList()));
+  }
+
+  Future<void> toggle(int collectionId) async {
+    if (state.contains(collectionId)) {
+      await remove(collectionId);
+    } else {
+      await add(collectionId);
+    }
   }
 
   bool isFollowed(int collectionId) => state.contains(collectionId);
@@ -333,9 +348,9 @@ class ContinueListeningData {
 
   String get episodeKey => '${podcastTitle}_$episodeId';
 
-  ContinueListeningData copyWith({Duration? position, bool? isLive, DateTime? lastPlayedAt, String? primaryGenre}) =>
+  ContinueListeningData copyWith({String? podcastTitle, Duration? position, bool? isLive, DateTime? lastPlayedAt, String? primaryGenre}) =>
       ContinueListeningData(
-        podcastTitle: podcastTitle,
+        podcastTitle: podcastTitle ?? this.podcastTitle,
         podcastArtist: podcastArtist,
         podcastArtwork: podcastArtwork,
         episodeArtwork: episodeArtwork,
@@ -535,6 +550,8 @@ final podcastStatsProvider = Provider<PodcastStatsData>((ref) {
   final progressMap = ref.watch(podcastProgressProvider);
   final lastPlayedMap = ref.watch(lastPlayedPodcastProvider);
   final followed = ref.watch(podcastFollowedProvider);
+  final subs = ref.watch(subscribedPodcastsProvider).asData?.value ?? [];
+  final subMap = {for (final s in subs) s.feedUrl: s};
 
   int completed = 0, inProgress = 0, started = 0;
   Duration totalTime = Duration.zero;
@@ -551,7 +568,15 @@ final podcastStatsProvider = Provider<PodcastStatsData>((ref) {
       else if (fraction > 0.05) inProgress++;
     }
     totalTime += Duration(milliseconds: posMs);
-    podcastCount[entry.podcastTitle] = (podcastCount[entry.podcastTitle] ?? 0) + 1;
+
+    var title = entry.podcastTitle;
+    if ((title.isEmpty || title == 'Downloaded Episode') && entry.feedUrl != null && subMap.containsKey(entry.feedUrl)) {
+      title = subMap[entry.feedUrl]!.title;
+    }
+    if (title != 'Downloaded Episode') {
+      podcastCount[title] = (podcastCount[title] ?? 0) + 1;
+    }
+
     if (entry.primaryGenre != null) {
       genreCount[entry.primaryGenre!] = (genreCount[entry.primaryGenre!] ?? 0) + 1;
     }
@@ -563,7 +588,12 @@ final podcastStatsProvider = Provider<PodcastStatsData>((ref) {
   final genreSorted = genreCount.entries.toList()
     ..sort((a, b) => b.value.compareTo(a.value));
 
-  final recent = lastPlayedMap.values.toList()
+  final recent = lastPlayedMap.values.map((item) {
+    if ((item.podcastTitle.isEmpty || item.podcastTitle == 'Downloaded Episode') && item.feedUrl != null && subMap.containsKey(item.feedUrl)) {
+      return item.copyWith(podcastTitle: subMap[item.feedUrl]!.title);
+    }
+    return item;
+  }).toList()
     ..sort((a, b) => (b.lastPlayedAt ?? DateTime(0))
         .compareTo(a.lastPlayedAt ?? DateTime(0)));
 

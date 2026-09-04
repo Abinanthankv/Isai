@@ -327,6 +327,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
 
   Widget _buildDownloadedTab() {
     final asyncDownloads = ref.watch(downloadedPodcastEpisodesProvider);
+    final subs = ref.watch(subscribedPodcastsProvider).asData?.value ?? [];
     return asyncDownloads.when(
       data: (episodes) {
         if (episodes.isEmpty) {
@@ -355,6 +356,9 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
           itemCount: episodes.length,
           itemBuilder: (context, index) {
             final ep = episodes[index];
+            final subMatch = subs.where((s) => s.feedUrl == ep.feedUrl).firstOrNull;
+            final podcastTitle = subMatch?.title ?? 'Podcast Episode';
+            final podcastArtist = subMatch?.artist ?? '';
             final isCompleted = ep.isDownloaded;
             final isPaused = ep.isPaused;
             final podcastEp = PodcastEpisode(
@@ -441,8 +445,8 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
                                   builder: (_) => PodcastNowPlayingScreen(
                                     episode: podcastEp,
                                     allEpisodes: [podcastEp],
-                                    podcastTitle: 'Downloaded Episode',
-                                    podcastArtist: '',
+                                    podcastTitle: podcastTitle,
+                                    podcastArtist: podcastArtist,
                                     podcastArtwork: ep.artworkUrl,
                                     feedUrl: ep.feedUrl,
                                   ),
@@ -484,8 +488,8 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
                             builder: (_) => PodcastNowPlayingScreen(
                               episode: podcastEp,
                               allEpisodes: [podcastEp],
-                              podcastTitle: 'Downloaded Episode',
-                              podcastArtist: '',
+                              podcastTitle: podcastTitle,
+                              podcastArtist: podcastArtist,
                               podcastArtwork: ep.artworkUrl,
                               feedUrl: ep.feedUrl,
                             ),
@@ -667,12 +671,17 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               await audioHandler.seek(current.position);
             } else {
               var audioUrl = current.audioUrl;
+              final repo = ref.read(podcastRepositoryProvider);
               if (current.feedUrl != null && current.feedUrl!.isNotEmpty) {
-                final fresh = await PodcastApiService().fetchEpisodes(current.feedUrl!);
-                final match = fresh.where((e) =>
-                  e.title == current.episodeTitle || e.id == current.episodeId
+                final cachedEps = await repo.getEpisodes(current.feedUrl!);
+                final match = cachedEps.where((e) =>
+                  e.guid == current.episodeId || e.title == current.episodeTitle
                 ).firstOrNull;
-                if (match?.audioUrl != null) audioUrl = match!.audioUrl!;
+                if (match?.localPath != null && match!.localPath!.isNotEmpty) {
+                  audioUrl = match.localPath!;
+                } else if (match?.audioUrl != null && match!.audioUrl.isNotEmpty) {
+                  audioUrl = match.audioUrl;
+                }
               }
               final resolved = audioUrl.isNotEmpty ? await PodcastApiService.resolveAudioUrl(audioUrl) : audioUrl;
               await audioHandler.customAction('play', {
@@ -691,10 +700,9 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
                   'episodeTitle': current.episodeTitle,
                   'episodeDuration': current.duration.inSeconds,
                   'feedUrl': current.feedUrl ?? '',
+                  'initialPositionMillis': current.position.inMilliseconds,
                 },
               });
-              await Future.delayed(const Duration(milliseconds: 500));
-              await audioHandler.seek(current.position);
             }
             if (context.mounted) {
               Navigator.push(

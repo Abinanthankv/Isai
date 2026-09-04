@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import '../data/podcast_models.dart';
 import '../data/podcast_api_service.dart';
+import '../data/podcast_repository.dart';
 import 'podcast_providers.dart';
 import 'podcast_artwork.dart';
 import 'package:isai/main.dart';
@@ -68,11 +69,13 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   int? _sleepTimerMinutes;
   Timer? _sleepTimer;
   DateTime? _sleepTimerEnd;
+  bool _sleepAtEndOfEpisode = false;
   int _lastSleepDisplayMinutes = -1;
   bool _wasPlaying = false;
   ContinueListeningData? _savedEpisodeData;
   PodcastProgressNotifier? _progressNotifier;
   LastPlayedPodcastNotifier? _lastPlayedNotifier;
+  PodcastRepository? _podcastRepository;
   bool _chaptersExpanded = false;
   bool _descriptionExpanded = false;
   Timer? _saveDebounceTimer;
@@ -86,6 +89,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     super.initState();
     _progressNotifier = ref.read(podcastProgressProvider.notifier);
     _lastPlayedNotifier = ref.read(lastPlayedPodcastProvider.notifier);
+    _podcastRepository = ref.read(podcastRepositoryProvider);
 
     final currentSpeed = audioHandler.playbackState.value.speed;
     if (currentSpeed > 0.0) {
@@ -109,6 +113,10 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         _sleepTimer?.cancel();
         _sleepTimer = null;
         if (mounted) setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+      }
+      if (_sleepAtEndOfEpisode && state.processingState == AudioProcessingState.completed) {
+        _cancelSleepTimer();
+        audioHandler.pause();
       }
       if (_wasPlaying && !state.playing) {
         _saveProgress();
@@ -163,13 +171,18 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 
       final guid = widget.episode.guid ?? widget.episode.id;
       final feedUrl = widget.feedUrl ?? '';
-      final dur = data.duration.inMilliseconds;
-      ref.read(podcastRepositoryProvider).saveProgress(
+      final mediaDur = audioHandler.mediaItem.value?.duration?.inMilliseconds ?? 0;
+      final epDur = widget.episode.durationSec != null ? widget.episode.durationSec! * 1000 : 0;
+      final dur = data.duration.inMilliseconds > 0 ? data.duration.inMilliseconds : (mediaDur > 0 ? mediaDur : epDur);
+
+      final isCompleted = (dur > 0 && (pos / dur) >= 0.95) || state.processingState == AudioProcessingState.completed;
+
+      _podcastRepository?.saveProgress(
         guid: guid,
         feedUrl: feedUrl,
         positionMillis: pos,
         durationMillis: dur,
-        isCompleted: dur > 0 && (pos / dur) > 0.95,
+        isCompleted: isCompleted,
       );
     });
   }
@@ -189,13 +202,18 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 
     final guid = widget.episode.guid ?? widget.episode.id;
     final feedUrl = widget.feedUrl ?? '';
-    final dur = data.duration.inMilliseconds;
-    ref.read(podcastRepositoryProvider).saveProgress(
+    final mediaDur = audioHandler.mediaItem.value?.duration?.inMilliseconds ?? 0;
+    final epDur = widget.episode.durationSec != null ? widget.episode.durationSec! * 1000 : 0;
+    final dur = data.duration.inMilliseconds > 0 ? data.duration.inMilliseconds : (mediaDur > 0 ? mediaDur : epDur);
+
+    final isCompleted = (dur > 0 && (pos / dur) >= 0.95) || state.processingState == AudioProcessingState.completed;
+
+    _podcastRepository?.saveProgress(
       guid: guid,
       feedUrl: feedUrl,
       positionMillis: pos,
       durationMillis: dur,
-      isCompleted: dur > 0 && (pos / dur) > 0.95,
+      isCompleted: isCompleted,
     );
   }
 
@@ -225,6 +243,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   }
 
   Future<void> _startPlayback(String resolved) async {
+    final guid = widget.episode.guid ?? widget.episode.id;
+    final savedProgress = await _podcastRepository?.getProgress(guid);
+    final initialPos = savedProgress != null && !savedProgress.isCompleted && savedProgress.positionMillis > 5000
+        ? savedProgress.positionMillis
+        : null;
+
     await audioHandler.customAction('play', {
       'url': resolved,
       'title': widget.episode.title,
@@ -245,6 +269,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'chaptersUrl': widget.episode.chaptersUrl ?? '',
         'episodeArtwork': widget.episode.artworkUrl ?? '',
         if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
+        'initialPositionMillis': initialPos,
       },
     });
     if (_playbackSpeed != 1.0) {
@@ -264,6 +289,13 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     }
     final url = episode.audioUrl ?? '';
     final resolved = url.isNotEmpty ? await PodcastApiService.resolveAudioUrl(url) : url;
+
+    final guid = episode.guid ?? episode.id;
+    final savedProgress = await _podcastRepository?.getProgress(guid);
+    final initialPos = savedProgress != null && !savedProgress.isCompleted && savedProgress.positionMillis > 5000
+        ? savedProgress.positionMillis
+        : null;
+
     await audioHandler.customAction('play', {
       'url': resolved,
       'title': episode.title,
@@ -283,8 +315,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
         'chaptersUrl': episode.chaptersUrl ?? '',
         'episodeArtwork': episode.artworkUrl ?? '',
         if (widget.primaryGenre != null) 'primaryGenre': widget.primaryGenre,
+        'initialPositionMillis': initialPos,
       },
     });
+    if (_playbackSpeed != 1.0) {
+      await audioHandler.customAction('setSpeed', {'speed': _playbackSpeed});
+    }
   }
 
   @override
@@ -395,6 +431,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     _PodcastProgressBar(
                       onPreviousEpisode: _previousEpisode,
                       onNextEpisode: _nextEpisode,
+                      chapters: ref.watch(podcastChaptersProvider(widget.episode)).asData?.value,
                     ),
                     const SizedBox(height: 24),
                     _buildChaptersSection(context),
@@ -636,7 +673,8 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
               _sleepTimerOption(ctx, '30 minutes', 30),
               _sleepTimerOption(ctx, '45 minutes', 45),
               _sleepTimerOption(ctx, '60 minutes', 60),
-              if (_sleepTimerMinutes != null)
+              _sleepTimerOption(ctx, 'End of Episode', 0),
+              if (_sleepTimerMinutes != null || _sleepAtEndOfEpisode)
                 _sleepTimerOption(ctx, 'Cancel Timer', -1),
             ],
           ),
@@ -646,15 +684,19 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   }
 
   Widget _sleepTimerOption(BuildContext ctx, String label, int minutes) {
+    final isSelected = (minutes == 0 && _sleepAtEndOfEpisode) ||
+        (_sleepTimerMinutes == minutes && minutes > 0);
     return ListTile(
       title: Text(label),
-      trailing: _sleepTimerMinutes == minutes && minutes > 0
+      trailing: isSelected
           ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
           : null,
       onTap: () {
         Navigator.pop(ctx);
         if (minutes == -1) {
           _cancelSleepTimer();
+        } else if (minutes == 0) {
+          _startSleepAtEndOfEpisode();
         } else {
           _startSleepTimer(minutes);
         }
@@ -662,16 +704,22 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     );
   }
 
+  void _startSleepAtEndOfEpisode() {
+    _cancelSleepTimer();
+    setState(() {
+      _sleepAtEndOfEpisode = true;
+      _sleepTimerMinutes = 0;
+    });
+  }
+
   void _startSleepTimer(int minutes) {
-    _sleepTimer?.cancel();
+    _cancelSleepTimer();
     final end = DateTime.now().add(Duration(minutes: minutes));
     setState(() { _sleepTimerMinutes = minutes; _sleepTimerEnd = end; });
     _sleepTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (DateTime.now().isAfter(end)) {
-        _sleepTimer?.cancel();
-        _sleepTimer = null;
-        setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+        _cancelSleepTimer();
         audioHandler.pause();
       } else {
         final remaining = end.difference(DateTime.now());
@@ -687,7 +735,11 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   void _cancelSleepTimer() {
     _sleepTimer?.cancel();
     _sleepTimer = null;
-    setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+    setState(() {
+      _sleepTimerMinutes = null;
+      _sleepTimerEnd = null;
+      _sleepAtEndOfEpisode = false;
+    });
   }
 
   Duration? get _sleepTimeRemaining {
@@ -740,10 +792,12 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
 class _PodcastProgressBar extends StatefulWidget {
   final VoidCallback onPreviousEpisode;
   final VoidCallback onNextEpisode;
+  final List<PodcastChapter>? chapters;
 
   const _PodcastProgressBar({
     required this.onPreviousEpisode,
     required this.onNextEpisode,
+    this.chapters,
   });
 
   @override
@@ -839,27 +893,73 @@ class _PodcastProgressBarState extends State<_PodcastProgressBar> {
           sliderValue = (_currentPosition.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
         }
 
+        PodcastChapter? currentChapter;
+        if (widget.chapters != null && widget.chapters!.isNotEmpty && duration.inSeconds > 0) {
+          final posMs = _currentPosition.inMilliseconds;
+          for (final c in widget.chapters!) {
+            if (posMs >= c.startTimeMs) {
+              currentChapter = c;
+            }
+          }
+        }
+
         return Column(
           children: [
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 4,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            if (currentChapter != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '📍 ${currentChapter.title}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-              child: Slider(
-                value: sliderValue,
-                activeColor: Theme.of(context).colorScheme.primary,
-                inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                onChanged: (val) {
-                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
-                  setState(() => _currentPosition = seekPos);
-                },
-                onChangeEnd: (val) {
-                  final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
-                  audioHandler.seek(seekPos);
-                },
-              ),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                if (widget.chapters != null && widget.chapters!.isNotEmpty && duration.inSeconds > 0)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _ChapterTicksPainter(
+                        chapters: widget.chapters!,
+                        totalDuration: duration,
+                        tickColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    value: sliderValue,
+                    activeColor: Theme.of(context).colorScheme.primary,
+                    inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    onChanged: (val) {
+                      final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
+                      setState(() => _currentPosition = seekPos);
+                    },
+                    onChangeEnd: (val) {
+                      final seekPos = Duration(milliseconds: (val * duration.inMilliseconds).toInt());
+                      audioHandler.seek(seekPos);
+                    },
+                  ),
+                ),
+              ],
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1120,4 +1220,46 @@ Widget _buildTimestampChipsSection(BuildContext context, List<_DescriptionTimest
       const SizedBox(height: 16),
     ],
   );
+}
+
+class _ChapterTicksPainter extends CustomPainter {
+  final List<PodcastChapter> chapters;
+  final Duration totalDuration;
+  final Color tickColor;
+
+  _ChapterTicksPainter({
+    required this.chapters,
+    required this.totalDuration,
+    required this.tickColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (totalDuration.inSeconds <= 0 || chapters.isEmpty) return;
+    final paint = Paint()
+      ..color = tickColor
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+
+    final totalSec = totalDuration.inSeconds.toDouble();
+    final padding = 24.0;
+    final trackWidth = size.width - (padding * 2);
+    final centerY = size.height / 2;
+
+    for (final c in chapters) {
+      final startSec = c.startTimeMs / 1000.0;
+      if (startSec > 0 && startSec < totalSec) {
+        final ratio = startSec / totalSec;
+        final dx = padding + (ratio * trackWidth);
+        canvas.drawLine(Offset(dx, centerY - 6), Offset(dx, centerY + 6), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ChapterTicksPainter oldDelegate) {
+    return oldDelegate.chapters != chapters ||
+        oldDelegate.totalDuration != totalDuration ||
+        oldDelegate.tickColor != tickColor;
+  }
 }

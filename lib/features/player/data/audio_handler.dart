@@ -1758,14 +1758,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       return;
     }
     try {
-      final initialPos = item.extras?['initialPositionMillis'] as int?;
-      if (initialPos != null && initialPos > 0) {
-        print('[AudioHandler] playMediaItem: Seeking to initial position ${initialPos}ms before play');
-        try {
-          await _player.seek(Duration(milliseconds: initialPos), index: 0);
-        } catch (seekError) {
-          print('[AudioHandler] playMediaItem: Seek failed ($seekError), playing from beginning.');
-        }
+      final initialPos = item.extras?['initialPositionMillis'] as int? ?? 0;
+      print('[AudioHandler] playMediaItem: Seeking to position ${initialPos}ms before play');
+      try {
+        await _player.seek(Duration(milliseconds: initialPos), index: 0);
+      } catch (seekError) {
+        print('[AudioHandler] playMediaItem: Seek failed ($seekError)');
       }
       print('[AudioHandler] playMediaItem: Calling _player.play()');
       await _startLocalPlayback();

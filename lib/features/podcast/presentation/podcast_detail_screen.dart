@@ -90,6 +90,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                   final repo = ref.read(podcastRepositoryProvider);
                   if (isDbSubscribed) {
                     await repo.unsubscribe(feedUrl);
+                    ref.read(podcastFollowedProvider.notifier).remove(widget.podcast.collectionId);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Unsubscribed from podcast')),
@@ -97,6 +98,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                     }
                   } else {
                     await repo.subscribe(widget.podcast);
+                    ref.read(podcastFollowedProvider.notifier).add(widget.podcast.collectionId);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Subscribed to podcast')),
@@ -105,19 +107,6 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                   }
                 },
               ),
-              Consumer(builder: (context, ref, child) {
-                final followed = ref.watch(podcastFollowedProvider);
-                final isFollowed = followed.contains(widget.podcast.collectionId);
-                return IconButton(
-                  icon: Icon(
-                    isFollowed ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                    color: isFollowed ? Theme.of(context).colorScheme.primary : null,
-                  ),
-                  onPressed: () {
-                    ref.read(podcastFollowedProvider.notifier).toggle(widget.podcast.collectionId);
-                  },
-                );
-              }),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
@@ -178,8 +167,10 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                               final repo = ref.read(podcastRepositoryProvider);
                               if (isDbSubscribed) {
                                 await repo.unsubscribe(feedUrl);
+                                ref.read(podcastFollowedProvider.notifier).remove(widget.podcast.collectionId);
                               } else {
                                 await repo.subscribe(widget.podcast);
+                                ref.read(podcastFollowedProvider.notifier).add(widget.podcast.collectionId);
                               }
                             },
                             style: FilledButton.styleFrom(
@@ -479,30 +470,62 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              if (episode.durationSec != null) ...[
-                                Icon(Icons.schedule_rounded, size: 12,
-                                  color: theme.colorScheme.onSurfaceVariant),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatDuration(episode.durationSec!),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                              ],
-                              if (episode.pubDate != null)
-                                Text(
-                                  _formatDate(episode.pubDate!),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                            ],
+                          Consumer(
+                            builder: (context, ref, child) {
+                              final progressData = ref.watch(podcastEpisodeProgressDbProvider(guid)).asData?.value;
+                              final ratio = (progressData != null && progressData.durationMillis > 0)
+                                  ? (progressData.positionMillis / progressData.durationMillis).clamp(0.0, 1.0)
+                                  : 0.0;
+                              final isCompleted = progressData != null && (progressData.isCompleted || ratio >= 0.95);
+
+                              return Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 10,
+                                runSpacing: 4,
+                                children: [
+                                  if (isCompleted)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.check_circle_rounded, size: 13, color: Colors.green),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Completed',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  if (episode.durationSec != null)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.schedule_rounded, size: 12,
+                                          color: theme.colorScheme.onSurfaceVariant),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          _formatDuration(episode.durationSec!),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: theme.colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  if (episode.pubDate != null)
+                                    Text(
+                                      _formatDate(episode.pubDate!),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
                           ),
                           if (episode.description != null && episode.description!.isNotEmpty) ...[
                             const SizedBox(height: 4),
@@ -671,15 +694,21 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                 Consumer(
                   builder: (context, ref, child) {
                     final progressData = ref.watch(podcastEpisodeProgressDbProvider(guid)).asData?.value;
-                    if (progressData != null && progressData.positionMillis > 5000 && progressData.durationMillis > 0) {
+                    if (progressData != null && (progressData.positionMillis > 5000 || progressData.isCompleted) && progressData.durationMillis > 0) {
                       final ratio = (progressData.positionMillis / progressData.durationMillis).clamp(0.0, 1.0);
+                      final isCompleted = progressData.isCompleted || ratio >= 0.95;
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 8),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(value: ratio, minHeight: 3),
+                            child: LinearProgressIndicator(
+                              value: isCompleted ? 1.0 : ratio,
+                              minHeight: 3,
+                              color: isCompleted ? Colors.green : null,
+                            ),
                           ),
                         ],
                       );

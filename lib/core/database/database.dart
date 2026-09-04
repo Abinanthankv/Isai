@@ -802,18 +802,37 @@ class AppDatabase extends _$AppDatabase {
     double progress = 0.0,
     bool isPaused = false,
   }) async {
-    await (update(podcastEpisodes)..where((t) => t.guid.equals(guid))).write(
-      PodcastEpisodesCompanion(
-        localPath: Value(localPath),
-        isDownloaded: Value(isDownloaded),
-        downloadProgress: Value(progress),
-        isPaused: Value(isPaused),
-      ),
-    );
+    const maxRetries = 3;
+    for (var attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await (update(podcastEpisodes)..where((t) => t.guid.equals(guid))).write(
+          PodcastEpisodesCompanion(
+            localPath: Value(localPath),
+            isDownloaded: Value(isDownloaded),
+            downloadProgress: Value(progress),
+            isPaused: Value(isPaused),
+          ),
+        );
+        return;
+      } catch (e) {
+        final isDbLocked = e.toString().contains('database is locked');
+        if (isDbLocked && attempt < maxRetries - 1) {
+          await Future.delayed(Duration(milliseconds: 100 * (attempt + 1)));
+          continue;
+        }
+        rethrow;
+      }
+    }
   }
 
   Future<void> savePodcastProgress(PodcastProgressCompanion entry) async {
     await into(podcastProgress).insertOnConflictUpdate(entry);
+    if (entry.isCompleted.present && entry.isCompleted.value == true) {
+      final guid = entry.guid.value;
+      await (update(podcastEpisodes)..where((t) => t.guid.equals(guid))).write(
+        const PodcastEpisodesCompanion(isCompleted: Value(true)),
+      );
+    }
   }
 
   Future<DbPodcastProgressData?> getPodcastProgress(String guid) {
@@ -822,6 +841,10 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<DbPodcastProgressData?> watchPodcastProgress(String guid) {
     return (select(podcastProgress)..where((t) => t.guid.equals(guid))).watchSingleOrNull();
+  }
+
+  Future<DbPodcastEpisodeData?> getEpisodeByGuid(String guid) {
+    return (select(podcastEpisodes)..where((t) => t.guid.equals(guid))).getSingleOrNull();
   }
 
   Future<List<DbPodcastProgressData>> getAllPodcastProgress() => select(podcastProgress).get();
@@ -836,6 +859,12 @@ LazyDatabase _openConnection() {
     }
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = io.File(p.join(dbFolder.path, 'db.sqlite'));
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(
+      file,
+      setup: (db) {
+        db.execute('PRAGMA journal_mode = WAL;');
+        db.execute('PRAGMA busy_timeout = 5000;');
+      },
+    );
   });
 }

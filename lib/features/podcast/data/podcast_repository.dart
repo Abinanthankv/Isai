@@ -7,6 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../../core/database/database.dart';
 import '../../music/presentation/download_notifications.dart';
 import 'podcast_models.dart';
@@ -173,6 +176,7 @@ class PodcastRepository {
         progress: ep.downloadProgress > 0 ? ep.downloadProgress : 0.01,
       );
 
+      DateTime lastDbUpdateTime = DateTime.now();
       DateTime lastNotifTime = DateTime.now();
 
       final options = Options(
@@ -205,14 +209,18 @@ class PodcastRepository {
 
         if (totalBytes > 0) {
           final progress = (receivedBytes / totalBytes).clamp(0.0, 1.0);
-          _db.updateEpisodeDownloadState(
-            guid: guid,
-            isDownloaded: false,
-            progress: progress,
-            isPaused: false,
-          );
-
           final now = DateTime.now();
+
+          if (now.difference(lastDbUpdateTime).inMilliseconds > 500 || progress >= 0.99) {
+            lastDbUpdateTime = now;
+            _db.updateEpisodeDownloadState(
+              guid: guid,
+              isDownloaded: false,
+              progress: progress,
+              isPaused: false,
+            );
+          }
+
           if (now.difference(lastNotifTime).inMilliseconds > 400 || progress >= 0.99) {
             lastNotifTime = now;
             notifier.showProgress(
@@ -380,6 +388,59 @@ class PodcastRepository {
       lastPlayedAt: DateTime.now().millisecondsSinceEpoch,
     );
     await _db.savePodcastProgress(entry);
+
+    if (isCompleted) {
+      final ep = await _db.getEpisodeByGuid(guid);
+      if (ep != null && ep.isDownloaded && ep.localPath != null && ep.localPath!.isNotEmpty) {
+        print('[PodcastRepository] Auto-deleting completed downloaded episode: ${ep.title}');
+        await deleteDownload(ep);
+      }
+    }
+  }
+
+  // ─── NEW EPISODE NOTIFICATIONS ─────────────────────────────────────────────
+
+  Future<void> checkAndNotifyNewEpisodes() async {
+    try {
+      final subs = await getSubscribedPodcasts();
+      if (subs.isEmpty) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      const keyPrefix = 'podcast_notified_guids_';
+
+      for (final sub in subs) {
+        if (sub.feedUrl.isEmpty) continue;
+        final episodes = await _api.fetchEpisodes(sub.feedUrl);
+        if (episodes.isEmpty) continue;
+
+        final knownGuids = (prefs.getStringList('$keyPrefix${sub.feedUrl}') ?? []).toSet();
+        if (knownGuids.isEmpty) {
+          final currentGuids = episodes.map((e) => e.guid ?? e.id).toList();
+          await prefs.setStringList('$keyPrefix${sub.feedUrl}', currentGuids);
+          continue;
+        }
+
+        final newEpisodes = episodes.where((e) {
+          final guid = e.guid ?? e.id;
+          return !knownGuids.contains(guid);
+        }).toList();
+
+        if (newEpisodes.isNotEmpty) {
+          for (final ep in newEpisodes.take(3)) {
+            final epGuid = ep.guid ?? ep.id;
+            knownGuids.add(epGuid);
+            await PodcastNotificationService.showNewEpisodeNotification(
+              id: epGuid.hashCode.abs(),
+              podcastTitle: sub.title,
+              episodeTitle: ep.title,
+            );
+          }
+          await prefs.setStringList('$keyPrefix${sub.feedUrl}', knownGuids.toList());
+        }
+      }
+    } catch (e) {
+      print('[PodcastRepository] checkAndNotifyNewEpisodes error: $e');
+    }
   }
 
   Future<DbPodcastProgressData?> getProgress(String guid) {
@@ -424,5 +485,43 @@ class PodcastRepository {
   Future<String> exportOpml() async {
     final subs = await getSubscribedPodcasts();
     return OpmlService.exportOpml(subs);
+  }
+}
+
+class PodcastNotificationService {
+  static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+
+  static Future<void> init() async {
+    if (_initialized) return;
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
+    await _plugin.initialize(initSettings);
+    _initialized = true;
+  }
+
+  static Future<void> showNewEpisodeNotification({
+    required int id,
+    required String podcastTitle,
+    required String episodeTitle,
+  }) async {
+    try {
+      await init();
+      const androidDetails = AndroidNotificationDetails(
+        'com.isai.podcast.new_episodes',
+        'New Podcast Episodes',
+        channelDescription: 'Notifications for new episodes of subscribed podcasts',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      );
+      await _plugin.show(
+        id,
+        'New Episode: $podcastTitle',
+        episodeTitle,
+        const NotificationDetails(android: androidDetails),
+      );
+    } catch (e) {
+      print('[PodcastNotificationService] Notification error: $e');
+    }
   }
 }
