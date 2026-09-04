@@ -82,7 +82,7 @@ class PodcastRepository {
     try {
       final episodes = await _api.fetchEpisodes(feedUrl);
       final companions = episodes.map((ep) {
-        final pubDateMs = ep.pubDate != null ? DateTime.tryParse(ep.pubDate!)?.millisecondsSinceEpoch : null;
+        final pubDateMs = parseRssDate(ep.pubDate)?.millisecondsSinceEpoch;
         final epGuid = (ep.guid != null && ep.guid!.isNotEmpty) ? ep.guid! : (ep.audioUrl ?? '');
         return PodcastEpisodesCompanion.insert(
           feedUrl: feedUrl,

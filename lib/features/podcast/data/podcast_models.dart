@@ -136,3 +136,52 @@ class SpotifyChartItem {
     );
   }
 }
+
+DateTime? parseRssDate(String? dateStr) {
+  if (dateStr == null || dateStr.trim().isEmpty) return null;
+  final cleaned = dateStr.trim();
+
+  // 1. Try ISO 8601 standard parser first
+  final iso = DateTime.tryParse(cleaned);
+  if (iso != null && iso.year > 1970) return iso;
+
+  // 2. RFC 2822 format parser
+  // Matches: [DayOfWeek,] Day Month Year Hour:Min[:Sec] [Timezone]
+  final rfcRegExp = RegExp(
+    r'^(?:[A-Za-z]{3},\s*)?(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?',
+  );
+
+  const months = {
+    'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+    'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+  };
+
+  final match = rfcRegExp.firstMatch(cleaned);
+  if (match != null) {
+    final day = int.tryParse(match.group(1)!);
+    final monthStr = match.group(2)!.toLowerCase();
+    final month = months[monthStr];
+    final year = int.tryParse(match.group(3)!);
+    final hour = int.tryParse(match.group(4)!);
+    final min = int.tryParse(match.group(5)!);
+    final secStr = match.group(6);
+    final sec = secStr != null ? (int.tryParse(secStr) ?? 0) : 0;
+
+    if (day != null && month != null && year != null && hour != null && min != null) {
+      return DateTime.utc(year, month, day, hour, min, sec);
+    }
+  }
+
+  // 3. Fallback: try stripping weekday and timezone string
+  try {
+    final sanitized = cleaned
+        .replaceAll(RegExp(r'^[A-Za-z]{3},\s*'), '')
+        .replaceAll(RegExp(r'\s+[A-Za-z]+$'), '')
+        .replaceAll(RegExp(r'\s+[+-]\d{4}$'), '');
+    final dt = DateTime.tryParse(sanitized);
+    if (dt != null && dt.year > 1970) return dt;
+  } catch (_) {}
+
+  return null;
+}
+

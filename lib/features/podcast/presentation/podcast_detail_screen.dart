@@ -228,36 +228,87 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
         ),
       );
     }
+
     final months = _buildMonthSections(episodes);
-    if (months.isEmpty) {
-      return SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildEpisodeTile(context, episodes[index], episodes, feedUrl: feedUrl),
-          childCount: episodes.length,
-        ),
-      );
-    }
-    _selectedMonth ??= months.last;
-    final filtered = _selectedMonth != null
-        ? episodes.where((ep) {
+    final isAllSelected = _selectedMonth == null || _selectedMonth == 'All';
+
+    final List<PodcastEpisode> filtered = isAllSelected
+        ? episodes
+        : episodes.where((ep) {
             final dt = _parseDate(ep.pubDate);
             return dt != null && _monthKey(dt) == _selectedMonth;
-          }).toList()
-        : episodes;
+          }).toList();
+
     if (filtered.isEmpty) {
       return SliverToBoxAdapter(
         child: _buildFilteredEmpty(episodes, months),
       );
     }
+
+    // Group filtered episodes by month
+    final Map<String, List<PodcastEpisode>> grouped = {};
+    for (final ep in filtered) {
+      final dt = _parseDate(ep.pubDate);
+      final key = dt != null ? _monthKey(dt) : 'Other';
+      grouped.putIfAbsent(key, () => []).add(ep);
+    }
+
+    final items = <Widget>[];
+    if (months.isNotEmpty) {
+      items.add(_buildFilterHeader(episodes, months));
+    }
+
+    grouped.forEach((monthKey, groupEpisodes) {
+      items.add(_buildMonthHeader(monthKey, groupEpisodes.length));
+      for (final ep in groupEpisodes) {
+        items.add(_buildEpisodeTile(context, ep, episodes, feedUrl: feedUrl));
+      }
+    });
+
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          if (index == 0) {
-            return _buildFilterHeader(episodes, months);
-          }
-          return _buildEpisodeTile(context, filtered[index - 1], episodes, feedUrl: feedUrl);
-        },
-        childCount: filtered.length + 1,
+        (context, index) => items[index],
+        childCount: items.length,
+      ),
+    );
+  }
+
+  Widget _buildMonthHeader(String monthKey, int count) {
+    final label = monthKey == 'Other' ? 'Other Episodes' : _monthLabel(monthKey);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Divider(
+              color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -274,45 +325,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
     return '${months[month - 1]} $year';
   }
 
-  static final RegExp _rssDate = RegExp(
-    r'^\w{3},\s(\d{2})\s(\w{3})\s(\d{4})\s(\d{2}):(\d{2}):(\d{2})',
-  );
-
-  static const _monthMap = {
-    'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-    'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
-  };
-
-  DateTime? _parseDate(String? dateStr) {
-    if (dateStr == null) return null;
-    DateTime? dt;
-    try {
-      dt = DateTime.tryParse(dateStr);
-    } catch (_) {}
-    if (dt != null && dt.year > 1970) return dt;
-    final match = _rssDate.firstMatch(dateStr);
-    if (match != null) {
-      final day = int.tryParse(match.group(1)!);
-      final month = _monthMap[match.group(2)];
-      final year = int.tryParse(match.group(3)!);
-      final hour = int.tryParse(match.group(4)!);
-      final min = int.tryParse(match.group(5)!);
-      final sec = int.tryParse(match.group(6)!);
-      if (day != null && month != null && year != null &&
-          hour != null && min != null && sec != null) {
-        return DateTime.utc(year, month, day, hour, min, sec);
-      }
-    }
-    try {
-      final cleaned = dateStr
-          .replaceAll(RegExp(r'[A-Za-z]{3},\s'), '')
-          .replaceAll(RegExp(r'\s[+-]\d{4}$'), '')
-          .replaceAll(' GMT', '');
-      dt = DateTime.tryParse(cleaned);
-      if (dt != null && dt.year > 1970) return dt;
-    } catch (_) {}
-    return null;
-  }
+  DateTime? _parseDate(String? dateStr) => parseRssDate(dateStr);
 
   List<String> _buildMonthSections(List<PodcastEpisode> episodes) {
     final months = <String>{};
@@ -325,6 +338,9 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
   }
 
   Widget _buildFilterHeader(List<PodcastEpisode> episodes, List<String> months) {
+    final allMonthsOptions = ['All', ...months];
+    final currentSelection = _selectedMonth ?? 'All';
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -353,19 +369,22 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            itemCount: months.length,
+            itemCount: allMonthsOptions.length,
             itemBuilder: (context, index) {
-              final month = months[index];
-              final isSelected = month == _selectedMonth;
+              final monthOpt = allMonthsOptions[index];
+              final isSelected = monthOpt == currentSelection;
+              final label = monthOpt == 'All' ? 'All' : _monthLabel(monthOpt);
+
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilterChip(
-                  label: Text(_monthLabel(month),
+                  label: Text(
+                    label,
                     style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
                   ),
                   selected: isSelected,
                   onSelected: (_) {
-                    setState(() => _selectedMonth = month);
+                    setState(() => _selectedMonth = monthOpt);
                   },
                   visualDensity: VisualDensity.compact,
                 ),
@@ -390,7 +409,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                 Icon(Icons.search_off_rounded, size: 40,
                   color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                 const SizedBox(height: 8),
-                Text('No episodes in ${_monthLabel(_selectedMonth!)}',
+                Text('No episodes in ${_selectedMonth == 'All' ? 'All' : _monthLabel(_selectedMonth!)}',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
             ),
