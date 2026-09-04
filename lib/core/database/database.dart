@@ -176,16 +176,72 @@ class AudiobookBookmarks extends Table {
   IntColumn get createdAt => integer()(); // unix timestamp
 }
 
-@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists, AudiobookProgress, AudiobookMetadataCache, AudiobookBookmarks])
+// ─── PODCAST TABLES ──────────────────────────────────────────────────────────
+
+@DataClassName('DbPodcastSubscription')
+class PodcastSubscriptions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get collectionId => integer().withDefault(const Constant(0))();
+  TextColumn get title => text()();
+  TextColumn get artist => text()();
+  TextColumn get feedUrl => text()();
+  TextColumn get artworkUrl => text().nullable()();
+  TextColumn get description => text().nullable()();
+  TextColumn get genres => text().nullable()();
+  IntColumn get subscribedAt => integer()(); // timestamp
+  IntColumn get lastRefreshedAt => integer().nullable()();
+}
+
+@DataClassName('DbPodcastEpisodeData')
+class PodcastEpisodes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get feedUrl => text()();
+  TextColumn get guid => text()();
+  TextColumn get title => text()();
+  TextColumn get description => text().nullable()();
+  TextColumn get audioUrl => text()();
+  IntColumn get pubDate => integer().nullable()(); // timestamp
+  IntColumn get durationSeconds => integer().withDefault(const Constant(0))();
+  TextColumn get artworkUrl => text().nullable()();
+  TextColumn get chaptersUrl => text().nullable()();
+  TextColumn get localPath => text().nullable()();
+  BoolColumn get isDownloaded => boolean().withDefault(const Constant(false))();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  RealColumn get downloadProgress => real().withDefault(const Constant(0.0))();
+  BoolColumn get isPaused => boolean().withDefault(const Constant(false))();
+}
+
+@DataClassName('DbPodcastProgressData')
+class PodcastProgress extends Table {
+  TextColumn get guid => text()();
+  TextColumn get feedUrl => text()();
+  IntColumn get positionMillis => integer().withDefault(const Constant(0))();
+  IntColumn get durationMillis => integer().withDefault(const Constant(0))();
+  BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
+  IntColumn get lastPlayedAt => integer()(); // timestamp
+
+  @override
+  Set<Column> get primaryKey => {guid};
+}
+
+@DriftDatabase(tables: [Torrents, Files, TrackMetadata, SyncMeta, PlaybackHistory, Playlists, PlaylistTracks, ExternalTrackMetadata, FollowedArtists, AudiobookProgress, AudiobookMetadataCache, AudiobookBookmarks, PodcastSubscriptions, PodcastEpisodes, PodcastProgress])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onUpgrade: (m, from, to) async {
+          if (from < 20) {
+            await m.addColumn(podcastEpisodes, podcastEpisodes.isPaused);
+          }
+          if (from < 19) {
+            await m.createTable(podcastSubscriptions);
+            await m.createTable(podcastEpisodes);
+            await m.createTable(podcastProgress);
+          }
           if (from < 18) {
             await m.addColumn(externalTrackMetadata, externalTrackMetadata.isrc);
             await m.addColumn(trackMetadata, trackMetadata.isrc);
@@ -247,6 +303,7 @@ class AppDatabase extends _$AppDatabase {
           }
         },
       );
+
 
   // --- Helper methods for Library ---
   
@@ -647,7 +704,130 @@ class AppDatabase extends _$AppDatabase {
   Future<int> deleteAudiobookMetadata(String bookId) {
     return (delete(audiobookMetadataCache)..where((t) => t.bookId.equals(bookId))).go();
   }
+
+  // ─── PODCAST DATA ─────────────────────────────────────────────────────────
+
+  Future<int> subscribePodcast(PodcastSubscriptionsCompanion entry) async {
+    return into(podcastSubscriptions).insertOnConflictUpdate(entry);
+  }
+
+  Future<int> unsubscribePodcast(String feedUrl) async {
+    return (delete(podcastSubscriptions)..where((t) => t.feedUrl.equals(feedUrl))).go();
+  }
+
+  Future<bool> isPodcastSubscribed(String feedUrl) async {
+    final item = await (select(podcastSubscriptions)..where((t) => t.feedUrl.equals(feedUrl))).getSingleOrNull();
+    return item != null;
+  }
+
+  Future<List<DbPodcastSubscription>> getSubscribedPodcasts() => select(podcastSubscriptions).get();
+  Stream<List<DbPodcastSubscription>> watchSubscribedPodcasts() => select(podcastSubscriptions).watch();
+
+  Future<void> savePodcastEpisodes(List<PodcastEpisodesCompanion> entries) async {
+    for (final entry in entries) {
+      final guid = entry.guid.value;
+      final existing = await (select(podcastEpisodes)..where((t) => t.guid.equals(guid))).getSingleOrNull();
+      if (existing != null) {
+        await (update(podcastEpisodes)..where((t) => t.guid.equals(guid))).write(
+          PodcastEpisodesCompanion(
+            title: entry.title,
+            description: entry.description,
+            audioUrl: entry.audioUrl,
+            pubDate: entry.pubDate,
+            durationSeconds: entry.durationSeconds,
+            artworkUrl: entry.artworkUrl,
+            chaptersUrl: entry.chaptersUrl,
+          ),
+        );
+      } else {
+        await into(podcastEpisodes).insert(entry);
+      }
+    }
+  }
+
+  Future<List<DbPodcastEpisodeData>> getEpisodesForPodcast(String feedUrl) async {
+    final rows = await (select(podcastEpisodes)..where((t) => t.feedUrl.equals(feedUrl))).get();
+    final map = <String, DbPodcastEpisodeData>{};
+    for (final row in rows) {
+      final current = map[row.guid];
+      if (current == null || (row.isDownloaded && !current.isDownloaded) || (row.downloadProgress > current.downloadProgress)) {
+        map[row.guid] = row;
+      }
+    }
+    return map.values.toList();
+  }
+
+  Stream<List<DbPodcastEpisodeData>> watchEpisodesForPodcast(String feedUrl) {
+    return (select(podcastEpisodes)..where((t) => t.feedUrl.equals(feedUrl))).watch().map((rows) {
+      final map = <String, DbPodcastEpisodeData>{};
+      for (final row in rows) {
+        final current = map[row.guid];
+        if (current == null || (row.isDownloaded && !current.isDownloaded) || (row.downloadProgress > current.downloadProgress)) {
+          map[row.guid] = row;
+        }
+      }
+      return map.values.toList();
+    });
+  }
+
+  Future<List<DbPodcastEpisodeData>> getDownloadedPodcastEpisodes() async {
+    final rows = await (select(podcastEpisodes)..where((t) => t.isDownloaded.equals(true) | t.downloadProgress.isBiggerThanValue(0.0))).get();
+    final map = <String, DbPodcastEpisodeData>{};
+    for (final row in rows) {
+      final current = map[row.guid];
+      if (current == null || (row.isDownloaded && !current.isDownloaded) || (row.downloadProgress > current.downloadProgress)) {
+        map[row.guid] = row;
+      }
+    }
+    return map.values.toList();
+  }
+
+  Stream<List<DbPodcastEpisodeData>> watchDownloadedPodcastEpisodes() {
+    return (select(podcastEpisodes)..where((t) => t.isDownloaded.equals(true) | t.downloadProgress.isBiggerThanValue(0.0))).watch().map((rows) {
+      final map = <String, DbPodcastEpisodeData>{};
+      for (final row in rows) {
+        final current = map[row.guid];
+        if (current == null || (row.isDownloaded && !current.isDownloaded) || (row.downloadProgress > current.downloadProgress)) {
+          map[row.guid] = row;
+        }
+      }
+      return map.values.toList();
+    });
+  }
+
+  Future<void> updateEpisodeDownloadState({
+    required String guid,
+    String? localPath,
+    required bool isDownloaded,
+    double progress = 0.0,
+    bool isPaused = false,
+  }) async {
+    await (update(podcastEpisodes)..where((t) => t.guid.equals(guid))).write(
+      PodcastEpisodesCompanion(
+        localPath: Value(localPath),
+        isDownloaded: Value(isDownloaded),
+        downloadProgress: Value(progress),
+        isPaused: Value(isPaused),
+      ),
+    );
+  }
+
+  Future<void> savePodcastProgress(PodcastProgressCompanion entry) async {
+    await into(podcastProgress).insertOnConflictUpdate(entry);
+  }
+
+  Future<DbPodcastProgressData?> getPodcastProgress(String guid) {
+    return (select(podcastProgress)..where((t) => t.guid.equals(guid))).getSingleOrNull();
+  }
+
+  Stream<DbPodcastProgressData?> watchPodcastProgress(String guid) {
+    return (select(podcastProgress)..where((t) => t.guid.equals(guid))).watchSingleOrNull();
+  }
+
+  Future<List<DbPodcastProgressData>> getAllPodcastProgress() => select(podcastProgress).get();
+  Stream<List<DbPodcastProgressData>> watchAllPodcastProgress() => select(podcastProgress).watch();
 }
+
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {

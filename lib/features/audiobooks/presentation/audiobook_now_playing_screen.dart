@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -44,7 +43,107 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   int _selectedTabIndex = 0;
 
-  void _accumulateSeek(int seconds, Duration currentPosition) {
+  late final Stream<Duration> _throttledPositionStream;
+  DateTime? _lastThrottledPositionTime;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    _throttledPositionStream = AudioService.position.where((pos) {
+      final now = DateTime.now();
+      if (_lastThrottledPositionTime == null ||
+          now.difference(_lastThrottledPositionTime!) >= const Duration(milliseconds: 300)) {
+        _lastThrottledPositionTime = now;
+        return true;
+      }
+      return false;
+    }).asBroadcastStream();
+
+    // Save on pause
+    _playbackStateSub = audioHandler.playbackState.listen((state) {
+      final isPlaying = state.playing;
+      if (_wasPlaying && !isPlaying) {
+        _saveCurrentProgress();
+      }
+      _wasPlaying = isPlaying;
+
+      // Check sleep timer expiration
+      if (_sleepTimerEnd != null && !isPlaying && _sleepTimer != null) {
+        _sleepTimer?.cancel();
+        _sleepTimer = null;
+        if (mounted) setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
+      }
+    });
+
+    // Find epub file in background
+    _findEpubFile();
+    // Load saved playback speed
+    _loadPlaybackSpeed();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      ref.invalidate(audiobookBookmarksProvider(widget.book.id));
+    }
+  }
+
+  Future<void> _loadPlaybackSpeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getDouble('audiobook_speed_${widget.book.id}') ?? 1.0;
+    if (mounted) {
+      setState(() => _playbackSpeed = saved);
+      await audioHandler.customAction('setSpeed', {'speed': saved});
+    }
+  }
+
+  Future<void> _setPlaybackSpeed(double speed) async {
+    setState(() => _playbackSpeed = speed);
+    await audioHandler.customAction('setSpeed', {'speed': speed});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('audiobook_speed_${widget.book.id}', speed);
+  }
+
+  Future<void> _findEpubFile() async {
+    if (_epubSearchDone) return;
+    _epubSearchDone = true;
+
+    try {
+      String? folderPath;
+      final bookId = widget.book.id;
+
+      if (bookId.startsWith('local:')) {
+        final rawPath = bookId.substring('local:'.length);
+        final entity = FileSystemEntity.typeSync(rawPath);
+        if (entity == FileSystemEntityType.directory) {
+          folderPath = rawPath;
+        } else {
+          folderPath = File(rawPath).parent.path;
+        }
+      } else if (bookId.startsWith('torrent:')) {
+        final settingsVal = ref.read(settingsProvider);
+        final audiobookFolder = settingsVal.audiobookFolder;
+        if (audiobookFolder != null && audiobookFolder.isNotEmpty) {
+          final sanitized = widget.book.title
+              .replaceAll(RegExp(r'[^\w\s-]'), '')
+              .replaceAll(RegExp(r'\s+'), '_');
+          folderPath = '$audiobookFolder/$sanitized';
+        }
+      }
+
+      if (folderPath != null) {
+        final epub = await findEpubInFolder(folderPath);
+        if (mounted && epub != null) {
+          setState(() => _epubFilePath = epub);
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _accumulateSeek(int seconds) {
+    final currentPosition = audioHandler.playbackState.value.position;
     if (_initialSeekPosition == null) {
       _initialSeekPosition = currentPosition;
       _accumulatedSeekSeconds = 0;
@@ -53,7 +152,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     _accumulatedSeekSeconds += seconds;
     _seekDebounceTimer?.cancel();
     
-    // Provide a brief screen feedback overlay/snackbar if needed, or simple status message
     final totalJump = _accumulatedSeekSeconds;
     final direction = totalJump > 0 ? 'Forward' : 'Rewind';
     final absSeconds = totalJump.abs();
@@ -107,101 +205,11 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   }
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    // Save on pause
-    _playbackStateSub = audioHandler.playbackState.listen((state) {
-      final isPlaying = state.playing;
-      if (_wasPlaying && !isPlaying) {
-        _saveCurrentProgress();
-      }
-      _wasPlaying = isPlaying;
-
-      // Check sleep timer expiration
-      if (_sleepTimerEnd != null && !isPlaying && _sleepTimer != null) {
-        _sleepTimer?.cancel();
-        _sleepTimer = null;
-        if (mounted) setState(() { _sleepTimerMinutes = null; _sleepTimerEnd = null; });
-      }
-    });
-    // Find epub file in background
-    _findEpubFile();
-    // Load saved playback speed
-    _loadPlaybackSpeed();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
-      ref.invalidate(audiobookBookmarksProvider(widget.book.id));
-    }
-  }
-
-  Future<void> _loadPlaybackSpeed() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getDouble('audiobook_speed_${widget.book.id}') ?? 1.0;
-    if (mounted) {
-      setState(() => _playbackSpeed = saved);
-      await audioHandler.customAction('setSpeed', {'speed': saved});
-    }
-  }
-
-  Future<void> _setPlaybackSpeed(double speed) async {
-    setState(() => _playbackSpeed = speed);
-    await audioHandler.customAction('setSpeed', {'speed': speed});
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('audiobook_speed_${widget.book.id}', speed);
-  }
-
-  /// Determines the local folder for this book and searches for an .epub file.
-  Future<void> _findEpubFile() async {
-    if (_epubSearchDone) return;
-    _epubSearchDone = true;
-
-    try {
-      String? folderPath;
-      final bookId = widget.book.id;
-
-      if (bookId.startsWith('local:')) {
-        // local: ID encodes the absolute path of the folder or file
-        final rawPath = bookId.substring('local:'.length);
-        final entity = FileSystemEntity.typeSync(rawPath);
-        if (entity == FileSystemEntityType.directory) {
-          folderPath = rawPath;
-        } else {
-          // It's a single file — use its parent folder
-          folderPath = File(rawPath).parent.path;
-        }
-      } else if (bookId.startsWith('torrent:')) {
-        // For torrent books, check if there's a downloaded subfolder in audiobookFolder
-        final settingsVal = ref.read(settingsProvider);
-        final audiobookFolder = settingsVal.audiobookFolder;
-        if (audiobookFolder != null && audiobookFolder.isNotEmpty) {
-          // Subfolders are named after the book title (sanitized)
-          final sanitized = widget.book.title
-              .replaceAll(RegExp(r'[^\w\s-]'), '')
-              .replaceAll(RegExp(r'\s+'), '_');
-          folderPath = '$audiobookFolder/$sanitized';
-        }
-      }
-
-      if (folderPath != null) {
-        final epub = await findEpubInFolder(folderPath);
-        if (mounted && epub != null) {
-          setState(() => _epubFilePath = epub);
-        }
-      }
-    } catch (_) {}
-  }
-
-  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _playbackStateSub?.cancel();
     _seekDebounceTimer?.cancel();
     _sleepTimer?.cancel();
-    // Final save on screen close
     _saveCurrentProgress();
     super.dispose();
   }
@@ -319,11 +327,10 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
       final bookId = mediaItem.extras?['bookId'] as String?;
       final chapterIndex = mediaItem.extras?['chapterIndex'] as int?;
       if (bookId == null || chapterIndex == null) return;
-      // Only save if this media item belongs to the current book
       if (bookId != widget.book.id) return;
       final position = audioHandler.playbackState.value.position;
       final duration = mediaItem.duration ?? Duration.zero;
-      if (position == Duration.zero) return; // Don't save zeroed position
+      if (position == Duration.zero) return;
       final repo = getIt<AudiobookRepository>();
       await repo.saveProgress(
         bookId: bookId,
@@ -333,9 +340,7 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
         isCompleted: duration.inMilliseconds > 0 &&
             position.inMilliseconds >= duration.inMilliseconds - 5000,
       );
-    } catch (e) {
-      // Ignore errors in background save
-    }
+    } catch (_) {}
   }
 
   @override
@@ -344,7 +349,17 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     final detailsAsync = ref.watch(bookDetailsProvider(widget.book.id));
     final chaptersAsync = ref.watch(bookChaptersProvider(widget.book.id));
     final displayBook = detailsAsync.value ?? widget.book;
-    
+
+    if (_showingEpub && _epubFilePath != null) {
+      return Scaffold(
+        body: EpubReaderScreen(
+          epubFilePath: _epubFilePath!,
+          bookId: widget.book.id,
+          onClose: () => setState(() => _showingEpub = false),
+        ),
+      );
+    }
+
     return StreamBuilder<MediaItem?>(
       stream: audioHandler.mediaItem,
       initialData: audioHandler.mediaItem.value,
@@ -355,17 +370,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
             ? '${displayBook.title} • ${displayBook.author}'
             : displayBook.author;
         final artworkUrl = displayBook.artworkUrl ?? mediaItem?.artUri?.toString();
-
-          // If epub reader is active, show it instead
-          if (_showingEpub && _epubFilePath != null) {
-            return Scaffold(
-              body: EpubReaderScreen(
-                epubFilePath: _epubFilePath!,
-                bookId: widget.book.id,
-                onClose: () => setState(() => _showingEpub = false),
-              ),
-            );
-          }
 
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surface,
@@ -379,7 +383,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
             title: const Text('Now Playing', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             centerTitle: true,
             actions: [
-              // Sleep timer
               IconButton(
                 icon: _sleepTimerMinutes != null
                     ? Stack(
@@ -406,7 +409,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                     : 'Sleep timer',
                 onPressed: _showSleepTimerSheet,
               ),
-              // Bookmark
               IconButton(
                 icon: ref.watch(audiobookBookmarksProvider(widget.book.id)).when(
                   data: (bookmarks) => bookmarks.isNotEmpty
@@ -421,7 +423,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                 tooltip: 'Bookmark',
                 onPressed: () => _addBookmark(ref),
               ),
-              // Playback speed
               IconButton(
                 icon: Text(
                   '${_playbackSpeed}x',
@@ -436,7 +437,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
                 tooltip: 'Playback speed',
                 onPressed: _showSpeedSheet,
               ),
-              // Epub reader toggle — only show if epub file was found
               if (_epubFilePath != null)
                 IconButton(
                   icon: const Icon(Icons.menu_book_rounded),
@@ -536,581 +536,221 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
               }),
             ],
           ),
-          body: Stack(
-            fit: StackFit.expand,
+          body: Column(
             children: [
-              // Background Blur Artwork
-              if (artworkUrl != null) ...[
-                Positioned.fill(
-                  child: artworkUrl.startsWith('/') || artworkUrl.startsWith('file://')
-                      ? Image.file(
-                          File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
-                          fit: BoxFit.cover,
-                        )
-                      : CachedNetworkImage(imageUrl: artworkUrl, memCacheWidth: 200, fit: BoxFit.cover),
-                ),
-                Positioned.fill(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                    child: Container(
-                      color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.65),
-                    ),
+              // Fixed Header & Controls (No blur, 100% smooth)
+              RepaintBoundary(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      // Artwork Container
+                      GestureDetector(
+                        onVerticalDragEnd: (details) {
+                          if (details.primaryVelocity == null) return;
+                          chaptersAsync.whenData((chapters) {
+                            if (chapters.isEmpty) return;
+                            final currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
+                            int targetIdx;
+                            if (details.primaryVelocity! < -200) {
+                              targetIdx = (currentIdx + 1).clamp(0, chapters.length - 1);
+                            } else if (details.primaryVelocity! > 200) {
+                              targetIdx = (currentIdx - 1).clamp(0, chapters.length - 1);
+                            } else {
+                              return;
+                            }
+                            if (targetIdx == currentIdx) return;
+                            final ch = chapters[targetIdx];
+                            audioHandler.customAction('play', {
+                              'url': ch.streamUrl ?? '',
+                              'title': ch.title,
+                              'artist': widget.book.author,
+                              'artworkUrl': widget.book.artworkUrl ?? '',
+                              'forceReplace': true,
+                              'mediaType': 'audiobook',
+                              'extras': {
+                                'bookId': widget.book.id,
+                                'chapterIndex': targetIdx,
+                                'initialPositionMillis': ch.startTimeMillis,
+                              },
+                            });
+                          });
+                        },
+                        child: Container(
+                          width: 200,
+                          height: 200,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isDark ? Colors.black45 : Colors.black12,
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: artworkUrl != null
+                                ? ((artworkUrl.startsWith('/') || artworkUrl.startsWith('file://'))
+                                    ? Image.file(
+                                        File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : CachedNetworkImage(
+                                        imageUrl: artworkUrl,
+                                        memCacheWidth: 200,
+                                        memCacheHeight: 200,
+                                        fit: BoxFit.cover,
+                                      ))
+                                : Container(
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    child: const Icon(Icons.book, size: 80),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Title & Author
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        author,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ),
                 ),
-              ],
-              
-              // Scrollable Layout
-              SafeArea(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 24),
-                        // Large Artwork (swipe up/down for chapter navigation)
-                        GestureDetector(
-                          onVerticalDragEnd: (details) {
-                            // Only trigger for fast swipes
-                            if (details.primaryVelocity == null) return;
-                            chaptersAsync.whenData((chapters) {
-                              if (chapters.isEmpty) return;
-                              final currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
-                              int targetIdx;
-                              if (details.primaryVelocity! < -200) {
-                                // Swipe up → next chapter
-                                targetIdx = (currentIdx + 1).clamp(0, chapters.length - 1);
-                              } else if (details.primaryVelocity! > 200) {
-                                // Swipe down → previous chapter
-                                targetIdx = (currentIdx - 1).clamp(0, chapters.length - 1);
-                              } else {
-                                return;
-                              }
-                              if (targetIdx == currentIdx) return;
-                              final ch = chapters[targetIdx];
-                              audioHandler.customAction('play', {
-                                'url': ch.streamUrl ?? '',
-                                'title': ch.title,
-                                'artist': widget.book.author,
-                                'artworkUrl': widget.book.artworkUrl ?? '',
-                                'forceReplace': true,
-                                'mediaType': 'audiobook',
-                                'extras': {
-                                  'bookId': widget.book.id,
-                                  'chapterIndex': targetIdx,
-                                  'initialPositionMillis': ch.startTimeMillis,
-                                },
-                              });
-                            });
-                          },
-                          child: Center(
-                            child: Container(
-                              width: 260,
-                              height: 260,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: artworkUrl != null
-                                    ? ((artworkUrl.startsWith('/') || artworkUrl.startsWith('file://'))
-                                        ? Image.file(
-                                            File(artworkUrl.startsWith('file://') ? Uri.parse(artworkUrl).toFilePath() : artworkUrl),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : CachedNetworkImage(imageUrl: artworkUrl, memCacheWidth: 260, memCacheHeight: 260, fit: BoxFit.cover))
-                                    : Container(
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                        child: const Icon(Icons.book, size: 100),
-                                      ),
-                              ),
+              ),
+
+              // Isolated Progress Slider (Only this updates on position tick!)
+              _PerformanceProgressSlider(
+                positionStream: _throttledPositionStream,
+                chapters: chaptersAsync.value ?? [],
+                mediaItem: mediaItem,
+              ),
+
+              const SizedBox(height: 8),
+
+              // Playback Controls
+              _PerformancePlaybackButtons(
+                onSeekAccumulate: _accumulateSeek,
+              ),
+
+              const SizedBox(height: 12),
+
+              // Tab Bar
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTabIndex = 0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: _selectedTabIndex == 0
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              width: 2,
                             ),
                           ),
                         ),
-                        
-                        const SizedBox(height: 32),
-                        // Metadata Info
-                        Column(
+                        child: Text(
+                          'Chapters',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: _selectedTabIndex == 0 ? FontWeight.bold : FontWeight.w500,
+                            color: _selectedTabIndex == 0
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTabIndex = 1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: _selectedTabIndex == 1
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              title,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                              'Bookmarks',
                               textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: _selectedTabIndex == 1 ? FontWeight.bold : FontWeight.w500,
+                                color: _selectedTabIndex == 1
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              author,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 24),
-                        // Chapter info + time remaining
-                        chaptersAsync.when(
-                          data: (chapters) {
-                            if (chapters.isEmpty) return const SizedBox.shrink();
-                            final chaptersList = chapters;
-                            return StreamBuilder<Duration>(
-                              stream: _throttledPositionStream,
-                              builder: (context, posSnapshot) {
-                                final position = posSnapshot.data ?? Duration.zero;
-                                final currentPosMs = position.inMilliseconds;
-                                final currentIdx = mediaItem?.extras?['chapterIndex'] as int? ?? 0;
-                                final ch = chaptersList[currentIdx.clamp(0, chaptersList.length - 1)];
-                                final chStart = ch.startTimeMillis;
-                                final chEnd = (currentIdx + 1 < chaptersList.length)
-                                    ? chaptersList[currentIdx + 1].startTimeMillis
-                                    : (mediaItem?.duration?.inMilliseconds ?? chStart);
-                                final chDuration = chEnd - chStart;
-                                final hasOffsets = chaptersList.any((ch) => ch.startTimeMillis > 0);
-                                final chElapsed = hasOffsets ? (currentPosMs - chStart).clamp(0, chDuration) : position.inMilliseconds;
-                                final chRemaining = (chDuration - chElapsed).clamp(0, chDuration);
-
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                                      child: Text(
-                                        'Chapter ${currentIdx + 1} of ${chaptersList.length}  •  ${_formatDuration(Duration(milliseconds: chRemaining))} remaining',
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    // Progress
-                                    Builder(
-                                      builder: (context) {
-                                        final pos = position;
-                                        final dur = mediaItem?.duration ?? Duration.zero;
-                                        double prog = 0.0;
-                                        if (dur.inMilliseconds > 0) {
-                                          prog = (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
-                                        }
-                                        return Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            SliderTheme(
-                                              data: SliderTheme.of(context).copyWith(
-                                                trackHeight: 4,
-                                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                                              ),
-                                              child: Slider(
-                                                value: prog,
-                                                activeColor: Theme.of(context).colorScheme.primary,
-                                                inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                                onChanged: (val) {
-                                                  final seekPos = Duration(milliseconds: (val * dur.inMilliseconds).toInt());
-                                                  audioHandler.seek(seekPos);
-                                                },
-                                              ),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Text(_formatDuration(pos), style: Theme.of(context).textTheme.bodySmall),
-                                                  Text(' -${_formatDuration(Duration(milliseconds: (dur.inMilliseconds - pos.inMilliseconds).clamp(0, dur.inMilliseconds)))}',
-                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                );
-                              },
-                            );
-                          },
-                          loading: () => const SizedBox.shrink(),
-                          error: (_, __) => const SizedBox.shrink(),
-                        ),
-                        
-                        const SizedBox(height: 24),
-                        // Playback Action Controls
-                        StreamBuilder<PlaybackState>(
-                          stream: audioHandler.playbackState,
-                          builder: (context, stateSnapshot) {
-                            final playbackState = stateSnapshot.data;
-                            final playing = playbackState?.playing ?? false;
-
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.replay_10_rounded, size: 36),
-                                  onPressed: () {
-                                    _accumulateSeek(-10, playbackState?.position ?? Duration.zero);
-                                  },
-                                ),
-                                const SizedBox(width: 24),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: IconButton(
-                                    icon: Icon(
-                                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                                      color: Theme.of(context).colorScheme.onPrimary,
-                                      size: 40,
-                                    ),
-                                    onPressed: () {
-                                      if (playing) {
-                                        audioHandler.pause();
-                                      } else {
-                                        audioHandler.play();
-                                      }
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 24),
-                                IconButton(
-                                  icon: const Icon(Icons.forward_10_rounded, size: 36),
-                                  onPressed: () {
-                                    _accumulateSeek(10, playbackState?.position ?? Duration.zero);
-                                  },
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Tab bar
-                        Divider(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.15)),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setState(() => _selectedTabIndex = 0),
+                            Consumer(builder: (context, ref, child) {
+                              final bookmarks = ref.watch(audiobookBookmarksProvider(widget.book.id)).asData?.value ?? [];
+                              if (bookmarks.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(left: 6),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: _selectedTabIndex == 0
-                                            ? Theme.of(context).colorScheme.primary
-                                            : Colors.transparent,
-                                        width: 2,
-                                      ),
-                                    ),
+                                    color: _selectedTabIndex == 1
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
-                                    'Chapters',
-                                    textAlign: TextAlign.center,
+                                    '${bookmarks.length}',
                                     style: TextStyle(
-                                      fontWeight: _selectedTabIndex == 0 ? FontWeight.bold : FontWeight.w500,
-                                      color: _selectedTabIndex == 0
-                                          ? Theme.of(context).colorScheme.primary
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedTabIndex == 1
+                                          ? Theme.of(context).colorScheme.onPrimary
                                           : Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () => setState(() => _selectedTabIndex = 1),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: _selectedTabIndex == 1
-                                            ? Theme.of(context).colorScheme.primary
-                                            : Colors.transparent,
-                                        width: 2,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        'Bookmarks',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontWeight: _selectedTabIndex == 1 ? FontWeight.bold : FontWeight.w500,
-                                          color: _selectedTabIndex == 1
-                                              ? Theme.of(context).colorScheme.primary
-                                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                      Consumer(builder: (context, ref, child) {
-                                        final bookmarks = ref.watch(audiobookBookmarksProvider(widget.book.id)).asData?.value ?? [];
-                                        final count = bookmarks.length;
-                                        if (count == 0) return const SizedBox.shrink();
-                                        return Padding(
-                                          padding: const EdgeInsets.only(left: 6),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: _selectedTabIndex == 1
-                                                  ? Theme.of(context).colorScheme.primary
-                                                  : Theme.of(context).colorScheme.surfaceContainerHighest,
-                                              borderRadius: BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              '$count',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                                color: _selectedTabIndex == 1
-                                                    ? Theme.of(context).colorScheme.onPrimary
-                                                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                                              ),
-                                            ),
-                                          ),
-                                        );
-                                      }),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
+                              );
+                            }),
                           ],
                         ),
-
-                        // Tab content
-                        if (_selectedTabIndex == 0) ...[
-                          const SizedBox(height: 8),
-                          // Chapter Selection List
-                          chaptersAsync.when(
-                            data: (chapters) {
-                              if (chapters.isEmpty) {
-                                return const Padding(
-                                  padding: EdgeInsets.all(20),
-                                  child: Text('No chapters found.'),
-                                );
-                              }
-                               return StreamBuilder<MediaItem?>(
-                                  stream: audioHandler.mediaItem,
-                                  initialData: audioHandler.mediaItem.value,
-                                  builder: (context, mediaSnapshot2) {
-                                    final activeChapterIdx = (mediaSnapshot2.data?.extras?['chapterIndex'] as int?) ?? 0;
-                                    final isCurrentBook = mediaItem?.extras?['bookId'] == widget.book.id;
-
-                                    return ListView.builder(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      itemCount: chapters.length,
-                                      itemBuilder: (context, index) {
-                                        final chapter = chapters[index];
-                                        final isCurrent = isCurrentBook && (activeChapterIdx == index);
-                                        
-                                        return ListTile(
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                                          leading: Container(
-                                            width: 36,
-                                            height: 36,
-                                            decoration: BoxDecoration(
-                                              color: isCurrent 
-                                                  ? Theme.of(context).colorScheme.primaryContainer
-                                                  : Theme.of(context).colorScheme.secondaryContainer,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: Center(
-                                              child: isCurrent 
-                                                  ? Icon(Icons.volume_up, color: Theme.of(context).colorScheme.onPrimaryContainer, size: 18)
-                                                  : Text(
-                                                      '${index + 1}',
-                                                      style: TextStyle(
-                                                        color: Theme.of(context).colorScheme.onSecondaryContainer,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                            ),
-                                          ),
-                                          title: Text(
-                                            chapter.title,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                              color: isCurrent ? Theme.of(context).colorScheme.primary : null,
-                                            ),
-                                          ),
-                                          subtitle: (chapter.startTimeMillis > 0 || chapter.durationMillis > 0)
-                                              ? Text(
-                                                  'Start: ${_formatDuration(Duration(milliseconds: chapter.startTimeMillis))}' +
-                                                  (chapter.durationMillis > 0 
-                                                      ? ' • Duration: ${_formatDuration(Duration(milliseconds: chapter.durationMillis))}'
-                                                      : ''),
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: isCurrent 
-                                                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.8)
-                                                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                                                  ),
-                                                )
-                                              : null,
-                                          onTap: () async {
-                                            await audioHandler.customAction('play', {
-                                              'url': chapter.streamUrl ?? '',
-                                              'title': chapter.title,
-                                              'artist': widget.book.author,
-                                              'artworkUrl': widget.book.artworkUrl ?? '',
-                                              'forceReplace': true,
-                                              'mediaType': 'audiobook',
-                                              'extras': {
-                                                'bookId': widget.book.id,
-                                                'chapterIndex': index,
-                                                'initialPositionMillis': chapter.startTimeMillis,
-                                              },
-                                            });
-                                          },
-                                        );
-                                      },
-                                    );
-                                  },
-                                );
-                              },
-                              loading: () => const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(20.0),
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                              error: (e, st) => Padding(
-                                padding: const EdgeInsets.all(20.0),
-                                child: Text('Error loading chapters: $e', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                              ),
-                             ),
-                        ] else ...[
-                          const SizedBox(height: 8),
-                          // Bookmarks
-                          Consumer(builder: (context, ref, child) {
-                            final bookmarksAsync = ref.watch(audiobookBookmarksProvider(widget.book.id));
-                            final bookmarks = bookmarksAsync.asData?.value ?? [];
-                            if (bookmarks.isEmpty) {
-                              return Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(32),
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.bookmark_border_rounded, size: 48,
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
-                                      const SizedBox(height: 12),
-                                      Text('No bookmarks yet',
-                                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                                      const SizedBox(height: 4),
-                                      Text('Tap the bookmark icon in the top bar to add one',
-                                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7))),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            }
-                            return Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    TextButton.icon(
-                                      icon: const Icon(Icons.delete_outline, size: 18),
-                                      label: const Text('Clear all'),
-                                      onPressed: () async {
-                                        await ref.read(audiobookRepositoryProvider).deleteAllBookmarks(widget.book.id);
-                                        ref.invalidate(audiobookBookmarksProvider(widget.book.id));
-                                      },
-                                    ),
-                                  ],
-                                ),
-                                ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: bookmarks.length,
-                                  itemBuilder: (context, index) {
-                                    final bm = bookmarks[index];
-                                    final ts = Duration(milliseconds: bm.positionMillis);
-                                    return Dismissible(
-                                      key: ValueKey(bm.id),
-                                      direction: DismissDirection.endToStart,
-                                      background: Container(
-                                        alignment: Alignment.centerRight,
-                                        padding: const EdgeInsets.only(right: 16),
-                                        color: Colors.red,
-                                        child: const Icon(Icons.delete_outline, color: Colors.white),
-                                      ),
-                                      onDismissed: (_) async {
-                                        await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
-                                        ref.invalidate(audiobookBookmarksProvider(widget.book.id));
-                                      },
-                                      child: ListTile(
-                                        leading: CircleAvatar(
-                                          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                                          radius: 18,
-                                          child: Text('${index + 1}', style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                          )),
-                                        ),
-                                        title: Text(bm.label ?? 'Bookmark ${index + 1}',
-                                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                                        subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${_formatDuration(ts)}'),
-                                        trailing: IconButton(
-                                          icon: const Icon(Icons.label_outline, size: 18),
-                                          onPressed: () => _editBookmarkLabel(context, ref, bm),
-                                        ),
-                                        onTap: () async {
-                                          final chapters = ref.read(bookChaptersProvider(widget.book.id)).asData?.value ?? [];
-                                          final targetCh = bm.chapterIndex < chapters.length ? chapters[bm.chapterIndex] : null;
-                                          if (targetCh == null) return;
-                                          await audioHandler.customAction('play', {
-                                            'url': targetCh.streamUrl ?? '',
-                                            'title': targetCh.title,
-                                            'artist': widget.book.author,
-                                            'artworkUrl': widget.book.artworkUrl ?? '',
-                                            'forceReplace': true,
-                                            'mediaType': 'audiobook',
-                                            'extras': {
-                                              'bookId': widget.book.id,
-                                              'chapterIndex': bm.chapterIndex,
-                                              'initialPositionMillis': bm.positionMillis,
-                                            },
-                                          });
-                                        },
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            );
-                          }),
-                        ],
-                       ],
+                      ),
                     ),
                   ),
-                ),
+                ],
+              ),
+
+              // Expandable Lazy Virtualized List (Only builds visible items!)
+              Expanded(
+                child: _selectedTabIndex == 0
+                    ? _buildChaptersList(context, chaptersAsync, mediaItem, widget.book)
+                    : _buildBookmarksList(context, ref, widget.book),
               ),
             ],
           ),
@@ -1119,13 +759,182 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     );
   }
 
-  void _onBookmarkPressed(WidgetRef ref) {
-    final bookmarks = ref.read(audiobookBookmarksProvider(widget.book.id)).asData?.value ?? [];
+  Widget _buildChaptersList(
+    BuildContext context,
+    AsyncValue<List<AudiobookChapter>> chaptersAsync,
+    MediaItem? mediaItem,
+    AudiobookResult book,
+  ) {
+    return chaptersAsync.when(
+      data: (chapters) {
+        if (chapters.isEmpty) {
+          return const Center(child: Text('No chapters found.'));
+        }
+        final activeChapterIdx = (mediaItem?.extras?['chapterIndex'] as int?) ?? 0;
+        final isCurrentBook = mediaItem?.extras?['bookId'] == book.id;
+
+        return RepaintBoundary(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            itemCount: chapters.length,
+            itemBuilder: (context, index) {
+              final chapter = chapters[index];
+              final isCurrent = isCurrentBook && (activeChapterIdx == index);
+
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                leading: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.secondaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: isCurrent
+                        ? Icon(Icons.volume_up, color: Theme.of(context).colorScheme.onPrimaryContainer, size: 16)
+                        : Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSecondaryContainer,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                  ),
+                ),
+                title: Text(
+                  chapter.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                    color: isCurrent ? Theme.of(context).colorScheme.primary : null,
+                    fontSize: 13,
+                  ),
+                ),
+                subtitle: (chapter.startTimeMillis > 0 || chapter.durationMillis > 0)
+                    ? Text(
+                        'Start: ${_formatDuration(Duration(milliseconds: chapter.startTimeMillis))}${chapter.durationMillis > 0 ? " • ${_formatDuration(Duration(milliseconds: chapter.durationMillis))}" : ""}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isCurrent
+                              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.8)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    : null,
+                onTap: () async {
+                  await audioHandler.customAction('play', {
+                    'url': chapter.streamUrl ?? '',
+                    'title': chapter.title,
+                    'artist': book.author,
+                    'artworkUrl': book.artworkUrl ?? '',
+                    'forceReplace': true,
+                    'mediaType': 'audiobook',
+                    'extras': {
+                      'bookId': book.id,
+                      'chapterIndex': index,
+                      'initialPositionMillis': chapter.startTimeMillis,
+                    },
+                  });
+                },
+              );
+            },
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Error loading chapters: $e')),
+    );
+  }
+
+  Widget _buildBookmarksList(BuildContext context, WidgetRef ref, AudiobookResult book) {
+    final bookmarksAsync = ref.watch(audiobookBookmarksProvider(book.id));
+    final bookmarks = bookmarksAsync.asData?.value ?? [];
+
     if (bookmarks.isEmpty) {
-      _addBookmark(ref);
-    } else {
-      _showBookmarksSheet(ref);
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.bookmark_border_rounded, size: 40,
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+            const SizedBox(height: 8),
+            Text('No bookmarks yet',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 4),
+            Text('Tap the bookmark icon in the top bar to add one',
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7))),
+          ],
+        ),
+      );
     }
+
+    return RepaintBoundary(
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        itemCount: bookmarks.length,
+        itemBuilder: (context, index) {
+          final bm = bookmarks[index];
+          final ts = Duration(milliseconds: bm.positionMillis);
+          return Dismissible(
+            key: ValueKey(bm.id),
+            direction: DismissDirection.endToStart,
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 16),
+              color: Colors.red,
+              child: const Icon(Icons.delete_outline, color: Colors.white),
+            ),
+            onDismissed: (_) async {
+              await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
+              ref.invalidate(audiobookBookmarksProvider(book.id));
+            },
+            child: ListTile(
+              dense: true,
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                radius: 14,
+                child: Text('${index + 1}', style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                )),
+              ),
+              title: Text(bm.label ?? 'Bookmark ${index + 1}',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+              subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${_formatDuration(ts)}', style: const TextStyle(fontSize: 11)),
+              trailing: IconButton(
+                icon: const Icon(Icons.label_outline, size: 18),
+                onPressed: () => _editBookmarkLabel(context, ref, bm),
+              ),
+              onTap: () async {
+                final chapters = ref.read(bookChaptersProvider(book.id)).asData?.value ?? [];
+                final targetCh = bm.chapterIndex < chapters.length ? chapters[bm.chapterIndex] : null;
+                if (targetCh == null) return;
+                await audioHandler.customAction('play', {
+                  'url': targetCh.streamUrl ?? '',
+                  'title': targetCh.title,
+                  'artist': book.author,
+                  'artworkUrl': book.artworkUrl ?? '',
+                  'forceReplace': true,
+                  'mediaType': 'audiobook',
+                  'extras': {
+                    'bookId': book.id,
+                    'chapterIndex': bm.chapterIndex,
+                    'initialPositionMillis': bm.positionMillis,
+                  },
+                });
+              },
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _addBookmark(WidgetRef ref) async {
@@ -1153,52 +962,6 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     }
   }
 
-  void _showBookmarksSheet(WidgetRef ref) {
-    final bookmarksAsync = ref.read(audiobookBookmarksProvider(widget.book.id));
-    final bookmarks = bookmarksAsync.asData?.value ?? [];
-    if (bookmarks.isEmpty) {
-      _addBookmark(ref);
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => _BookmarkSheet(
-        book: widget.book,
-        bookmarks: bookmarks,
-        onSeek: (bm) async {
-          Navigator.pop(ctx);
-          final chapters = ref.read(bookChaptersProvider(widget.book.id)).asData?.value ?? [];
-          final targetCh = bm.chapterIndex < chapters.length ? chapters[bm.chapterIndex] : null;
-          if (targetCh == null) return;
-          await audioHandler.customAction('play', {
-            'url': targetCh.streamUrl ?? '',
-            'title': targetCh.title,
-            'artist': widget.book.author,
-            'artworkUrl': widget.book.artworkUrl ?? '',
-            'forceReplace': true,
-            'mediaType': 'audiobook',
-            'extras': {
-              'bookId': widget.book.id,
-              'chapterIndex': bm.chapterIndex,
-              'initialPositionMillis': bm.positionMillis,
-            },
-          });
-        },
-        onDelete: (bm) async {
-          await ref.read(audiobookRepositoryProvider).deleteBookmark(bm.id);
-          ref.invalidate(audiobookBookmarksProvider(widget.book.id));
-        },
-        onEditLabel: (bm) => _editBookmarkLabel(context, ref, bm),
-        onAdd: () {
-          Navigator.pop(ctx);
-          _addBookmark(ref);
-        },
-        repo: ref.read(audiobookRepositoryProvider),
-        onChanged: () => ref.invalidate(audiobookBookmarksProvider(widget.book.id)),
-      ),
-    );
-  }
-
   Future<void> _editBookmarkLabel(BuildContext context, WidgetRef ref, AudiobookBookmark bm) async {
     final controller = TextEditingController(text: bm.label ?? '');
     final newLabel = await showDialog<String>(
@@ -1222,19 +985,131 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
     }
   }
 
-  Duration _lastThrottledPosition = Duration.zero;
-  DateTime? _lastThrottledPositionTime;
-  Stream<Duration> get _throttledPositionStream {
-    return AudioService.position.where((pos) {
-      final now = DateTime.now();
-      if (_lastThrottledPositionTime == null ||
-          now.difference(_lastThrottledPositionTime!) >= const Duration(milliseconds: 300)) {
-        _lastThrottledPosition = pos;
-        _lastThrottledPositionTime = now;
-        return true;
-      }
-      return false;
-    });
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:$seconds';
+    }
+    return '$minutes:$seconds';
+  }
+}
+
+/// Isolated High-Performance Progress Slider Component
+class _PerformanceProgressSlider extends StatefulWidget {
+  final Stream<Duration> positionStream;
+  final List<AudiobookChapter> chapters;
+  final MediaItem? mediaItem;
+
+  const _PerformanceProgressSlider({
+    required this.positionStream,
+    required this.chapters,
+    required this.mediaItem,
+  });
+
+  @override
+  State<_PerformanceProgressSlider> createState() => _PerformanceProgressSliderState();
+}
+
+class _PerformanceProgressSliderState extends State<_PerformanceProgressSlider> {
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final chaptersList = widget.chapters;
+    final mediaItem = widget.mediaItem;
+    final dur = mediaItem?.duration ?? Duration.zero;
+
+    return StreamBuilder<Duration>(
+      stream: widget.positionStream,
+      builder: (context, posSnapshot) {
+        final position = posSnapshot.data ?? Duration.zero;
+        final currentPosMs = position.inMilliseconds;
+        final currentIdx = (mediaItem?.extras?['chapterIndex'] as int?) ?? 0;
+
+        String chapterInfo = '';
+        if (chaptersList.isNotEmpty) {
+          final clampedIdx = currentIdx.clamp(0, chaptersList.length - 1);
+          final ch = chaptersList[clampedIdx];
+          final chStart = ch.startTimeMillis;
+          final chEnd = (clampedIdx + 1 < chaptersList.length)
+              ? chaptersList[clampedIdx + 1].startTimeMillis
+              : (dur.inMilliseconds > 0 ? dur.inMilliseconds : chStart);
+          final chDuration = chEnd - chStart;
+          final hasOffsets = chaptersList.any((c) => c.startTimeMillis > 0);
+          final chElapsed = hasOffsets ? (currentPosMs - chStart).clamp(0, chDuration) : position.inMilliseconds;
+          final chRemaining = (chDuration - chElapsed).clamp(0, chDuration);
+          chapterInfo = 'Chapter ${clampedIdx + 1} of ${chaptersList.length}  •  ${_formatDuration(Duration(milliseconds: chRemaining))} remaining';
+        }
+
+        double prog = 0.0;
+        if (dur.inMilliseconds > 0) {
+          prog = (position.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
+        }
+        final displayVal = _dragValue ?? prog;
+
+        return RepaintBoundary(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (chapterInfo.isNotEmpty)
+                  Text(
+                    chapterInfo,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                const SizedBox(height: 2),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    value: displayVal.clamp(0.0, 1.0),
+                    activeColor: Theme.of(context).colorScheme.primary,
+                    inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    onChangeStart: (val) {
+                      setState(() => _dragValue = val);
+                    },
+                    onChanged: (val) {
+                      setState(() => _dragValue = val);
+                    },
+                    onChangeEnd: (val) {
+                      _dragValue = null;
+                      final seekPos = Duration(milliseconds: (val * dur.inMilliseconds).toInt());
+                      audioHandler.seek(seekPos);
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_formatDuration(position), style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        '-${_formatDuration(Duration(milliseconds: (dur.inMilliseconds - position.inMilliseconds).clamp(0, dur.inMilliseconds)))}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _formatDuration(Duration duration) {
@@ -1248,94 +1123,60 @@ class _AudiobookNowPlayingScreenState extends ConsumerState<AudiobookNowPlayingS
   }
 }
 
-class _BookmarkSheet extends StatelessWidget {
-  final AudiobookResult book;
-  final List<AudiobookBookmark> bookmarks;
-  final Function(AudiobookBookmark) onSeek;
-  final Function(AudiobookBookmark) onDelete;
-  final Function(AudiobookBookmark) onEditLabel;
-  final VoidCallback onAdd;
-  final AudiobookRepository repo;
-  final VoidCallback onChanged;
+/// Isolated High-Performance Playback Buttons Component
+class _PerformancePlaybackButtons extends StatelessWidget {
+  final Function(int seconds) onSeekAccumulate;
 
-  const _BookmarkSheet({
-    required this.book,
-    required this.bookmarks,
-    required this.onSeek,
-    required this.onDelete,
-    required this.onEditLabel,
-    required this.onAdd,
-    required this.repo,
-    required this.onChanged,
-  });
+  const _PerformancePlaybackButtons({required this.onSeekAccumulate});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(width: 40, height: 4, decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(2),
-          )),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return RepaintBoundary(
+      child: StreamBuilder<PlaybackState>(
+        stream: audioHandler.playbackState,
+        builder: (context, snapshot) {
+          final state = snapshot.data;
+          final playing = state?.playing ?? false;
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 16),
-                child: Text('Bookmarks', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.replay_10_rounded, size: 36),
+                onPressed: () => onSeekAccumulate(-10),
               ),
-              TextButton.icon(
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add'),
-                onPressed: onAdd,
+              const SizedBox(width: 24),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    size: 36,
+                  ),
+                  onPressed: () {
+                    if (playing) {
+                      audioHandler.pause();
+                    } else {
+                      audioHandler.play();
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: 24),
+              IconButton(
+                icon: const Icon(Icons.forward_10_rounded, size: 36),
+                onPressed: () => onSeekAccumulate(10),
               ),
             ],
-          ),
-          const Divider(),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: bookmarks.length,
-              itemBuilder: (context, index) {
-                final bm = bookmarks[index];
-                final ts = Duration(milliseconds: bm.positionMillis);
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    radius: 16,
-                    child: Text('${index + 1}', style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    )),
-                  ),
-                  title: Text(bm.label ?? 'Bookmark ${index + 1}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('Ch. ${bm.chapterIndex + 1} at ${_fmt(ts)}'),
-                  trailing: PopupMenuButton(
-                    itemBuilder: (_) => [
-                      PopupMenuItem(child: const Text('Edit label'), onTap: () => onEditLabel(bm)),
-                      PopupMenuItem(child: const Text('Delete'), onTap: () => onDelete(bm)),
-                    ],
-                  ),
-                  onTap: () => onSeek(bm),
-                );
-              },
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
-  }
-
-  String _fmt(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$s' : '$m:$s';
   }
 }

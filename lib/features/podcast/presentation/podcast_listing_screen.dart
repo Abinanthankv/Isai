@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../data/podcast_models.dart';
 import '../data/podcast_api_service.dart';
 import 'podcast_providers.dart';
@@ -23,6 +27,7 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   String? _loadingEpisodeId;
+  int _selectedTab = 0; // 0: Explore, 1: Subscribed, 2: Downloaded
 
   static const Map<String, IconData> _genreIcons = {
     'Comedy': Icons.theater_comedy_rounded,
@@ -68,6 +73,52 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
     });
   }
 
+  Future<void> _importOpml() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['opml', 'xml'],
+      );
+      if (result != null && result.files.single.path != null) {
+        final file = File(result.files.single.path!);
+        final content = await file.readAsString();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Importing OPML podcasts...')),
+          );
+        }
+        final count = await ref.read(podcastRepositoryProvider).importOpml(content);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Successfully imported $count podcast(s)!')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('OPML Import failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportOpml() async {
+    try {
+      final opmlXml = await ref.read(podcastRepositoryProvider).exportOpml();
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/podcasts_export.opml');
+      await file.writeAsString(opmlXml);
+      await Share.shareXFiles([XFile(file.path)], text: 'My Podcast Subscriptions (OPML)');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('OPML Export failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _showAddByUrlDialog() async {
     final controller = TextEditingController();
     final url = await showDialog<String>(
@@ -111,16 +162,25 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: SearchBar(
               controller: _searchController,
               hintText: 'Search podcasts...',
               leading: const Icon(Icons.search),
               trailing: [
-                IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  tooltip: 'Add by URL',
-                  onPressed: _showAddByUrlDialog,
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded),
+                  tooltip: 'Options & OPML',
+                  onSelected: (val) {
+                    if (val == 'import') _importOpml();
+                    if (val == 'export') _exportOpml();
+                    if (val == 'rss') _showAddByUrlDialog();
+                  },
+                  itemBuilder: (ctx) => const [
+                    PopupMenuItem(value: 'import', child: Row(children: [Icon(Icons.file_upload_outlined, size: 20), SizedBox(width: 8), Text('Import OPML')])),
+                    PopupMenuItem(value: 'export', child: Row(children: [Icon(Icons.file_download_outlined, size: 20), SizedBox(width: 8), Text('Export OPML')])),
+                    PopupMenuItem(value: 'rss', child: Row(children: [Icon(Icons.rss_feed_rounded, size: 20), SizedBox(width: 8), Text('Add RSS Feed')])),
+                  ],
                 ),
                 IconButton(
                   icon: const Icon(Icons.bar_chart_rounded),
@@ -145,17 +205,301 @@ class _PodcastsSubScreenState extends ConsumerState<PodcastsSubScreen> {
               onChanged: _onSearchChanged,
             ),
           ),
-          if (followed.isNotEmpty || manualUrls.isNotEmpty) _buildFollowedSection(followed),
-          _buildContinueListening(),
-          _buildNewReleasesSection(newReleasesAsync),
-          _buildGenreCatalogs(),
-          _buildSpotifySection('Top Podcasts - US', spotifyTopPodcastsUsProvider),
-          _buildSpotifySection('Top Podcasts - India', spotifyTopPodcastsInProvider),
-          _buildSpotifySection('Top Episodes - US', spotifyTopEpisodesUsProvider),
-          _buildSpotifySection('Top Episodes - India', spotifyTopEpisodesInProvider),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('Explore'), icon: Icon(Icons.explore_outlined, size: 18)),
+                ButtonSegment(value: 1, label: Text('Subscribed'), icon: Icon(Icons.bookmarks_outlined, size: 18)),
+                ButtonSegment(value: 2, label: Text('Downloaded'), icon: Icon(Icons.download_for_offline_outlined, size: 18)),
+              ],
+              selected: {_selectedTab},
+              onSelectionChanged: (val) => setState(() => _selectedTab = val.first),
+            ),
+          ),
+          if (_selectedTab == 1)
+            _buildSubscribedTab()
+          else if (_selectedTab == 2)
+            _buildDownloadedTab()
+          else ...[
+            if (followed.isNotEmpty || manualUrls.isNotEmpty) _buildFollowedSection(followed),
+            _buildContinueListening(),
+            _buildNewReleasesSection(newReleasesAsync),
+            _buildGenreCatalogs(),
+            _buildSpotifySection('Top Podcasts - US', spotifyTopPodcastsUsProvider),
+            _buildSpotifySection('Top Podcasts - India', spotifyTopPodcastsInProvider),
+            _buildSpotifySection('Top Episodes - US', spotifyTopEpisodesUsProvider),
+            _buildSpotifySection('Top Episodes - India', spotifyTopEpisodesInProvider),
+          ],
           const SizedBox(height: 120),
         ],
       ),
+    );
+  }
+
+  Widget _buildSubscribedTab() {
+    final asyncSubs = ref.watch(subscribedPodcastsProvider);
+    return asyncSubs.when(
+      data: (subs) {
+        if (subs.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(40),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.bookmarks_outlined, size: 64, color: Theme.of(context).colorScheme.outline),
+                  const SizedBox(height: 16),
+                  const Text('No Subscriptions Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('Explore podcasts or import an OPML file to build your subscription library.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: _importOpml,
+                    icon: const Icon(Icons.file_upload_outlined),
+                    label: const Text('Import OPML File'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: subs.length,
+          itemBuilder: (context, index) {
+            final sub = subs[index];
+            final series = PodcastSeries(
+              collectionId: sub.collectionId,
+              collectionName: sub.title,
+              artistName: sub.artist,
+              feedUrl: sub.feedUrl,
+              artworkUrl: sub.artworkUrl,
+              primaryGenre: sub.genres?.split(',').firstOrNull,
+            );
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: PodcastArtworkImage(imageUrl: sub.artworkUrl, width: 52, height: 52),
+                ),
+                title: Text(sub.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(sub.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
+                  tooltip: 'Unsubscribe',
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Unsubscribe'),
+                        content: Text('Unsubscribe from "${sub.title}"?'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unsubscribe')),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await ref.read(podcastRepositoryProvider).unsubscribe(sub.feedUrl);
+                    }
+                  },
+                ),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => PodcastDetailScreen(podcast: series)));
+                },
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Padding(padding: const EdgeInsets.all(32), child: Center(child: Text('Error loading subscriptions: $e'))),
+    );
+  }
+
+  Widget _buildDownloadedTab() {
+    final asyncDownloads = ref.watch(downloadedPodcastEpisodesProvider);
+    return asyncDownloads.when(
+      data: (episodes) {
+        if (episodes.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(40),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.download_for_offline_outlined, size: 64, color: Theme.of(context).colorScheme.outline),
+                  const SizedBox(height: 16),
+                  const Text('No Downloaded Episodes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('Download episodes from any podcast detail screen to listen offline anywhere.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          itemCount: episodes.length,
+          itemBuilder: (context, index) {
+            final ep = episodes[index];
+            final isCompleted = ep.isDownloaded;
+            final isPaused = ep.isPaused;
+            final podcastEp = PodcastEpisode(
+              id: ep.guid,
+              guid: ep.guid,
+              title: ep.title,
+              description: ep.description,
+              audioUrl: ep.localPath ?? ep.audioUrl,
+              durationSec: ep.durationSeconds,
+              artworkUrl: ep.artworkUrl,
+              chaptersUrl: ep.chaptersUrl,
+              feedUrl: ep.feedUrl,
+            );
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: PodcastArtworkImage(imageUrl: ep.artworkUrl, width: 52, height: 52),
+                ),
+                title: Text(ep.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 2),
+                    Text(
+                      isCompleted
+                          ? (ep.durationSeconds > 0 ? '${(ep.durationSeconds / 60).round()} mins • Offline' : 'Offline Episode')
+                          : (isPaused ? 'Paused... ${(ep.downloadProgress * 100).round()}%' : 'Downloading... ${(ep.downloadProgress * 100).round()}%'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isCompleted
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : (isPaused ? Colors.orange : Theme.of(context).colorScheme.primary),
+                        fontWeight: isCompleted ? FontWeight.normal : FontWeight.bold,
+                      ),
+                    ),
+                    if (!isCompleted) ...[
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: ep.downloadProgress,
+                          minHeight: 4,
+                          color: isPaused ? Colors.orange : null,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: isCompleted
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                            tooltip: 'Delete Download',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Delete Download'),
+                                  content: Text('Delete offline file for "${ep.title}"?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await ref.read(podcastRepositoryProvider).deleteDownload(ep);
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.play_circle_fill_rounded, color: Theme.of(context).colorScheme.primary, size: 36),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PodcastNowPlayingScreen(
+                                    episode: podcastEp,
+                                    allEpisodes: [podcastEp],
+                                    podcastTitle: 'Downloaded Episode',
+                                    podcastArtist: '',
+                                    podcastArtwork: ep.artworkUrl,
+                                    feedUrl: ep.feedUrl,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 24, color: isPaused ? Colors.orange : null),
+                            tooltip: isPaused ? 'Resume Download' : 'Pause Download',
+                            onPressed: () {
+                              final repo = ref.read(podcastRepositoryProvider);
+                              if (isPaused) {
+                                repo.resumeDownload(ep);
+                              } else {
+                                repo.pauseDownload(ep);
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 22),
+                            tooltip: 'Cancel Download',
+                            onPressed: () {
+                              ref.read(podcastRepositoryProvider).cancelDownload(ep);
+                            },
+                          ),
+                        ],
+                      ),
+                onTap: isCompleted
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PodcastNowPlayingScreen(
+                              episode: podcastEp,
+                              allEpisodes: [podcastEp],
+                              podcastTitle: 'Downloaded Episode',
+                              podcastArtist: '',
+                              podcastArtwork: ep.artworkUrl,
+                              feedUrl: ep.feedUrl,
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Padding(padding: const EdgeInsets.all(32), child: Center(child: Text('Error loading downloads: $e'))),
     );
   }
 

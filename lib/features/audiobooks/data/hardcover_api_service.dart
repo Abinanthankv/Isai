@@ -22,14 +22,29 @@ class HardcoverBook {
   });
 
   factory HardcoverBook.fromJson(Map<String, dynamic> json) {
-    final authors = json['author_names'] as List?;
+    List? authors;
+    if (json.containsKey('author_names') && json['author_names'] is List) {
+      authors = json['author_names'] as List?;
+    } else if (json.containsKey('contributions') && json['contributions'] is List) {
+      final contribs = json['contributions'] as List?;
+      if (contribs != null && contribs.isNotEmpty) {
+        authors = contribs
+            .map((c) => (c as Map<String, dynamic>?)?['author']?['name'])
+            .whereType<String>()
+            .toList();
+      }
+    }
+
     final image = json['image'] as Map<String, dynamic>?;
+    final cachedImage = json['cached_image'] as Map<String, dynamic>?;
+    final artworkUrl = image?['url'] as String? ?? cachedImage?['url'] as String?;
+
     return HardcoverBook(
       id: int.parse('${json['id']}'),
       title: json['title'] ?? '',
       author: authors?.isNotEmpty == true ? authors!.first.toString() : null,
       slug: json['slug'] as String?,
-      artworkUrl: image?['url'] as String?,
+      artworkUrl: artworkUrl,
       rating: double.tryParse('${json['rating']}'),
       hasAudiobook: json['has_audiobook'] == true,
       audioSeconds: json['audio_seconds'] as int?,
@@ -67,15 +82,28 @@ class HardcoverApiService {
     headers: {'Content-Type': 'application/json', 'User-Agent': 'Isai-Hardcover/1.0'},
   ));
 
+  /// Sanitize API key / Personal Access Token input.
+  /// Removes any leading 'Bearer ' prefix (case insensitive) and trims whitespace.
+  static String sanitizeApiKey(String rawToken) {
+    var token = rawToken.trim();
+    if (token.toLowerCase().startsWith('bearer ')) {
+      token = token.substring(7).trim();
+    }
+    return token;
+  }
+
   Future<String?> validateAndGetUsername(String apiKey) async {
     try {
-      final res = await _query(apiKey, '{ me { id username } }');
+      final sanitized = sanitizeApiKey(apiKey);
+      if (sanitized.isEmpty) return null;
+      final res = await _query(sanitized, '{ me { id username } }');
       final me = (res['me'] as List?)?.firstOrNull;
       if (me != null && me['id'] != null) {
         return me['username'] as String?;
       }
       return null;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] validateAndGetUsername error: $e');
       return null;
     }
   }
@@ -85,7 +113,7 @@ class HardcoverApiService {
       final res = await _query(apiKey, '''
         { me { user_books(where: {status_id: {_eq: 2}}) {
           id
-          book { id title slug }
+          book { id title slug image { url } contributions { author { name } } }
           user_book_reads(order_by: {started_at: desc}, limit: 1) {
             id edition_id progress_seconds progress_pages started_at
           }
@@ -100,12 +128,7 @@ class HardcoverApiService {
         final read = reads.isNotEmpty ? reads[0] as Map<String, dynamic>? : null;
         return CurrentlyReadingEntry(
           userBookId: ub['id'] as int,
-          book: HardcoverBook(
-            id: bookJson['id'] as int,
-            title: bookJson['title'] ?? '',
-            slug: bookJson['slug'] as String?,
-            hasAudiobook: bookJson['has_audiobook'] == true,
-          ),
+          book: HardcoverBook.fromJson(bookJson),
           readId: read?['id'] as int?,
           editionId: read?['edition_id'] as int?,
           progressSeconds: read?['progress_seconds'] as int?,
@@ -113,7 +136,8 @@ class HardcoverApiService {
           startedAt: read?['started_at'] as String?,
         );
       }).whereType<CurrentlyReadingEntry>().toList();
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] getCurrentlyReading exception: $e');
       return [];
     }
   }
@@ -133,7 +157,8 @@ class HardcoverApiService {
         }).toList();
       }
       return [];
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] searchBooks exception: $e');
       return [];
     }
   }
@@ -143,7 +168,7 @@ class HardcoverApiService {
       final res = await _query(apiKey, '''
         { me { user_books(where: {book_id: {_eq: $bookId}}, limit: 1) {
           id status_id
-          book { id title slug }
+          book { id title slug image { url } contributions { author { name } } }
           user_book_reads(order_by: {started_at: desc}, limit: 1) {
             id edition_id progress_seconds progress_pages started_at
           }
@@ -158,23 +183,25 @@ class HardcoverApiService {
       final read = reads.isNotEmpty ? reads[0] as Map<String, dynamic>? : null;
       return CurrentlyReadingEntry(
         userBookId: ub['id'] as int,
-        book: HardcoverBook(
-          id: bookJson['id'] as int,
-          title: bookJson['title'] ?? '',
-          slug: bookJson['slug'] as String?,
-        ),
+        book: HardcoverBook.fromJson(bookJson),
         readId: read?['id'] as int?,
         editionId: read?['edition_id'] as int?,
         progressSeconds: read?['progress_seconds'] as int?,
         progressPages: read?['progress_pages'] as int?,
         startedAt: read?['started_at'] as String?,
       );
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] getProgressForBook exception: $e');
       return null;
     }
   }
 
-  Future<bool> updateProgress(String apiKey, int readId, int editionId, int progressSeconds) async {
+  Future<bool> updateProgress(
+    String apiKey,
+    int readId,
+    int editionId,
+    int progressSeconds,
+  ) async {
     try {
       final res = await _query(apiKey, '''
         mutation {
@@ -193,7 +220,6 @@ class HardcoverApiService {
         print('[HardcoverApiService] updateProgress: error=${updated?['error']}');
         return false;
       }
-      // If the record was deleted, user_book_read will be null.
       final read = updated['user_book_read'] as Map<String, dynamic>?;
       final ok = read != null && read['id'] != null;
       print('[HardcoverApiService] updateProgress: ok=$ok read=$read');
@@ -217,7 +243,8 @@ class HardcoverApiService {
       ''');
       final updated = res['update_user_book'];
       return updated != null && updated['error'] == null;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] setWantToRead exception: $e');
       return false;
     }
   }
@@ -234,7 +261,8 @@ class HardcoverApiService {
       ''');
       final updated = res['update_user_book'];
       return updated != null && updated['error'] == null;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] setReadingStatus exception: $e');
       return false;
     }
   }
@@ -253,7 +281,8 @@ class HardcoverApiService {
       final editionsList = res['editions'] as List? ?? [];
       if (editionsList.isEmpty) return null;
       return (editionsList.first as Map<String, dynamic>)['id'] as int?;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] findAudiobookEdition exception: $e');
       return null;
     }
   }
@@ -273,7 +302,8 @@ class HardcoverApiService {
       final inserted = res['insert_user_book'];
       if (inserted == null || inserted['error'] != null) return null;
       return (inserted['user_book'] as Map<String, dynamic>?)?['id'] as int?;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] addBookToLibrary exception: $e');
       return null;
     }
   }
@@ -289,7 +319,8 @@ class HardcoverApiService {
         }
       ''');
       return res['delete_user_book']?['user_book']?['id'] != null;
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] deleteUserBook exception: $e');
       return false;
     }
   }
@@ -310,7 +341,8 @@ class HardcoverApiService {
       if (updated == null || updated['error'] != null) return null;
 
       return fetchLatestUserBookRead(apiKey, userBookId);
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] setCurrentlyReading exception: $e');
       return null;
     }
   }
@@ -339,7 +371,8 @@ class HardcoverApiService {
         progressPages: null,
         startedAt: DateTime.now().toIso8601String(),
       );
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] ensureBookInLibrary exception: $e');
       return null;
     }
   }
@@ -365,18 +398,24 @@ class HardcoverApiService {
         readId: read['id'] as int,
         editionId: read['edition_id'] as int?,
       );
-    } catch (_) {
+    } catch (e) {
+      print('[HardcoverApiService] fetchLatestUserBookRead exception: $e');
       return null;
     }
   }
 
   Future<Map<String, dynamic>> _query(String apiKey, String query) async {
+    final token = sanitizeApiKey(apiKey);
     final response = await _dio.post(_endpoint,
-      options: Options(headers: {'Authorization': 'Bearer $apiKey'}),
+      options: Options(headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      }),
       data: {'query': query},
     );
     final body = response.data as Map<String, dynamic>;
     if (body.containsKey('errors')) {
+      print('[HardcoverApiService] GraphQL errors: ${body['errors']}');
       throw Exception(body['errors']);
     }
     return body['data'] as Map<String, dynamic>;

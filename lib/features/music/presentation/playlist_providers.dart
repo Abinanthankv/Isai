@@ -62,63 +62,143 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     try {
       state = const AsyncValue.loading();
 
-      final cleanUrl = url.replaceAll('music.youtube.com', 'www.youtube.com');
+      final uri = Uri.tryParse(url);
+      String? playlistId = uri?.queryParameters['list'];
+      if (playlistId == null) {
+        final match = RegExp(r'[?&]list=([^&]+)').firstMatch(url);
+        playlistId = match?.group(1);
+      }
+
+      String playlistTitle = 'YouTube Playlist';
+      String? playlistArtwork;
+      final List<Map<String, dynamic>> parsedTracks = [];
+      String? continuation;
+
       final dio = Dio();
       dio.options.headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://music.youtube.com/',
+        'Origin': 'https://music.youtube.com',
       };
 
-      final response = await dio.get(cleanUrl);
-      final html = response.data as String;
+      bool usedMusicApi = false;
 
-      final pattern = RegExp(r'var ytInitialData\s*=\s*(\{.*?\});\s*</script>');
-      final match = pattern.firstMatch(html);
-      if (match == null) {
-        throw Exception("Failed to extract YouTube playlist data");
-      }
+      // 1. Try YouTube Music InnerTube browse API (supports full pagination past 200 songs)
+      if (playlistId != null && playlistId.isNotEmpty) {
+        final browseId = playlistId.startsWith('VL') ? playlistId : 'VL$playlistId';
+        print('[YoutubeImport] Fetching YouTube Music browse for $browseId...');
+        try {
+          final response = await dio.post(
+            'https://music.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc',
+            data: {
+              'context': {
+                'client': {
+                  'clientName': 'WEB_REMIX',
+                  'clientVersion': '1.20250331.01.00',
+                  'hl': 'en',
+                  'gl': 'US',
+                },
+              },
+              'browseId': browseId,
+            },
+          );
 
-      final data = jsonDecode(match.group(1)!);
+          if (response.statusCode == 200 && response.data != null) {
+            final data = response.data as Map<String, dynamic>;
+            try {
+              final mfTitle = data['microformat']?['microformatDataRenderer']?['title'] as String?;
+              if (mfTitle != null && mfTitle.isNotEmpty) {
+                playlistTitle = mfTitle;
+              }
+              final mfThumbs = data['microformat']?['microformatDataRenderer']?['thumbnail']?['thumbnails'] as List?;
+              if (mfThumbs != null && mfThumbs.isNotEmpty) {
+                playlistArtwork = mfThumbs.last['url'];
+              }
 
-      String playlistTitle = 'YouTube Playlist';
-      if (data['metadata'] != null && data['metadata']['playlistMetadataRenderer'] != null) {
-        playlistTitle = data['metadata']['playlistMetadataRenderer']['title'] ?? 'YouTube Playlist';
-      }
+              final header = data['header']?['musicDetailHeaderRenderer'] ?? data['header']?['playlistHeaderRenderer'] ?? data['header']?['musicHeaderRenderer'];
+              if (header != null) {
+                if ((playlistTitle == 'YouTube Playlist' || playlistTitle.isEmpty) && header['title']?['runs'] != null && (header['title']['runs'] as List).isNotEmpty) {
+                  playlistTitle = header['title']['runs'][0]['text'] ?? playlistTitle;
+                }
+                if (playlistArtwork == null) {
+                  final thumbs = header['thumbnail']?['croppedSquareThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
+                  if (thumbs != null && thumbs.isNotEmpty) {
+                    playlistArtwork = thumbs.last['url'];
+                  }
+                }
+              }
+              if ((playlistTitle == 'YouTube Playlist' || playlistTitle.isEmpty) && data['metadata']?['playlistMetadataRenderer']?['title'] != null) {
+                playlistTitle = data['metadata']['playlistMetadataRenderer']['title'];
+              }
+            } catch (_) {}
 
-      String? playlistArtwork;
-      try {
-        final header = data['header']?['playlistHeaderRenderer'];
-        if (header != null && header['heroImage'] != null) {
-          final img = header['heroImage']['contentPreviewImageViewModel']?['image'];
-          if (img != null && img['sources'] != null && (img['sources'] as List).isNotEmpty) {
-            playlistArtwork = img['sources'].last['url'];
+
+            _findTracksInJson(data, parsedTracks);
+            continuation = _findContinuationToken(data);
+            usedMusicApi = parsedTracks.isNotEmpty;
+            print('[YoutubeImport] Music API initial load: ${parsedTracks.length} tracks, title: "$playlistTitle", hasContinuation: ${continuation != null}');
           }
+        } catch (e) {
+          print('[YoutubeImport] YouTube Music API browse error: $e');
         }
-      } catch (_) {}
-
-      final List<Map<String, dynamic>> parsedTracks = [];
-      _findTracksInJson(data, parsedTracks);
-
-      // Fetch all remaining pages via continuation tokens
-      String? continuation;
-      int pageCount = 0;
-      try {
-        continuation = _findContinuationToken(data);
-        print('[YoutubeImport] Initial tracks: ${parsedTracks.length}, continuation: ${continuation != null}');
-      } catch (e) {
-        print('[YoutubeImport] Error finding initial continuation: $e');
       }
-      while (continuation != null) {
+
+      // 2. Fallback to HTML scraping if Music API didn't return tracks
+      if (!usedMusicApi) {
+        print('[YoutubeImport] Falling back to YouTube web HTML scraping...');
+        final cleanUrl = url.replaceAll('music.youtube.com', 'www.youtube.com');
+        final webDio = Dio();
+        webDio.options.headers = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        };
+
+        final response = await webDio.get(cleanUrl);
+        final html = response.data as String;
+
+        final pattern = RegExp(r'ytInitialData\s*=\s*(\{.*?\});');
+        final match = pattern.firstMatch(html);
+        if (match == null) {
+          throw Exception("Failed to extract YouTube playlist data");
+        }
+
+        final data = jsonDecode(match.group(1)!);
+
+        if (data['metadata'] != null && data['metadata']['playlistMetadataRenderer'] != null) {
+          playlistTitle = data['metadata']['playlistMetadataRenderer']['title'] ?? playlistTitle;
+        }
+
+        try {
+          final header = data['header']?['playlistHeaderRenderer'];
+          if (header != null && header['heroImage'] != null) {
+            final img = header['heroImage']['contentPreviewImageViewModel']?['image'];
+            if (img != null && img['sources'] != null && (img['sources'] as List).isNotEmpty) {
+              playlistArtwork = img['sources'].last['url'];
+            }
+          }
+        } catch (_) {}
+
+        _findTracksInJson(data, parsedTracks);
+        continuation = _findContinuationToken(data);
+        print('[YoutubeImport] Web HTML initial load: ${parsedTracks.length} tracks');
+      }
+
+      // 3. Fetch all remaining pages via continuation tokens
+      int pageCount = 0;
+      final seenTokens = <String>{};
+      while (continuation != null && seenTokens.add(continuation)) {
         pageCount++;
-        print('[YoutubeImport] Fetching continuation page $pageCount...');
-        final pageData = await _fetchYoutubeContinuationPage(continuation);
+        print('[YoutubeImport] Fetching continuation page $pageCount (token len: ${continuation.length})...');
+        final pageData = await _fetchYoutubeContinuationPage(continuation, useMusicApi: usedMusicApi);
         if (pageData == null) {
           print('[YoutubeImport] Continuation page $pageCount returned null');
           break;
         }
         final before = parsedTracks.length;
         _findTracksInJson(pageData, parsedTracks);
-        print('[YoutubeImport] Page $pageCount: added ${parsedTracks.length - before} tracks (total: ${parsedTracks.length})');
+        final added = parsedTracks.length - before;
+        print('[YoutubeImport] Page $pageCount: added $added tracks (total: ${parsedTracks.length})');
         try {
           continuation = _findContinuationToken(pageData);
         } catch (e) {
@@ -126,16 +206,16 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
           break;
         }
         if (continuation == null) {
-          print('[YoutubeImport] No more continuation tokens');
+          print('[YoutubeImport] No more continuation tokens (reached end of playlist)');
         }
       }
-      print('[YoutubeImport] Total tracks fetched: ${parsedTracks.length} across ${pageCount + 1} pages');
+      print('[YoutubeImport] Successfully imported ${parsedTracks.length} tracks across ${pageCount + 1} pages for "$playlistTitle"');
 
       if (playlistArtwork == null && parsedTracks.isNotEmpty) {
         playlistArtwork = parsedTracks.first['artworkUrl'];
       }
 
-      final playlistId = await _db.createPlaylist(PlaylistsCompanion.insert(
+      final dbPlaylistId = await _db.createPlaylist(PlaylistsCompanion.insert(
         name: playlistTitle,
         artworkUrl: Value(playlistArtwork),
         sourceUrl: Value(url),
@@ -144,13 +224,18 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
       final List<PlaylistTracksCompanion> tracks = [];
       for (final t in parsedTracks) {
+        final ytId = t['youtubeId'] as String? ?? '';
+        String? artwork = t['artworkUrl'] as String?;
+        if ((artwork == null || artwork.isEmpty) && ytId.isNotEmpty) {
+          artwork = 'https://i.ytimg.com/vi/$ytId/hqdefault.jpg';
+        }
         tracks.add(PlaylistTracksCompanion.insert(
-          playlistId: playlistId,
+          playlistId: dbPlaylistId,
           title: t['title'] ?? 'Unknown Track',
           artist: t['artist'] ?? 'Unknown Artist',
-          youtubeId: t['youtubeId'] ?? '',
+          youtubeId: ytId,
           duration: const Value(null),
-          artworkUrl: Value(t['artworkUrl']),
+          artworkUrl: Value(artwork),
         ));
       }
 
@@ -158,8 +243,9 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
         await _db.addTracksToPlaylist(tracks);
       }
 
-      _enrichPlaylistInBackground(playlistId);
+      _enrichPlaylistInBackground(dbPlaylistId, preserveArtwork: true);
     } catch (e, st) {
+      print('[YoutubeImport] ERROR: $e\n$st');
       state = previousState;
       rethrow;
     }
@@ -222,25 +308,33 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
     return null;
   }
 
-  static Future<Map<String, dynamic>?> _fetchYoutubeContinuationPage(String token) async {
+  static Future<Map<String, dynamic>?> _fetchYoutubeContinuationPage(String token, {bool useMusicApi = true}) async {
     final dio = Dio();
+    final clientName = useMusicApi ? 'WEB_REMIX' : 'WEB';
+    final clientVersion = useMusicApi ? '1.20250331.01.00' : '2.20250331.10.00';
+    final endpoint = useMusicApi
+        ? 'https://music.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc'
+        : 'https://www.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc';
+
     dio.options.headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Content-Type': 'application/json',
+      if (useMusicApi) 'Referer': 'https://music.youtube.com/',
+      if (useMusicApi) 'Origin': 'https://music.youtube.com',
     };
     try {
       final response = await dio.post(
-        'https://www.youtube.com/youtubei/v1/browse?key=AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc',
+        endpoint,
         data: {
           'context': {
             'client': {
-              'clientName': 'WEB',
-              'clientVersion': '2.20250331.10.00',
+              'clientName': clientName,
+              'clientVersion': clientVersion,
               'hl': 'en',
               'gl': 'US',
             },
           },
-          'continuation': token,
+          'continuation': Uri.decodeComponent(token),
         },
       );
       if (response.statusCode != 200 || response.data == null) {
@@ -256,7 +350,53 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
   void _findTracksInJson(dynamic node, List<Map<String, dynamic>> results) {
     if (node is Map) {
-      if (node.containsKey('lockupViewModel')) {
+      if (node.containsKey('musicResponsiveListItemRenderer')) {
+        final item = node['musicResponsiveListItemRenderer'];
+        final playlistItemData = item['playlistItemData'];
+        
+        String? videoId = playlistItemData?['videoId'];
+        if (videoId == null || videoId.isEmpty) {
+          videoId = item['doubleTapCommand']?['watchEndpoint']?['videoId'];
+        }
+        if (videoId == null || videoId.isEmpty) {
+          try {
+            final flex0 = item['flexColumns']?[0]?['musicResponsiveListItemFlexColumnRenderer'];
+            videoId = flex0?['text']?['runs']?[0]?['navigationEndpoint']?['watchEndpoint']?['videoId'];
+          } catch (_) {}
+        }
+
+        if (videoId != null && videoId.isNotEmpty) {
+          String title = 'Unknown Title';
+          try {
+            final flex0 = item['flexColumns']?[0]?['musicResponsiveListItemFlexColumnRenderer'];
+            title = flex0?['text']?['runs']?[0]?['text'] ?? 'Unknown Title';
+          } catch (_) {}
+
+          String artist = 'Unknown Artist';
+          try {
+            final flex1 = item['flexColumns']?[1]?['musicResponsiveListItemFlexColumnRenderer'];
+            final runs = flex1?['text']?['runs'] as List?;
+            if (runs != null && runs.isNotEmpty) {
+              artist = runs[0]['text'] ?? 'Unknown Artist';
+            }
+          } catch (_) {}
+
+          String thumb = '';
+          try {
+            final thumbs = item['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List?;
+            if (thumbs != null && thumbs.isNotEmpty) {
+              thumb = thumbs.last['url'] ?? '';
+            }
+          } catch (_) {}
+
+          results.add({
+            'title': title,
+            'artist': artist,
+            'youtubeId': videoId,
+            'artworkUrl': thumb,
+          });
+        }
+      } else if (node.containsKey('lockupViewModel')) {
         final item = node['lockupViewModel'];
         final videoId = item['contentId'];
         if (videoId != null && videoId.isNotEmpty) {
@@ -341,6 +481,7 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
       }
     }
   }
+
 
   Future<void> importSpotifyPlaylist(String url) async {
     final previousState = state;
@@ -443,7 +584,7 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
 
 
 
-  Future<void> _enrichPlaylistInBackground(int playlistId, {bool preserveTitleArtist = false}) async {
+  Future<void> _enrichPlaylistInBackground(int playlistId, {bool preserveTitleArtist = false, bool preserveArtwork = false}) async {
     print('[PlaylistNotifier] Starting background enrichment for playlist: $playlistId');
     final tracks = await _db.getPlaylistTracks(playlistId);
     final itunes = getIt<ItunesMetadataService>();
@@ -461,11 +602,16 @@ class PlaylistNotifier extends Notifier<AsyncValue<List<PlaylistWithCount>>> {
         final results = await itunes.searchMeta('$cleanTitle ${track.artist}');
         if (results.isNotEmpty) {
           final best = results.first;
+          final hasExistingArtwork = track.artworkUrl != null && track.artworkUrl!.isNotEmpty;
+          final artworkToUse = (preserveArtwork && hasExistingArtwork)
+              ? track.artworkUrl
+              : (best.artworkUrlHigh ?? best.artworkUrlLow ?? track.artworkUrl);
+
           await _db.updatePlaylistTrack(PlaylistTracksCompanion(
             id: Value(track.id),
             title: preserveTitleArtist ? Value(track.title) : Value(best.trackName ?? track.title),
             artist: preserveTitleArtist ? Value(track.artist) : Value(best.artistName ?? track.artist),
-            artworkUrl: Value(best.artworkUrlHigh ?? best.artworkUrlLow ?? track.artworkUrl),
+            artworkUrl: Value(artworkToUse),
             album: Value(best.album),
             genre: Value(best.genre),
           ));

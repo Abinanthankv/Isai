@@ -1374,9 +1374,24 @@ class _HardcoverSettingsSectionState extends ConsumerState<_HardcoverSettingsSec
             obscureText: true,
             style: TextStyle(color: isDark ? Colors.white : Colors.black),
             decoration: InputDecoration(
-              labelText: 'Bearer Token',
+              labelText: 'API Token (hc_pat_...)',
+              hintText: 'hc_pat_...',
               labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
               prefixIcon: Icon(Icons.vpn_key, color: isDark ? Colors.white54 : Colors.black45),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  Icons.open_in_new,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                  size: 20,
+                ),
+                onPressed: () async {
+                  final url = Uri.parse('https://hardcover.app/account/api');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                },
+                tooltip: 'Get Hardcover API Token',
+              ),
               filled: true,
               fillColor: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
               border: OutlineInputBorder(
@@ -1418,10 +1433,20 @@ class _HardcoverSettingsSectionState extends ConsumerState<_HardcoverSettingsSec
           ),
           const SizedBox(height: 8),
           Center(
-            child: Text(
-              'Get your token at hardcover.app/settings',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: isDark ? Colors.white38 : Colors.black38,
+            child: TextButton.icon(
+              onPressed: () async {
+                final url = Uri.parse('https://hardcover.app/account/api');
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              icon: Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
+              label: Text(
+                'Get your token at hardcover.app/account/api',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),

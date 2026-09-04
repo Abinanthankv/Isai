@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:isai/main.dart';
 import 'podcast_providers.dart';
 import 'podcast_artwork.dart';
 

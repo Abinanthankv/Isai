@@ -499,7 +499,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(apiKey: '', isValid: false, error: null);
   }
 
-  Future<bool> saveAndValidateHardcoverKey(String key) async {
+  Future<bool> saveAndValidateHardcoverKey(String rawKey) async {
+    final key = HardcoverApiService.sanitizeApiKey(rawKey);
     state = state.copyWith(hardcoverIsValidating: true, hardcoverError: null);
     final service = HardcoverApiService();
     final username = await service.validateAndGetUsername(key);
@@ -516,7 +517,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       state = state.copyWith(
         hardcoverIsValidating: false,
         hardcoverIsValid: false,
-        hardcoverError: 'Invalid API Key',
+        hardcoverError: 'Invalid API Key or Token. Get your token at hardcover.app/account/api.',
       );
     }
     return username != null;

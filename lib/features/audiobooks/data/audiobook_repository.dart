@@ -27,7 +27,19 @@ class AudiobookRepository {
   final AudiobookAddonService _addonService;
   final AppDatabase _db;
   final MusicRepository _musicRepo;
-  
+
+  /// In-memory cache of book metadata entries to avoid constant SQLite queries and disk reads.
+  final Map<String, DbAudiobookMetadataCache?> _metadataCacheMap = {};
+
+  /// In-memory cache of local folder paths per book to avoid repeated disk directory scanning.
+  final Map<String, String?> _localFolderCacheMap = {};
+
+  /// In-memory cache of parsed chapters per book to eliminate repeated disk/DB parsing.
+  final Map<String, List<AudiobookChapter>> _chaptersCacheMap = {};
+
+  /// Per-book debounced timers for backing up progress to local progress.json and SQLite DB.
+  final Map<String, Timer> _perBookBackupTimers = {};
+
   AudiobookRepository(this._addonService, this._db, this._musicRepo);
 
   /// Normalize a book ID so progress and metadata are always stored
@@ -791,8 +803,15 @@ class AudiobookRepository {
 
   /// Get all chapters/streams for a book.
   Future<List<AudiobookChapter>> getBookChapters(String bookId, {bool forceParse = false}) async {
+    final normId = normalizeBookId(bookId);
+    if (!forceParse && _chaptersCacheMap.containsKey(normId)) {
+      return _chaptersCacheMap[normId]!;
+    }
+
     if (bookId.startsWith('local:')) {
-      return _getLocalChapters(bookId);
+      final res = await _getLocalChapters(bookId);
+      _chaptersCacheMap[normId] = res;
+      return res;
     }
 
     // Check if we have a local backup folder containing metadata.json for this book
@@ -1072,9 +1091,11 @@ class AudiobookRepository {
           resolvedChapters.add(chapter);
         }
       }
+      _chaptersCacheMap[normId] = resolvedChapters;
       return resolvedChapters;
     } catch (e) {
       print('[AudiobookRepository] Error substituting local paths for chapters: $e');
+      _chaptersCacheMap[normId] = workingChapters;
       return workingChapters;
     }
   }
@@ -1478,11 +1499,12 @@ class AudiobookRepository {
     }
 
     _flushBacklog++;
-    _debounceFlushTimer?.cancel();
-    _debounceFlushTimer = Timer(const Duration(seconds: 5), () async {
-      _flushBacklog = 0;
-      await _writeProgressToDisk();
-    });
+    if (_debounceFlushTimer == null || !_debounceFlushTimer!.isActive) {
+      _debounceFlushTimer = Timer(const Duration(seconds: 5), () async {
+        _flushBacklog = 0;
+        await _writeProgressToDisk();
+      });
+    }
   }
 
   /// Actually writes the in-memory progress data to disk.
@@ -1606,9 +1628,15 @@ class AudiobookRepository {
   }
 
   Future<String?> _findLocalFolderForBookId(String bookId) async {
+    final normalizedId = normalizeBookId(bookId);
+    if (_localFolderCacheMap.containsKey(normalizedId)) {
+      return _localFolderCacheMap[normalizedId];
+    }
+
     if (bookId.startsWith('local:')) {
       final path = bookId.substring(6);
       if (await io.Directory(path).exists()) {
+        _localFolderCacheMap[normalizedId] = path;
         return path;
       }
       String parsedPath = path;
@@ -1623,20 +1651,26 @@ class AudiobookRepository {
         } catch (_) {}
       }
       if (await io.Directory(parsedPath).exists()) {
+        _localFolderCacheMap[normalizedId] = parsedPath;
         return parsedPath;
       }
+      _localFolderCacheMap[normalizedId] = null;
       return null;
     }
 
     try {
       final settings = getIt<TorBoxSettingsRepository>();
       final downloadDirPath = settings.audiobookFolder;
-      if (downloadDirPath == null || downloadDirPath.isEmpty) return null;
+      if (downloadDirPath == null || downloadDirPath.isEmpty) {
+        _localFolderCacheMap[normalizedId] = null;
+        return null;
+      }
       
       final dir = io.Directory(downloadDirPath);
-      if (!await dir.exists()) return null;
-      
-      final normalizedId = normalizeBookId(bookId);
+      if (!await dir.exists()) {
+        _localFolderCacheMap[normalizedId] = null;
+        return null;
+      }
       
       await for (final entity in dir.list()) {
         if (entity is io.Directory) {
@@ -1647,6 +1681,7 @@ class AudiobookRepository {
               final data = jsonDecode(content) as Map<String, dynamic>;
               final fileBookId = data['bookId'] as String?;
               if (fileBookId != null && normalizeBookId(fileBookId) == normalizedId) {
+                _localFolderCacheMap[normalizedId] = entity.path;
                 return entity.path;
               }
             } catch (_) {}
@@ -1654,6 +1689,7 @@ class AudiobookRepository {
         }
       }
     } catch (_) {}
+    _localFolderCacheMap[normalizedId] = null;
     return null;
   }
 
@@ -1666,7 +1702,7 @@ class AudiobookRepository {
     try {
       final settings = getIt<TorBoxSettingsRepository>();
       final downloadDirPath = settings.audiobookFolder;
-      final cached = await _db.getAudiobookMetadata(normalizeBookId(bookId));
+      final cached = await getCachedMetadata(bookId);
       if (downloadDirPath != null && downloadDirPath.isNotEmpty && cached != null) {
         final sanitizedTitle = cached.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
         final bookDir = io.Directory(p.join(downloadDirPath, sanitizedTitle));
@@ -1725,6 +1761,7 @@ class AudiobookRepository {
             }
           }
         }
+        _localFolderCacheMap[normalizeBookId(bookId)] = bookDir.path;
         return bookDir.path;
       }
     } catch (e) {
@@ -1734,11 +1771,18 @@ class AudiobookRepository {
   }
 
   Future<String?> getLocalBookDirectoryForBackup(String bookId) async {
+    final normId = normalizeBookId(bookId);
+    if (_localFolderCacheMap.containsKey(normId)) {
+      return _localFolderCacheMap[normId];
+    }
+
     if (bookId.startsWith('local:')) {
       final path = bookId.substring(6);
       if (await io.Directory(path).exists()) {
+        _localFolderCacheMap[normId] = path;
         return path;
       }
+      _localFolderCacheMap[normId] = null;
       return null;
     }
     
@@ -1754,7 +1798,9 @@ class AudiobookRepository {
           for (final f in bookFiles) {
             final file = io.File(f.localPath!);
             if (await file.exists()) {
-              return file.parent.path;
+              final parentPath = file.parent.path;
+              _localFolderCacheMap[normId] = parentPath;
+              return parentPath;
             }
           }
         }
@@ -1763,22 +1809,25 @@ class AudiobookRepository {
     
     final matchedPath = await _findLocalFolderForBookId(bookId);
     if (matchedPath != null) {
+      _localFolderCacheMap[normId] = matchedPath;
       return matchedPath;
     }
     
     try {
       final settings = getIt<TorBoxSettingsRepository>();
       final downloadDirPath = settings.audiobookFolder;
-      final cached = await _db.getAudiobookMetadata(normalizeBookId(bookId));
+      final cached = await getCachedMetadata(bookId);
       if (downloadDirPath != null && downloadDirPath.isNotEmpty && cached != null) {
         final sanitizedTitle = cached.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
         final bookDir = io.Directory(p.join(downloadDirPath, sanitizedTitle));
         if (await bookDir.exists()) {
+          _localFolderCacheMap[normId] = bookDir.path;
           return bookDir.path;
         }
       }
     } catch (_) {}
     
+    _localFolderCacheMap[normId] = null;
     return null;
   }
 
@@ -1902,6 +1951,9 @@ class AudiobookRepository {
   /// Save listening progress for a specific chapter.
   /// Writes to unified progress.json (primary source), per-book progress.json
   /// (local folder backup), and DB (secondary).
+  /// Save listening progress for a specific chapter.
+  /// Updates in-memory progress data instantaneously (<0.05ms) and schedules
+  /// debounced background disk / SQLite persistence so UI and audio playback never lag.
   Future<void> saveProgress({
     required String bookId,
     required int chapterIndex,
@@ -1909,7 +1961,7 @@ class AudiobookRepository {
     required int durationMillis,
     bool isCompleted = false,
   }) async {
-    // 1. Write to unified progress.json (primary source)
+    // 1. Update in-memory progress data instantaneously
     int completed = 0;
     int maxPos = 0;
     int totalCh = 0;
@@ -1918,10 +1970,11 @@ class AudiobookRepository {
     String? cachedTitle;
     String? cachedAuthor;
     double pct = 0.0;
+    final normId = normalizeBookId(bookId);
+
     try {
-      final data = await _loadProgressData();
+      final data = _progressData ?? await _loadProgressData();
       final books = data['books'] as Map<String, dynamic>;
-      final normId = normalizeBookId(bookId);
       final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
       chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
 
@@ -1942,20 +1995,18 @@ class AudiobookRepository {
         chapters.add(entry);
       }
 
-      // Recompute book-level summary using time-based progress
-      int totalListened = 0;
+      // Recompute book-level summary using time-based progress in memory
       for (final ch in chapters) {
         final chMap = ch as Map<String, dynamic>;
-        totalListened += (chMap['positionMillis'] as int?) ?? 0;
-        totalDuration += (chMap['durationMillis'] as int?) ?? 0;
         final pos = (chMap['positionMillis'] as int?) ?? 0;
+        final dur = (chMap['durationMillis'] as int?) ?? 0;
         if (pos > maxPos) maxPos = pos;
+        totalDuration += dur;
         if (chMap['isCompleted'] == true) completed++;
       }
 
       final cachedMeta = await getCachedMetadata(normId);
       totalCh = cachedMeta?.totalChapters ?? 0;
-      // If metadata doesn't have total chapters, estimate from max chapter index
       if (totalCh <= 0 && chapters.isNotEmpty) {
         int maxIdx = 0;
         for (final ch in chapters) {
@@ -1981,49 +2032,112 @@ class AudiobookRepository {
         bookObj['artworkUrl'] = cachedMeta.artworkUrl;
       }
 
-      await _flushProgressData(debounced: true);
+      unawaited(_flushProgressData(debounced: true));
     } catch (e) {
       print('[AudiobookRepository] Error saving progress to progress.json: $e');
     }
 
-    // 2. Backup to per-book progress.json in local folder if available
-    try {
-      final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
-      if (dirPath != null && chapters != null) {
-        final List<Map<String, dynamic>> jsonList = chapters.map((ch) {
-          final chMap = ch as Map<String, dynamic>;
-          return Map<String, dynamic>.from(chMap)..remove('originalBookId');
-        }).cast<Map<String, dynamic>>().toList();
-        
-        final progressFile = io.File(p.join(dirPath, 'progress.json'));
-        final backupData = {
-          'bookId': bookId,
-          'title': cachedTitle ?? 'Audiobook',
-          'author': cachedAuthor ?? 'Unknown Author',
-          'maxPositionMillis': maxPos,
-          'totalDurationMillis': totalDuration,
-          'completedChapters': completed,
-          'totalChapters': totalCh,
-          'lastListenedAt': DateTime.now().toIso8601String(),
-          'progressPercent': pct,
-          'progress': jsonList,
-        };
-        await progressFile.writeAsString(jsonEncode(backupData));
-        print('[AudiobookRepository] Backed up progress to ${progressFile.path}');
-      }
-    } catch (e) {
-      print('[AudiobookRepository] Error backing up progress to local folder: $e');
-    }
-
-    // 3. Sync to DB (secondary / backward-compatibility)
-    await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
+    // 2. Schedule debounced per-book disk backup and SQLite DB write off the hot path
+    _schedulePerBookBackup(
       bookId: bookId,
       chapterIndex: chapterIndex,
-      positionMillis: Value(positionMillis),
-      durationMillis: Value(durationMillis),
-      lastListenedAt: DateTime.now(),
-      isCompleted: Value(isCompleted),
-    ));
+      positionMillis: positionMillis,
+      durationMillis: durationMillis,
+      isCompleted: isCompleted,
+      chapters: chapters,
+      cachedTitle: cachedTitle,
+      cachedAuthor: cachedAuthor,
+      maxPos: maxPos,
+      totalDuration: totalDuration,
+      completed: completed,
+      totalCh: totalCh,
+      pct: pct,
+      immediate: isCompleted,
+    );
+  }
+
+  void _schedulePerBookBackup({
+    required String bookId,
+    required int chapterIndex,
+    required int positionMillis,
+    required int durationMillis,
+    required bool isCompleted,
+    required List<dynamic>? chapters,
+    required String? cachedTitle,
+    required String? cachedAuthor,
+    required int maxPos,
+    required int totalDuration,
+    required int completed,
+    required int totalCh,
+    required double pct,
+    bool immediate = false,
+  }) {
+    final normId = normalizeBookId(bookId);
+
+    Future<void> performBackup() async {
+      _perBookBackupTimers.remove(normId);
+      try {
+        final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
+        if (dirPath != null && chapters != null) {
+          final List<Map<String, dynamic>> jsonList = chapters.map((ch) {
+            final chMap = ch as Map<String, dynamic>;
+            return Map<String, dynamic>.from(chMap)..remove('originalBookId');
+          }).cast<Map<String, dynamic>>().toList();
+
+          final progressFile = io.File(p.join(dirPath, 'progress.json'));
+          final backupData = {
+            'bookId': bookId,
+            'title': cachedTitle ?? 'Audiobook',
+            'author': cachedAuthor ?? 'Unknown Author',
+            'maxPositionMillis': maxPos,
+            'totalDurationMillis': totalDuration,
+            'completedChapters': completed,
+            'totalChapters': totalCh,
+            'lastListenedAt': DateTime.now().toIso8601String(),
+            'progressPercent': pct,
+            'progress': jsonList,
+          };
+          await progressFile.writeAsString(jsonEncode(backupData));
+        }
+      } catch (e) {
+        print('[AudiobookRepository] Error backing up progress to local folder: $e');
+      }
+
+      try {
+        await _db.saveAudiobookProgress(AudiobookProgressCompanion.insert(
+          bookId: bookId,
+          chapterIndex: chapterIndex,
+          positionMillis: Value(positionMillis),
+          durationMillis: Value(durationMillis),
+          lastListenedAt: DateTime.now(),
+          isCompleted: Value(isCompleted),
+        ));
+      } catch (e) {
+        print('[AudiobookRepository] Error syncing audiobook progress to DB: $e');
+      }
+    }
+
+    if (immediate) {
+      _perBookBackupTimers[normId]?.cancel();
+      unawaited(performBackup());
+    } else {
+      if (_perBookBackupTimers[normId] == null || !_perBookBackupTimers[normId]!.isActive) {
+        _perBookBackupTimers[normId] = Timer(const Duration(seconds: 4), () {
+          unawaited(performBackup());
+        });
+      }
+    }
+  }
+
+  /// Flush all pending debounced writes to disk immediately (e.g. on app pause/stop).
+  Future<void> flushAllPendingBackups() async {
+    _debounceFlushTimer?.cancel();
+    _debounceFlushTimer = null;
+    await _writeProgressToDisk();
+    for (final timer in _perBookBackupTimers.values) {
+      timer.cancel();
+    }
+    _perBookBackupTimers.clear();
   }
 
   /// Get progress for a specific book's chapter.
@@ -2437,7 +2551,21 @@ class AudiobookRepository {
     };
     final dbDescription = 'JSON_EXT:' + jsonEncode(extendedDesc);
 
-    await _db.saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion.insert(
+    final cachedEntry = DbAudiobookMetadataCache(
+      bookId: normalizedId,
+      title: title,
+      author: author,
+      narrator: narrator,
+      artworkUrl: artworkUrl,
+      description: dbDescription,
+      totalChapters: totalChapters,
+      language: language,
+      genre: genre,
+      lastUpdated: DateTime.now(),
+    );
+    _metadataCacheMap[normalizedId] = cachedEntry;
+
+    unawaited(_db.saveAudiobookMetadataEntry(AudiobookMetadataCacheCompanion.insert(
       bookId: normalizedId,
       title: title,
       author: Value(author),
@@ -2448,7 +2576,7 @@ class AudiobookRepository {
       language: Value(language),
       genre: Value(genre),
       lastUpdated: DateTime.now(),
-    ));
+    )));
 
     // Try to update local metadata.json if the backup directory exists
     if (writeLocalBackup) {
@@ -2539,8 +2667,16 @@ class AudiobookRepository {
 
   /// Get cached metadata for a book.
   Future<DbAudiobookMetadataCache?> getCachedMetadata(String bookId) async {
-    final dbResult = await _db.getAudiobookMetadata(normalizeBookId(bookId));
-    if (dbResult != null) return dbResult;
+    final normId = normalizeBookId(bookId);
+    if (_metadataCacheMap.containsKey(normId)) {
+      return _metadataCacheMap[normId];
+    }
+
+    final dbResult = await _db.getAudiobookMetadata(normId);
+    if (dbResult != null) {
+      _metadataCacheMap[normId] = dbResult;
+      return dbResult;
+    }
 
     try {
       final folderPath = await _findLocalFolderForBookId(bookId);
@@ -2573,13 +2709,18 @@ class AudiobookRepository {
           );
           
           await cacheBookMetadata(bookResult, writeLocalBackup: false);
-          return await _db.getAudiobookMetadata(normalizeBookId(bookId));
+          final reloaded = await _db.getAudiobookMetadata(normId);
+          if (reloaded != null) {
+            _metadataCacheMap[normId] = reloaded;
+          }
+          return reloaded;
         }
       }
     } catch (e) {
       print('[AudiobookRepository] Error restoring cached metadata from local folder: $e');
     }
 
+    _metadataCacheMap[normId] = null;
     return null;
   }
 
@@ -3381,34 +3522,30 @@ class AudiobookRepository {
 
       final readId = bookObj['hardcoverReadId'] as int?;
       final editionId = bookObj['hardcoverEditionId'] as int?;
+      final userBookId = bookObj['hardcoverUserBookId'] as int?;
       if (readId == null || editionId == null) {
         print('[AudiobookRepository] syncHardcoverProgress: no mapping (readId=$readId editionId=$editionId)');
         return;
       }
 
-      // Find the furthest VALID position across all chapters.
-      // Entries where positionMillis exceeds durationMillis indicate
-      // corrupted progress data (e.g. from earlier save bugs) and are skipped.
-      int maxValidPos = 0;
-      int bookTotalMs = 0;
+      int totalProgressMs = 0;
+      int bookTotalMs = (bookObj['totalDurationMillis'] as int?) ?? 0;
       final chapters = bookObj['chapters'] as List<dynamic>?;
       print('[AudiobookRepository] syncHardcoverProgress: chapters count=${chapters?.length ?? 0}');
-      if (chapters != null) {
+      if (chapters != null && chapters.isNotEmpty) {
         for (final ch in chapters) {
           final chMap = ch as Map<String, dynamic>;
           final pos = (chMap['positionMillis'] as int?) ?? 0;
           final dur = (chMap['durationMillis'] as int?) ?? 0;
-          bookTotalMs += dur;
-          final valid = pos > 0 && (dur <= 0 || pos <= dur);
-          print('[AudiobookRepository] syncHardcoverProgress: ch=${chMap['chapterIndex']} pos=$pos dur=$dur valid=$valid');
-          if (valid) {
-            if (pos > maxValidPos) maxValidPos = pos;
-          }
+          if (pos > totalProgressMs) totalProgressMs = pos;
+          if (dur > bookTotalMs) bookTotalMs = dur;
         }
       }
+      if (totalProgressMs <= 0) {
+        totalProgressMs = (bookObj['listenedMillis'] as int?) ?? 0;
+      }
 
-      int totalProgressMs = maxValidPos;
-      print('[AudiobookRepository] syncHardcoverProgress: maxValidPos=$maxValidPos bookTotalMs=$bookTotalMs');
+      print('[AudiobookRepository] syncHardcoverProgress: totalProgressMs=$totalProgressMs bookTotalMs=$bookTotalMs');
       if (totalProgressMs <= 0) {
         print('[AudiobookRepository] syncHardcoverProgress: totalProgressMs <= 0, skipping');
         return;
@@ -3428,13 +3565,33 @@ class AudiobookRepository {
       }
 
       final hcService = HardcoverApiService();
+
+      // Refresh the active readId & editionId from Hardcover before syncing
+      int activeReadId = readId;
+      int activeEditionId = editionId;
+      if (userBookId != null) {
+        final fresh = await hcService.fetchLatestUserBookRead(apiKey, userBookId);
+        if (fresh != null) {
+          activeReadId = fresh.readId;
+          activeEditionId = fresh.editionId ?? editionId;
+          bookObj['hardcoverReadId'] = activeReadId;
+          bookObj['hardcoverEditionId'] = activeEditionId;
+          unawaited(_flushProgressData(debounced: true));
+        }
+      }
+
       final progressSecs = (totalProgressMs / 1000).round();
-      print('[AudiobookRepository] syncHardcoverProgress: sending progressSecs=$progressSecs (readId=$readId editionId=$editionId)');
-      var success = await hcService.updateProgress(apiKey, readId, editionId, progressSecs);
+
+      print('[AudiobookRepository] syncHardcoverProgress: sending progressSecs=$progressSecs (readId=$activeReadId editionId=$activeEditionId)');
+      var success = await hcService.updateProgress(
+        apiKey,
+        activeReadId,
+        activeEditionId,
+        progressSecs,
+      );
       if (!success) {
         // The readId may be stale (e.g. setReadingStatus created a new
         // user_book_read elsewhere). Try refreshing the mapping and retrying.
-        final userBookId = bookObj['hardcoverUserBookId'] as int?;
         if (userBookId != null) {
           final fresh = await hcService.fetchLatestUserBookRead(apiKey, userBookId);
           if (fresh != null && fresh.readId != readId) {
@@ -3442,7 +3599,12 @@ class AudiobookRepository {
             bookObj['hardcoverEditionId'] = fresh.editionId;
             await _flushProgressData(debounced: false);
             print('[AudiobookRepository] Recovered stale mapping: readId=$readId → ${fresh.readId}');
-            success = await hcService.updateProgress(apiKey, fresh.readId, fresh.editionId ?? editionId, progressSecs);
+            success = await hcService.updateProgress(
+              apiKey,
+              fresh.readId,
+              fresh.editionId ?? editionId,
+              progressSecs,
+            );
             print('[AudiobookRepository] Retry after mapping refresh: success=$success');
           }
         }

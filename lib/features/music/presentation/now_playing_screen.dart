@@ -2414,19 +2414,134 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     return source;
   }
 
+  Map<String, dynamic> _parseTrackQualityDetails(MediaItem item) {
+    final extras = item.extras ?? {};
+    final rawFormat = (extras['format']?.toString() ?? '').trim();
+    final rawQuality = (extras['quality']?.toString() ?? '').trim();
+    final rawCodec = (extras['codec']?.toString() ?? '').trim();
+    final localPath = extras['localPath']?.toString() ?? '';
+    final url = item.id;
+    final originalId = extras['originalId']?.toString() ?? '';
+    final linkType = extras['linkType']?.toString() ?? '';
+    final textToSearch = '$rawFormat $rawQuality $rawCodec $url $originalId $localPath $linkType'.toLowerCase();
+
+    // 1. Detect Codec
+    String codec = 'AAC';
+    if (textToSearch.contains('flac') || linkType == 'flac') {
+      codec = 'FLAC';
+    } else if (textToSearch.contains('mp3')) {
+      codec = 'MP3';
+    } else if (textToSearch.contains('wav')) {
+      codec = 'WAV';
+    } else if (textToSearch.contains('alac')) {
+      codec = 'ALAC';
+    } else if (textToSearch.contains('eac3') || textToSearch.contains('atmos')) {
+      codec = 'E-AC3';
+    } else if (textToSearch.contains('opus')) {
+      codec = 'OPUS';
+    } else if (textToSearch.contains('m4a') || textToSearch.contains('aac') || textToSearch.contains('youtube') || textToSearch.contains('googlevideo')) {
+      codec = 'AAC';
+    }
+
+    // 2. Detect Bit Depth
+    String? bitDepthStr;
+    if (textToSearch.contains('24-bit') || textToSearch.contains('24bit') || textToSearch.contains('24 bit')) {
+      bitDepthStr = '24-bit';
+    } else if (textToSearch.contains('16-bit') || textToSearch.contains('16bit') || textToSearch.contains('16 bit')) {
+      bitDepthStr = '16-bit';
+    } else if (extras['bitDepth'] != null) {
+      bitDepthStr = '${extras['bitDepth']}-bit';
+    }
+
+    // 3. Detect Sample Rate
+    String? sampleRateStr;
+    final num? rawSampleRate = extras['sampleRate'] as num?;
+    if (rawSampleRate != null && rawSampleRate > 0) {
+      final khz = rawSampleRate >= 1000 ? (rawSampleRate / 1000) : rawSampleRate;
+      sampleRateStr = khz % 1 == 0 ? '${khz.toInt()} kHz' : '${khz.toStringAsFixed(1)} kHz';
+    } else if (textToSearch.contains('192khz') || textToSearch.contains('192.0 kHz') || textToSearch.contains('192 kHz')) {
+      sampleRateStr = '192 kHz';
+    } else if (textToSearch.contains('96khz') || textToSearch.contains('96.0 kHz') || textToSearch.contains('96 kHz')) {
+      sampleRateStr = '96 kHz';
+    } else if (textToSearch.contains('48khz') || textToSearch.contains('48.0 kHz') || textToSearch.contains('48 kHz')) {
+      sampleRateStr = '48 kHz';
+    } else if (textToSearch.contains('44.1khz') || textToSearch.contains('44.1 kHz') || textToSearch.contains('44100')) {
+      sampleRateStr = '44.1 kHz';
+    }
+
+    // 4. Detect Bitrate
+    String? bitrateStr;
+    final num? rawBitrate = extras['bitrate'] as num?;
+    if (rawBitrate != null && rawBitrate > 0) {
+      final kbps = (rawBitrate >= 8000 && rawBitrate <= 48000)
+          ? (rawBitrate / 100).round()
+          : (rawBitrate > 48000) ? (rawBitrate / 1000).round() : rawBitrate.toInt();
+      bitrateStr = '$kbps kbps';
+    } else {
+      final match = RegExp(r'(\d+)\s*kbps', caseSensitive: false).firstMatch(textToSearch);
+      if (match != null) {
+        bitrateStr = '${match.group(1)} kbps';
+      } else if (codec == 'FLAC' && bitDepthStr == '16-bit' && sampleRateStr == '44.1 kHz') {
+        bitrateStr = '1411 kbps';
+      } else if (codec == 'FLAC' && bitDepthStr == '24-bit' && sampleRateStr == '192 kHz') {
+        bitrateStr = '9216 kbps';
+      } else if (codec == 'FLAC' && bitDepthStr == '24-bit' && sampleRateStr == '96 kHz') {
+        bitrateStr = '4608 kbps';
+      } else if (codec == 'FLAC' && bitDepthStr == '24-bit') {
+        bitrateStr = '2304 kbps';
+      } else if ((codec == 'MP3' || codec == 'AAC') && textToSearch.contains('320')) {
+        bitrateStr = '320 kbps';
+      } else if (codec == 'AAC' && textToSearch.contains('256')) {
+        bitrateStr = '256 kbps';
+      } else if (codec == 'AAC' && textToSearch.contains('128')) {
+        bitrateStr = '128 kbps';
+      }
+    }
+
+    // 5. Quality Tier Flags
+    final isHiRes = textToSearch.contains('hi-res') || textToSearch.contains('hires') || bitDepthStr == '24-bit' || (sampleRateStr != null && (sampleRateStr.contains('96') || sampleRateStr.contains('192')));
+    final isLossless = isHiRes || codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC' || textToSearch.contains('lossless');
+
+    // 6. Build Badge Label
+    final badgeParts = <String>[codec];
+    if (bitDepthStr != null && sampleRateStr != null) {
+      badgeParts.add('$bitDepthStr / $sampleRateStr');
+    } else if (sampleRateStr != null) {
+      badgeParts.add(sampleRateStr);
+    } else if (bitDepthStr != null) {
+      badgeParts.add(bitDepthStr);
+    }
+    if (bitrateStr != null && !badgeParts.any((p) => p.contains('kbps'))) {
+      badgeParts.add(bitrateStr);
+    }
+
+    return {
+      'codec': codec,
+      'bitDepth': bitDepthStr,
+      'sampleRate': sampleRateStr,
+      'bitrate': bitrateStr,
+      'isHiRes': isHiRes,
+      'isLossless': isLossless,
+      'badgeLabel': badgeParts.join(' • '),
+    };
+  }
+
   Widget _buildQualityBadge(MediaItem? item) {
     if (item == null) return const SizedBox.shrink();
-    final format = _getTrackFormat(item);
-    final lowerFormat = format.toLowerCase();
+    final details = _parseTrackQualityDetails(item);
+    final isHiRes = details['isHiRes'] as bool;
+    final isLossless = details['isLossless'] as bool;
+    final badgeLabel = details['badgeLabel'] as String;
+
     final IconData icon;
     final List<Color> gradientColors;
     final Color textColor;
-    
-    if (lowerFormat.contains('hi-res') || lowerFormat.contains('hires') || lowerFormat.contains('24bit') || lowerFormat.contains('192khz')) {
+
+    if (isHiRes) {
       icon = Icons.star_rounded;
       gradientColors = [const Color(0xFFFF2D55), const Color(0xFFFF9500)];
       textColor = Colors.white;
-    } else if (lowerFormat.contains('flac') || lowerFormat.contains('lossless') || lowerFormat.contains('alac') || lowerFormat.contains('wav')) {
+    } else if (isLossless) {
       icon = Icons.music_note_rounded;
       gradientColors = [Colors.white.withOpacity(0.08), Colors.white.withOpacity(0.04)];
       textColor = Colors.white70;
@@ -2434,55 +2549,6 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       icon = Icons.high_quality_rounded;
       gradientColors = [Colors.white.withOpacity(0.05), Colors.white.withOpacity(0.02)];
       textColor = Colors.white60;
-    }
-    
-    String? codec = item.extras?['format'] as String?;
-    if (codec == null || codec.isEmpty) {
-      final localPath = item.extras?['localPath'] as String?;
-      final url = item.id;
-      final pathToCheck = localPath ?? url;
-      final originalId = item.extras?['originalId'] as String?;
-      final linkType = item.extras?['linkType'] as String?;
-      
-      if (pathToCheck.toLowerCase().endsWith('.flac') || 
-          pathToCheck.contains('lazy.flac.internal') ||
-          (originalId != null && originalId.contains('lazy.flac.internal')) ||
-          linkType == 'flac') {
-        codec = 'FLAC';
-      } else if (pathToCheck.toLowerCase().endsWith('.mp3')) {
-        codec = 'MP3';
-      } else if (pathToCheck.toLowerCase().endsWith('.m4a') || pathToCheck.toLowerCase().endsWith('.aac') || pathToCheck.contains('youtube') || pathToCheck.contains('googlevideo')) {
-        codec = 'AAC';
-      } else if (pathToCheck.toLowerCase().endsWith('.wav')) {
-        codec = 'WAV';
-      } else if (pathToCheck.toLowerCase().contains('soundcloud')) {
-        codec = 'MP3';
-      } else {
-        codec = 'AAC'; // default/fallback
-      }
-    }
-
-    final bitrate = item.extras?['bitrate'] as int?;
-    String bitrateStr = '';
-    if (bitrate != null && bitrate > 0) {
-      final kbps = (bitrate >= 8000 && bitrate <= 48000)
-          ? (bitrate / 100).round()
-          : (bitrate / 1000).round();
-      bitrateStr = '$kbps kbps';
-    }
-
-    final sampleRate = item.extras?['sampleRate'] as int?;
-    String sampleRateStr = '';
-    if (sampleRate != null && sampleRate > 0) {
-      sampleRateStr = '${(sampleRate / 1000).toStringAsFixed(1)} kHz';
-    }
-
-    String finalLabel = codec.toUpperCase();
-    if (bitrateStr.isNotEmpty) {
-      finalLabel = '$finalLabel:$bitrateStr';
-    }
-    if (sampleRateStr.isNotEmpty) {
-      finalLabel = '$finalLabel/$sampleRateStr';
     }
 
     return RepaintBoundary(
@@ -2501,7 +2567,14 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             children: [
               Icon(icon, size: 13, color: textColor),
               const SizedBox(width: 4),
-              Text(finalLabel.toUpperCase(), style: Theme.of(context).textTheme.labelSmall?.copyWith(color: textColor, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+              Text(
+                badgeLabel.toUpperCase(),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+              ),
             ],
           ),
         ),
@@ -2511,13 +2584,15 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
   void _showQualityInfoSheet(BuildContext context, MediaItem? item) {
     if (item == null) return;
-    final format = _getTrackFormat(item);
+    final details = _parseTrackQualityDetails(item);
+    final isHiRes = details['isHiRes'] as bool;
+    final isLossless = details['isLossless'] as bool;
+    final codec = details['codec'] as String;
+    final bitrate = details['bitrate'] as String?;
+    final sampleRate = details['sampleRate'] as String?;
+    final bitDepth = details['bitDepth'] as String?;
     final source = _getTrackSource(item);
     final size = item.extras?['size'] as num? ?? 0;
-    
-    final lowerFormat = format.toLowerCase();
-    final isLossless = lowerFormat.contains('flac') || lowerFormat.contains('lossless') || lowerFormat.contains('wav');
-    final isHiRes = lowerFormat.contains('hi-res') || lowerFormat.contains('hires') || lowerFormat.contains('24bit') || lowerFormat.contains('192khz');
 
     showModalBottomSheet(
       context: context,
@@ -2541,17 +2616,21 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
               Text(isHiRes ? 'Hi-Res Lossless Audio' : (isLossless ? 'Lossless Audio' : 'High Quality Audio'), style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
             ]),
             const SizedBox(height: 16),
-            Text(isHiRes 
-              ? 'Studio quality recording format (up to 24-bit/192 kHz) preserving every detail of the performance.' 
-              : (isLossless ? 'Lossless compression preserves all of the original data in the audio file for CD-quality playback.' : 'High Quality compression formats (AAC/MP3) provide excellent acoustic reproduction with efficient network usage.'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.7), height: 1.4)),
+            Text(
+              isHiRes 
+                ? 'Studio quality recording format (up to 24-bit/192 kHz) preserving every detail of the performance.' 
+                : (isLossless ? 'Lossless compression preserves all of the original data in the audio file for CD-quality playback.' : 'High Quality compression formats (AAC/MP3) provide excellent acoustic reproduction with efficient network usage.'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.7), height: 1.4),
+            ),
             const Divider(color: Colors.white10, height: 32),
-            _buildInfoRow('Codec/Format', format.toUpperCase()),
-            if (item.extras?['sampleRate'] != null) _buildInfoRow('Sample Rate', '${item.extras!['sampleRate']} Hz'),
+            _buildInfoRow('Audio Codec', codec),
+            if (bitrate != null) _buildInfoRow('Exact Bitrate', bitrate),
+            if (sampleRate != null) _buildInfoRow('Sample Rate', sampleRate),
+            if (bitDepth != null) _buildInfoRow('Bit Depth', bitDepth),
             _buildInfoRow('Source Provider', source),
             if (size > 0) _buildInfoRow('File Size', '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'),
             const SizedBox(height: 24),
-            Center(child: TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.08), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
+            Center(child: TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.08), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
           ],
         ),
       ),

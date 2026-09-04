@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:isai/main.dart';
+import '../../../core/di/injection.dart';
+import '../../../core/database/database.dart';
 import '../data/podcast_models.dart';
 import '../data/podcast_api_service.dart';
+import '../data/podcast_repository.dart';
 
 const podcastGenreNames = [
   'Comedy', 'Technology', 'Science', 'News', 'Music',
@@ -16,6 +19,34 @@ const podcastGenreNames = [
 final podcastApiServiceProvider = Provider<PodcastApiService>((ref) {
   return PodcastApiService();
 });
+
+final podcastRepositoryProvider = Provider<PodcastRepository>((ref) {
+  final db = getIt<AppDatabase>();
+  final api = ref.read(podcastApiServiceProvider);
+  return PodcastRepository(db, api);
+});
+
+final subscribedPodcastsProvider = StreamProvider<List<DbPodcastSubscription>>((ref) {
+  final repo = ref.watch(podcastRepositoryProvider);
+  return repo.watchSubscribedPodcasts();
+});
+
+final downloadedPodcastEpisodesProvider = StreamProvider<List<DbPodcastEpisodeData>>((ref) {
+  final repo = ref.watch(podcastRepositoryProvider);
+  return repo.watchDownloadedEpisodes();
+});
+
+final podcastEpisodesDbProvider = StreamProvider.family<List<DbPodcastEpisodeData>, String>((ref, feedUrl) {
+  final repo = ref.watch(podcastRepositoryProvider);
+  repo.getEpisodes(feedUrl);
+  return repo.watchEpisodes(feedUrl);
+});
+
+final podcastEpisodeProgressDbProvider = StreamProvider.family<DbPodcastProgressData?, String>((ref, guid) {
+  final repo = ref.watch(podcastRepositoryProvider);
+  return repo.watchProgress(guid);
+});
+
 
 final podcastSearchProvider = FutureProvider.family<List<PodcastSeries>, String>((ref, query) async {
   final api = ref.read(podcastApiServiceProvider);
@@ -425,7 +456,7 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
   final results = <ContinueListeningData>[];
 
   if (isLive) {
-    final extras = mediaItem!.extras!;
+    final extras = mediaItem.extras!;
     final epId = extras['episodeId'] as String? ?? mediaItem.id;
     final epArtwork = (extras['episodeArtwork'] as String?)?.isNotEmpty == true
         ? extras['episodeArtwork'] as String?
@@ -444,7 +475,7 @@ final continueListeningProvider = Provider<List<ContinueListeningData>>((ref) {
     ));
   }
 
-  final liveKey = isLive ? '${mediaItem!.extras!['podcastTitle'] as String? ?? ''}_${mediaItem.extras!['episodeId'] as String? ?? mediaItem.id}' : null;
+  final liveKey = isLive ? '${mediaItem.extras!['podcastTitle'] as String? ?? ''}_${mediaItem.extras!['episodeId'] as String? ?? mediaItem.id}' : null;
 
   final saved = all.entries.toList()
     ..sort((a, b) => (b.value.lastPlayedAt ?? DateTime(0))

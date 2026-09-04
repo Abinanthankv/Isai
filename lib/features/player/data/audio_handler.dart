@@ -61,6 +61,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   int _lastSavedPositionMs = 0;
   String? _currentAudiobookId;
   List<AudiobookChapter>? _currentAudiobookChapters;
+  bool _isFetchingAudiobookChapters = false;
   
   List<MediaItem> _originalItems = [];
   AudioServiceShuffleMode _shuffleModeState = AudioServiceShuffleMode.none;
@@ -293,13 +294,18 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             if (bookId != null) {
               // Load/cache chapters list for real-time tracking if it changes
               if (_currentAudiobookId != bookId || _currentAudiobookChapters == null) {
-                _currentAudiobookId = bookId;
-                _currentAudiobookChapters = null;
-                getIt<AudiobookRepository>().getBookChapters(bookId).then((chList) {
-                  if (_currentAudiobookId == bookId) {
-                    _currentAudiobookChapters = chList;
-                  }
-                });
+                if (!_isFetchingAudiobookChapters) {
+                  _isFetchingAudiobookChapters = true;
+                  _currentAudiobookId = bookId;
+                  _currentAudiobookChapters = null;
+                  getIt<AudiobookRepository>().getBookChapters(bookId).then((chList) {
+                    if (_currentAudiobookId == bookId) {
+                      _currentAudiobookChapters = chList;
+                    }
+                  }).whenComplete(() {
+                    _isFetchingAudiobookChapters = false;
+                  });
+                }
               }
 
               final chapters = _currentAudiobookChapters;
@@ -696,33 +702,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             if (wasPlaying) _player.play();
           } else {
             _consecutiveFailures++;
-            print('[AudioHandler] Resolution failed for track $index (Failure Count: $_consecutiveFailures).');
-            
-            if (_consecutiveFailures >= 5) {
-              print('[AudioHandler] Too many consecutive failures. Stopping to prevent loop.');
-              _consecutiveFailures = 0;
-              await stop();
-              return;
-            }
-
-            // Remove FIRST so the index doesn't shift after seek
-            try {
-              await _playlist.removeAt(index);
-            } catch (e) {
-              print('[AudioHandler] Error removing failed track: $e');
-            }
-            
-            // Then seek if there's something next (now at the same index due to removal)
-            final currentLen = _playlist.length;
-            if (currentLen > 0 && index < currentLen) {
-              await _player.seek(Duration.zero, index: index);
-              if (wasPlaying) _player.play();
-            } else if (_player.hasNext) {
-              await _player.seekToNext();
-              if (wasPlaying) _player.play();
-            } else {
-              await stop();
-            }
+            print('[AudioHandler] Resolution failed for track $index (Failure Count: $_consecutiveFailures). Pausing playback instead of auto-skipping.');
+            await _player.pause();
           }
         }
         
@@ -765,62 +746,45 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
   }
 
-  /// Proactively resolve and start pre-caching the next track in the queue.
+  /// Proactively resolve and start pre-caching the next 3 tracks in the queue.
   Future<void> _prefetchNext(int currentIndex) async {
     final sequence = _player.sequence;
     if (sequence == null) return;
-    
-    final nextIndex = currentIndex + 1;
-    if (nextIndex >= sequence.length) return;
 
-    final nextSource = sequence[nextIndex];
-    final nextItem = nextSource.tag as MediaItem?;
-    if (nextItem == null) return;
-    
-    // Check if it's already in cache or local
-    final torrentId = nextItem.extras?['torrentId'];
-    final fileId = nextItem.extras?['fileId'];
-    final localPath = nextItem.extras?['localPath'] as String?;
-    if (localPath != null && io.File(localPath).existsSync()) {
-      print('[AudioHandler] Next track already local, skip prefetch: $localPath');
-      return;
-    }
+    // Check connectivity before remote pre-fetch
+    try {
+      final connectivity = await Connectivity().checkConnectivity();
+      final isOffline = connectivity.contains(ConnectivityResult.none) || connectivity.isEmpty;
+      if (isOffline) {
+        print('[AudioHandler] Offline, skipping prefetch for upcoming tracks');
+        return;
+      }
+    } catch (_) {}
 
-    // 1.5 Check connectivity before remote pre-fetch
-    final connectivity = await Connectivity().checkConnectivity();
-    final isOffline = connectivity.contains(ConnectivityResult.none) || connectivity.isEmpty;
-    
-    if (isOffline) {
-      print('[AudioHandler] Offline, skipping remote prefetch for: ${nextItem.title}');
-      return;
-    }
+    // Pre-cache the next 3 songs in the queue
+    for (int offset = 1; offset <= 3; offset++) {
+      final nextIndex = currentIndex + offset;
+      if (nextIndex >= sequence.length) break;
 
-    // 1. If it's a lazy track, resolve it first
-    final isLazy = nextItem.id.contains('lazy.torbox.internal') || 
-                   nextItem.id.contains('lazy.flac.internal') || 
-                   nextItem.id.contains('lazy.plugin.internal') ||
-                   (nextItem.extras?['linkType'] == 'soundcloud' && !nextItem.id.startsWith('http'));
+      final nextSource = sequence[nextIndex];
+      final nextItem = nextSource.tag as MediaItem?;
+      if (nextItem == null) continue;
 
-    if (isLazy) {
-      if (!_resolvingIndices.contains(nextIndex)) {
-        print('[AudioHandler] Pre-resolving next lazy track: $nextIndex');
-        await _resolveTrack(nextIndex);
-      } else {
-        return; // Already being handled
+      final localPath = nextItem.extras?['localPath'] as String?;
+      if (localPath != null && io.File(localPath).existsSync()) {
+        continue; // Already local
+      }
+
+      final isLazy = nextItem.id.contains('lazy.torbox.internal') || 
+                     nextItem.id.contains('lazy.flac.internal') || 
+                     nextItem.id.contains('lazy.plugin.internal') ||
+                     (nextItem.extras?['linkType'] == 'soundcloud' && !nextItem.id.startsWith('http'));
+
+      if (isLazy && !_resolvingIndices.contains(nextIndex)) {
+        print('[AudioHandler] Pre-resolving upcoming track +$offset (Index $nextIndex): ${nextItem.title}');
+        unawaited(_resolveTrack(nextIndex));
       }
     }
-
-    // 2. Start buffering the next track's cache.
-    // LockCachingAudioSource will start downloading automatically when initialized.
-    // Since it's already in the ConcatenatingAudioSource, just_audio might 
-    // already be pre-buffering it slightly, but we want to ensure the CACHE 
-    // is being populated.
-    // However, just_audio's internal preloading usually handles the next item.
-    // To explicitly force a full "cache download" for the next song without 
-    // clicking play, we don't necessarily need more code if LockCachingAudioSource 
-    // is already the source. 
-    // But we should verify if we need to manually trigger a load. 
-    // Actually, setting it as the source is usually enough for the internal player to start pre-buffering.
   }
 
   /// Enrich metadata for the current and next few tracks in the queue.
@@ -1661,6 +1625,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     await _saveAudiobookProgressIfNeeded();
     // Hardcover sync runs in background so stop is not blocked by HTTP.
     _syncHardcoverProgressIfNeeded();
+    _currentAudiobookId = null;
+    _currentAudiobookChapters = null;
+    _isFetchingAudiobookChapters = false;
+    getIt<AudiobookRepository>().flushAllPendingBackups();
     await _player.stop();
     mediaItem.add(null);
     queue.add([]);
@@ -2576,24 +2544,22 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         item.id.contains('lazy.flac.internal') || 
         item.id.contains('lazy.plugin.internal') ||
         (item.extras?['linkType'] == 'soundcloud' && !item.id.startsWith('http'))) {
-        if (_isMediaKit) {
-          // On mediaKit, resolve lazy sources eagerly instead of using
-          // _StallingAudioSource (StreamAudioSource doesn't work with mpv).
-          final resolvedSource = await _resolveLazySource(item, uri);
-          if (resolvedSource != null) return resolvedSource;
-          // Fallback: use URI placeholder (mpv will error but won't crash)
-          print('[AudioHandler] _createAudioSource: Using URI placeholder for "${item.title}" (mediaKit)');
-          return AudioSource.uri(uri, tag: item);
-        }
-        print('[AudioHandler] _createAudioSource: Returning _StallingAudioSource for "${item.title}" pending resolution');
-        return _StallingAudioSource(item);
+        final resolvedSource = await _resolveLazySource(item, uri);
+        if (resolvedSource != null) return resolvedSource;
+        print('[AudioHandler] _createAudioSource: Lazy resolution failed for "${item.title}", using URI fallback');
+        return _buildAudioSourceUri(uri, tag: item);
     }
     
     final commonHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
 
-    if (!_isMediaKit && !isYouTube && torrentId != null && fileId != null) {
+    final isAdaptiveStream = uri.toString().toLowerCase().contains('.m3u8') || 
+                            uri.toString().toLowerCase().contains('.mpd') || 
+                            item.extras?['format']?.toString().toLowerCase() == 'hls' || 
+                            item.extras?['format']?.toString().toLowerCase() == 'dash';
+
+    if (!_isMediaKit && !isYouTube && !isAdaptiveStream && torrentId != null && torrentId > 0 && fileId != null) {
       String ext = '.mp3';
       final db = getIt<AppDatabase>();
       final dbFile = await (db.select(db.files)
@@ -2618,10 +2584,45 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     }
     
 
-    return AudioSource.uri(
+    return _buildAudioSourceUri(
       uri,
       tag: item,
       headers: commonHeaders,
+    );
+  }
+
+  AudioSource _buildAudioSourceUri(
+    Uri uri, {
+    Object? tag,
+    Map<String, String>? headers,
+  }) {
+    final str = uri.toString().toLowerCase();
+    final path = uri.path.toLowerCase();
+
+    Map<String, dynamic>? extras;
+    if (tag is MediaItem) {
+      extras = tag.extras;
+    }
+    final format = extras?['format']?.toString().toLowerCase();
+
+    if (path.contains('.m3u8') || str.contains('.m3u8') || format == 'hls' || format == 'm3u8') {
+      return HlsAudioSource(
+        uri,
+        tag: tag,
+        headers: headers,
+      );
+    } else if (path.contains('.mpd') || str.contains('.mpd') || format == 'dash' || format == 'mpd') {
+      return DashAudioSource(
+        uri,
+        tag: tag,
+        headers: headers,
+      );
+    }
+
+    return AudioSource.uri(
+      uri,
+      tag: tag,
+      headers: headers,
     );
   }
 
@@ -2936,7 +2937,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: realUrl,
             extras: {...?item.extras, 'originalId': item.id},
           );
-          return AudioSource.uri(Uri.parse(realUrl), tag: newItem);
+          return _buildAudioSourceUri(Uri.parse(realUrl), tag: newItem);
         }
       } else if (host == 'lazy.torbox.internal') {
         final torrentId = int.parse(uri.pathSegments[0]);
@@ -2948,7 +2949,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: realUrl,
             extras: {...?item.extras, 'torrentId': torrentId, 'fileId': fileId, 'originalId': item.id},
           );
-          return AudioSource.uri(Uri.parse(realUrl), tag: newItem);
+          return _buildAudioSourceUri(Uri.parse(realUrl), tag: newItem);
         }
       } else if (host == 'lazy.flac.internal') {
         final title = uri.queryParameters['title'] ?? item.title;
@@ -2965,7 +2966,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             id: result.url,
             extras: {...?item.extras, 'linkType': result.linkType, 'originalId': item.id},
           );
-          return AudioSource.uri(Uri.parse(result.url), tag: newItem);
+          return _buildAudioSourceUri(Uri.parse(result.url), tag: newItem);
         }
       }
     } catch (e) {
@@ -3017,21 +3018,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 }
 
-class _StallingAudioSource extends StreamAudioSource {
-  final MediaItem item;
 
-  _StallingAudioSource(this.item) : super(tag: item);
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    // Hang for a while to keep player in buffering state 
-    // until `_resolveTrack` completes and hot-swaps this source out.
-    // We don't want to hang FOREVER because if resolution fails, 
-    // we want just_audio to eventually realize it.
-    await Future.delayed(const Duration(seconds: 15));
-    throw Exception('Stalled source timed out');
-  }
-}
 
 
 

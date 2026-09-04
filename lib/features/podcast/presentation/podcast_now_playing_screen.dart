@@ -79,7 +79,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   int _lastSavedPosition = 0;
   bool _isLoading = false;
 
-  static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  static const List<double> _speedOptions = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
 
   @override
   void initState() {
@@ -151,6 +151,17 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
     _saveDebounceTimer = Timer(const Duration(milliseconds: 500), () {
       _progressNotifier?.save(key, pos);
       _lastPlayedNotifier?.save(savedData);
+
+      final guid = widget.episode.guid ?? widget.episode.id;
+      final feedUrl = widget.feedUrl ?? '';
+      final dur = data.duration.inMilliseconds;
+      ref.read(podcastRepositoryProvider).saveProgress(
+        guid: guid,
+        feedUrl: feedUrl,
+        positionMillis: pos,
+        durationMillis: dur,
+        isCompleted: dur > 0 && (pos / dur) > 0.95,
+      );
     });
   }
 
@@ -166,6 +177,17 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
       position: Duration(milliseconds: pos),
       lastPlayedAt: DateTime.now(),
     ));
+
+    final guid = widget.episode.guid ?? widget.episode.id;
+    final feedUrl = widget.feedUrl ?? '';
+    final dur = data.duration.inMilliseconds;
+    ref.read(podcastRepositoryProvider).saveProgress(
+      guid: guid,
+      feedUrl: feedUrl,
+      positionMillis: pos,
+      durationMillis: dur,
+      isCompleted: dur > 0 && (pos / dur) > 0.95,
+    );
   }
 
   Future<void> _play() async {

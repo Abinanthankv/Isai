@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.14] - September 2026
+
+### Added
+- **Resumable Podcast Downloads**: Pause, resume, and cancel active podcast downloads with HTTP Range header resume support (`bytes=X-`), live progress bars, and status bar notification updates.
+- **Full YouTube Playlist Imports**: YouTube playlist imports now load all tracks beyond the 200-item cap using InnerTube continuations, preserving native titles and original cover art.
+- **Podcast Engine Overhaul (Drift v20)**: Persistent subscriptions, cached RSS episodes, and per-episode playback progress stored in SQLite with OPML import and export capabilities.
+
+### Fixed
+- **Subscribed Episodes Blank View**: Subscribed podcasts load cached episodes instantly from SQLite upon opening detail views.
+- **Download Card Deduplication**: Resolved duplicate download rows in the Downloaded tab for cached and active downloads.
+
 ## [1.0.13] - August 2026
 
 ### Added

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/database/database.dart';
 import 'podcast_artwork.dart';
 import '../data/podcast_models.dart';
 import 'podcast_providers.dart';
@@ -28,13 +29,47 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lookupAsync = widget.podcast.feedUrl == null && widget.podcast.collectionId > 0
+    final rawFeedUrl = widget.podcast.feedUrl;
+    final hasFeedUrl = rawFeedUrl != null && rawFeedUrl.isNotEmpty;
+    final lookupAsync = !hasFeedUrl && widget.podcast.collectionId > 0
         ? ref.watch(podcastLookupProvider(widget.podcast.collectionId))
         : null;
-    final feedUrl = widget.podcast.feedUrl ?? lookupAsync?.asData?.value?.feedUrl;
-    final episodesAsync = feedUrl != null
+    final feedUrl = hasFeedUrl ? rawFeedUrl : lookupAsync?.asData?.value?.feedUrl;
+
+    final dbEpisodesAsync = feedUrl != null && feedUrl.isNotEmpty
+        ? ref.watch(podcastEpisodesDbProvider(feedUrl))
+        : null;
+    final networkEpisodesAsync = feedUrl != null && feedUrl.isNotEmpty
         ? ref.watch(podcastEpisodesProvider(feedUrl))
         : null;
+
+    List<PodcastEpisode>? loadedEpisodes;
+    if (dbEpisodesAsync?.asData?.value != null && dbEpisodesAsync!.asData!.value.isNotEmpty) {
+      loadedEpisodes = dbEpisodesAsync.asData!.value.map((dbEp) {
+        final pubDateStr = dbEp.pubDate != null
+            ? DateTime.fromMillisecondsSinceEpoch(dbEp.pubDate!).toIso8601String()
+            : null;
+        return PodcastEpisode(
+          id: dbEp.guid,
+          guid: dbEp.guid,
+          title: dbEp.title,
+          description: dbEp.description,
+          audioUrl: dbEp.isDownloaded && dbEp.localPath != null && dbEp.localPath!.isNotEmpty
+              ? dbEp.localPath
+              : dbEp.audioUrl,
+          durationSec: dbEp.durationSeconds,
+          pubDate: pubDateStr,
+          artworkUrl: dbEp.artworkUrl ?? widget.podcast.artworkUrl,
+          chaptersUrl: dbEp.chaptersUrl,
+          feedUrl: dbEp.feedUrl,
+        );
+      }).toList();
+    } else if (networkEpisodesAsync?.asData?.value != null) {
+      loadedEpisodes = networkEpisodesAsync!.asData!.value;
+    }
+
+    final subscribedList = ref.watch(subscribedPodcastsProvider).asData?.value ?? [];
+    final isDbSubscribed = feedUrl != null && subscribedList.any((s) => s.feedUrl == feedUrl);
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -42,9 +77,34 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
         controller: _scrollController,
         slivers: [
           SliverAppBar(
-            expandedHeight: 300,
+            expandedHeight: 320,
             pinned: true,
             actions: [
+              IconButton(
+                icon: Icon(
+                  isDbSubscribed ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded,
+                  color: isDbSubscribed ? Theme.of(context).colorScheme.primary : null,
+                ),
+                tooltip: isDbSubscribed ? 'Unsubscribe' : 'Subscribe',
+                onPressed: feedUrl == null ? null : () async {
+                  final repo = ref.read(podcastRepositoryProvider);
+                  if (isDbSubscribed) {
+                    await repo.unsubscribe(feedUrl);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Unsubscribed from podcast')),
+                      );
+                    }
+                  } else {
+                    await repo.subscribe(widget.podcast);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Subscribed to podcast')),
+                      );
+                    }
+                  }
+                },
+              ),
               Consumer(builder: (context, ref, child) {
                 final followed = ref.watch(podcastFollowedProvider);
                 final isFollowed = followed.contains(widget.podcast.collectionId);
@@ -73,14 +133,14 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                       filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                       child: Container(
                         color: isDark
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.white.withOpacity(0.3),
+                            ? Colors.black.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.3),
                       ),
                     ),
                   ),
                   Center(
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 60),
+                      padding: const EdgeInsets.only(top: 50),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -88,48 +148,47 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
                             borderRadius: BorderRadius.circular(16),
                           child: PodcastArtworkImage(
                             imageUrl: widget.podcast.artworkUrl,
-                            width: 140,
-                            height: 140,
+                            width: 120,
+                            height: 120,
                           ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: Text(
                               widget.podcast.collectionName,
                               textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             widget.podcast.artistName,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          if (widget.podcast.primaryGenre != null) ...[
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                widget.podcast.primaryGenre!,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                ),
-                              ),
+                          const SizedBox(height: 8),
+                          FilledButton.icon(
+                            onPressed: feedUrl == null ? null : () async {
+                              final repo = ref.read(podcastRepositoryProvider);
+                              if (isDbSubscribed) {
+                                await repo.unsubscribe(feedUrl);
+                              } else {
+                                await repo.subscribe(widget.podcast);
+                              }
+                            },
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                             ),
-                          ],
+                            icon: Icon(isDbSubscribed ? Icons.check_rounded : Icons.add_rounded, size: 16),
+                            label: Text(isDbSubscribed ? 'Subscribed' : 'Subscribe', style: const TextStyle(fontSize: 12)),
+                          ),
                         ],
                       ),
                     ),
@@ -138,83 +197,67 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
               ),
             ),
           ),
-          if (episodesAsync != null)
-            episodesAsync.when(
-              data: (episodes) {
-                if (episodes.isEmpty) {
-                  return const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Center(child: Text('No episodes found.')),
-                    ),
-                  );
-                }
-                final months = _buildMonthSections(episodes);
-                if (months.isEmpty) {
-                  return SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildEpisodeTile(context, episodes[index], episodes, feedUrl: feedUrl),
-                      childCount: episodes.length,
-                    ),
-                  );
-                }
-                _selectedMonth ??= months.last;
-                final filtered = _selectedMonth != null
-                    ? episodes.where((ep) {
-                        final dt = _parseDate(ep.pubDate);
-                        return dt != null && _monthKey(dt) == _selectedMonth;
-                      }).toList()
-                    : episodes;
-                if (filtered.isEmpty) {
-                  return SliverToBoxAdapter(
-                    child: _buildFilteredEmpty(episodes, months),
-                  );
-                }
-                return SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      if (index == 0) {
-                        return _buildFilterHeader(episodes, months);
-                      }
-                      return _buildEpisodeTile(context, filtered[index - 1], episodes, feedUrl: feedUrl);
-                    },
-                    childCount: filtered.length + 1,
-                  ),
-                );
-              },
-              loading: () => const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ),
-              error: (e, _) => SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.error_outline_rounded, size: 48,
-                          color: Theme.of(context).colorScheme.error),
-                        const SizedBox(height: 12),
-                        Text('Failed to load episodes.'),
-                        const SizedBox(height: 4),
-                        Text('$e', style: Theme.of(context).textTheme.bodySmall),
-                      ],
-                    ),
-                  ),
-                ),
+          if (loadedEpisodes != null)
+            _buildEpisodesList(context, loadedEpisodes, feedUrl)
+          else if (networkEpisodesAsync?.isLoading == true || dbEpisodesAsync?.isLoading == true)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
               ),
             )
           else
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(32),
-                child: Center(child: Text('Loading...')),
+                child: Center(child: Text('No episodes found.')),
               ),
             ),
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEpisodesList(BuildContext context, List<PodcastEpisode> episodes, String? feedUrl) {
+    if (episodes.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: Text('No episodes found.')),
+        ),
+      );
+    }
+    final months = _buildMonthSections(episodes);
+    if (months.isEmpty) {
+      return SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _buildEpisodeTile(context, episodes[index], episodes, feedUrl: feedUrl),
+          childCount: episodes.length,
+        ),
+      );
+    }
+    _selectedMonth ??= months.last;
+    final filtered = _selectedMonth != null
+        ? episodes.where((ep) {
+            final dt = _parseDate(ep.pubDate);
+            return dt != null && _monthKey(dt) == _selectedMonth;
+          }).toList()
+        : episodes;
+    if (filtered.isEmpty) {
+      return SliverToBoxAdapter(
+        child: _buildFilteredEmpty(episodes, months),
+      );
+    }
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          if (index == 0) {
+            return _buildFilterHeader(episodes, months);
+          }
+          return _buildEpisodeTile(context, filtered[index - 1], episodes, feedUrl: feedUrl);
+        },
+        childCount: filtered.length + 1,
       ),
     );
   }
@@ -359,6 +402,7 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
 
   Widget _buildEpisodeTile(BuildContext context, PodcastEpisode episode, List<PodcastEpisode> allEpisodes, {String? feedUrl}) {
     final theme = Theme.of(context);
+    final guid = episode.guid?.isNotEmpty == true ? episode.guid! : (episode.id.isNotEmpty ? episode.id : (episode.audioUrl ?? ''));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -387,77 +431,242 @@ class _PodcastDetailScreenState extends ConsumerState<PodcastDetailScreen> {
           },
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: PodcastArtworkImage(
-                    imageUrl: episode.artworkUrl,
-                    width: 56,
-                    height: 56,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        episode.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: PodcastArtworkImage(
+                        imageUrl: episode.artworkUrl ?? widget.podcast.artworkUrl,
+                        width: 56,
+                        height: 56,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (episode.durationSec != null) ...[
-                            Icon(Icons.schedule_rounded, size: 12,
-                              color: theme.colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
+                          Text(
+                            episode.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              if (episode.durationSec != null) ...[
+                                Icon(Icons.schedule_rounded, size: 12,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _formatDuration(episode.durationSec!),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                              if (episode.pubDate != null)
+                                Text(
+                                  _formatDate(episode.pubDate!),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (episode.description != null && episode.description!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
                             Text(
-                              _formatDuration(episode.durationSec!),
+                              episode.description!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                               ),
                             ),
-                            const SizedBox(width: 12),
                           ],
-                          if (episode.pubDate != null)
-                            Text(
-                              _formatDate(episode.pubDate!),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
                         ],
                       ),
-                      if (episode.description != null && episode.description!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          episode.description!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(width: 4),
+                    Consumer(
+                      builder: (context, ref, child) {
+                        final downloadedList = ref.watch(downloadedPodcastEpisodesProvider).asData?.value ?? [];
+                        final dbEpMatch = downloadedList.where((e) => e.guid == guid || e.audioUrl == episode.audioUrl).firstOrNull;
+                        final isDownloaded = dbEpMatch?.isDownloaded ?? false;
+                        final downloadProgress = dbEpMatch?.downloadProgress ?? 0.0;
+                        final isPaused = dbEpMatch?.isPaused ?? false;
+                        final isDownloading = downloadProgress > 0.0 && downloadProgress < 1.0 && !isPaused;
+
+                        if (isDownloaded) {
+                          return IconButton(
+                            icon: const Icon(Icons.download_done_rounded, color: Colors.green, size: 24),
+                            tooltip: 'Downloaded (Tap to delete)',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  title: const Text('Delete Download'),
+                                  content: Text('Delete offline copy of "${episode.title}"?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                    FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true && dbEpMatch != null) {
+                                await ref.read(podcastRepositoryProvider).deleteDownload(dbEpMatch);
+                              }
+                            },
+                          );
+                        } else if (isDownloading) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 22, height: 22,
+                                child: CircularProgressIndicator(value: downloadProgress, strokeWidth: 2.5),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.pause_rounded, size: 22),
+                                tooltip: 'Pause Download',
+                                onPressed: () {
+                                  if (dbEpMatch != null) {
+                                    ref.read(podcastRepositoryProvider).pauseDownload(dbEpMatch);
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 22),
+                                tooltip: 'Cancel Download',
+                                onPressed: () {
+                                  if (dbEpMatch != null) {
+                                    ref.read(podcastRepositoryProvider).cancelDownload(dbEpMatch);
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        } else if (isPaused) {
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.play_arrow_rounded, color: Colors.orange, size: 24),
+                                tooltip: 'Resume Download',
+                                onPressed: () {
+                                  if (dbEpMatch != null) {
+                                    ref.read(podcastRepositoryProvider).resumeDownload(dbEpMatch);
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 22),
+                                tooltip: 'Cancel Download',
+                                onPressed: () {
+                                  if (dbEpMatch != null) {
+                                    ref.read(podcastRepositoryProvider).cancelDownload(dbEpMatch);
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        } else {
+                          return IconButton(
+                            icon: const Icon(Icons.download_for_offline_outlined, size: 24),
+                            tooltip: 'Download Episode',
+                            onPressed: () async {
+                              final repo = ref.read(podcastRepositoryProvider);
+                              final pubDateMs = _parseDate(episode.pubDate)?.millisecondsSinceEpoch;
+                              final dbEp = DbPodcastEpisodeData(
+                                id: 0,
+                                feedUrl: feedUrl ?? widget.podcast.feedUrl ?? '',
+                                guid: guid,
+                                title: episode.title,
+                                description: episode.description,
+                                audioUrl: episode.audioUrl ?? '',
+                                pubDate: pubDateMs,
+                                durationSeconds: episode.durationSec ?? 0,
+                                artworkUrl: episode.artworkUrl ?? widget.podcast.artworkUrl,
+                                chaptersUrl: episode.chaptersUrl,
+                                isDownloaded: false,
+                                isCompleted: false,
+                                downloadProgress: 0.0,
+                                isPaused: false,
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Downloading "${episode.title}"...')),
+                              );
+                              try {
+                                await repo.downloadEpisode(dbEp);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Download failed: $e')),
+                                  );
+                                }
+                              }
+                            },
+                          );
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.play_circle_fill_rounded,
+                        color: theme.colorScheme.primary,
+                        size: 32,
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PodcastNowPlayingScreen(
+                              episode: episode,
+                              allEpisodes: allEpisodes,
+                              initialIndex: allEpisodes.indexOf(episode),
+                              podcastArtwork: widget.podcast.artworkUrl,
+                              podcastTitle: widget.podcast.collectionName,
+                              podcastArtist: widget.podcast.artistName,
+                              feedUrl: feedUrl,
+                              primaryGenre: widget.podcast.primaryGenre,
+                            ),
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 32,
+                Consumer(
+                  builder: (context, ref, child) {
+                    final progressData = ref.watch(podcastEpisodeProgressDbProvider(guid)).asData?.value;
+                    if (progressData != null && progressData.positionMillis > 5000 && progressData.durationMillis > 0) {
+                      final ratio = (progressData.positionMillis / progressData.durationMillis).clamp(0.0, 1.0);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(value: ratio, minHeight: 3),
+                          ),
+                        ],
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
                 ),
               ],
             ),
