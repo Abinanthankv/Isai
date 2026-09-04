@@ -604,22 +604,25 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   void _showSleepTimerSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('Sleep Timer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
-            _sleepTimerOption(ctx, '15 minutes', 15),
-            _sleepTimerOption(ctx, '30 minutes', 30),
-            _sleepTimerOption(ctx, '45 minutes', 45),
-            _sleepTimerOption(ctx, '60 minutes', 60),
-            if (_sleepTimerMinutes != null)
-              _sleepTimerOption(ctx, 'Cancel Timer', -1),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Sleep Timer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+              _sleepTimerOption(ctx, '15 minutes', 15),
+              _sleepTimerOption(ctx, '30 minutes', 30),
+              _sleepTimerOption(ctx, '45 minutes', 45),
+              _sleepTimerOption(ctx, '60 minutes', 60),
+              if (_sleepTimerMinutes != null)
+                _sleepTimerOption(ctx, 'Cancel Timer', -1),
+            ],
+          ),
         ),
       ),
     );
@@ -679,27 +682,30 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   void _showSpeedSheet() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('Playback Speed', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
-            ..._speedOptions.map((speed) => ListTile(
-              title: Text('${speed}x'),
-              trailing: _playbackSpeed == speed
-                  ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                  : null,
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() => _playbackSpeed = speed);
-                audioHandler.customAction('setSpeed', {'speed': speed});
-              },
-            )),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Playback Speed', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
+              ..._speedOptions.map((speed) => ListTile(
+                title: Text('${speed}x'),
+                trailing: _playbackSpeed == speed
+                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _playbackSpeed = speed);
+                  audioHandler.customAction('setSpeed', {'speed': speed});
+                },
+              )),
+            ],
+          ),
         ),
       ),
     );
