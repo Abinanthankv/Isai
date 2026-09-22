@@ -1468,7 +1468,8 @@ class AudiobookRepository {
     final file = await _getProgressFile();
     if (await file.exists()) {
       final content = await file.readAsString();
-      _progressData = jsonDecode(content) as Map<String, dynamic>;
+      final decoded = jsonDecode(content);
+      _progressData = decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
     } else {
       _progressData = {
         'version': 1,
@@ -1974,12 +1975,32 @@ class AudiobookRepository {
 
     try {
       final data = _progressData ?? await _loadProgressData();
-      final books = data['books'] as Map<String, dynamic>;
-      final bookObj = books.putIfAbsent(normId, () => <String, dynamic>{}) as Map<String, dynamic>;
+      final rawBooks = data['books'];
+      final Map<String, dynamic> books;
+      if (rawBooks is Map<String, dynamic>) {
+        books = rawBooks;
+      } else if (rawBooks is Map) {
+        books = Map<String, dynamic>.from(rawBooks);
+        data['books'] = books;
+      } else {
+        books = <String, dynamic>{};
+        data['books'] = books;
+      }
+      final rawBookObj = books.putIfAbsent(normId, () => <String, dynamic>{});
+      final Map<String, dynamic> bookObj;
+      if (rawBookObj is Map<String, dynamic>) {
+        bookObj = rawBookObj;
+      } else if (rawBookObj is Map) {
+        bookObj = Map<String, dynamic>.from(rawBookObj);
+        books[normId] = bookObj;
+      } else {
+        bookObj = <String, dynamic>{};
+        books[normId] = bookObj;
+      }
       chapters = bookObj.putIfAbsent('chapters', () => <dynamic>[]) as List<dynamic>;
 
       final existingIdx = chapters.indexWhere(
-        (c) => (c as Map<String, dynamic>)['chapterIndex'] == chapterIndex,
+        (c) => c is Map && c['chapterIndex'] == chapterIndex,
       );
       final entry = {
         'chapterIndex': chapterIndex,
@@ -1997,12 +2018,12 @@ class AudiobookRepository {
 
       // Recompute book-level summary using time-based progress in memory
       for (final ch in chapters) {
-        final chMap = ch as Map<String, dynamic>;
-        final pos = (chMap['positionMillis'] as int?) ?? 0;
-        final dur = (chMap['durationMillis'] as int?) ?? 0;
+        if (ch is! Map) continue;
+        final pos = (ch['positionMillis'] as int?) ?? 0;
+        final dur = (ch['durationMillis'] as int?) ?? 0;
         if (pos > maxPos) maxPos = pos;
         totalDuration += dur;
-        if (chMap['isCompleted'] == true) completed++;
+        if (ch['isCompleted'] == true) completed++;
       }
 
       final cachedMeta = await getCachedMetadata(normId);
@@ -2010,7 +2031,8 @@ class AudiobookRepository {
       if (totalCh <= 0 && chapters.isNotEmpty) {
         int maxIdx = 0;
         for (final ch in chapters) {
-          final idx = (ch as Map<String, dynamic>)['chapterIndex'] as int? ?? 0;
+          if (ch is! Map) continue;
+          final idx = (ch['chapterIndex'] as int?) ?? 0;
           if (idx > maxIdx) maxIdx = idx;
         }
         totalCh = maxIdx + 1;
@@ -2079,10 +2101,10 @@ class AudiobookRepository {
       try {
         final dirPath = await getOrCreateLocalBookDirectoryForBackup(bookId);
         if (dirPath != null && chapters != null) {
-          final List<Map<String, dynamic>> jsonList = chapters.map((ch) {
-            final chMap = ch as Map<String, dynamic>;
-            return Map<String, dynamic>.from(chMap)..remove('originalBookId');
-          }).cast<Map<String, dynamic>>().toList();
+          final List<Map<String, dynamic>> jsonList = chapters
+              .whereType<Map>()
+              .map((ch) => Map<String, dynamic>.from(ch)..remove('originalBookId'))
+              .toList();
 
           final progressFile = io.File(p.join(dirPath, 'progress.json'));
           final backupData = {
@@ -3513,8 +3535,10 @@ class AudiobookRepository {
     try {
       final normId = normalizeBookId(bookId);
       final data = await _loadProgressData();
-      final books = data['books'] as Map<String, dynamic>;
-      final bookObj = books[normId] as Map<String, dynamic>?;
+      final rawBooks = data['books'];
+      final books = rawBooks is Map ? Map<String, dynamic>.from(rawBooks) : <String, dynamic>{};
+      final rawBookObj = books[normId];
+      final bookObj = rawBookObj is Map ? Map<String, dynamic>.from(rawBookObj) : null;
       if (bookObj == null) {
         print('[AudiobookRepository] syncHardcoverProgress: bookObj not found for normId=$normId');
         return;
@@ -3533,12 +3557,33 @@ class AudiobookRepository {
       final chapters = bookObj['chapters'] as List<dynamic>?;
       print('[AudiobookRepository] syncHardcoverProgress: chapters count=${chapters?.length ?? 0}');
       if (chapters != null && chapters.isNotEmpty) {
-        for (final ch in chapters) {
-          final chMap = ch as Map<String, dynamic>;
+        // Sort chapters by index to ensure accurate cumulative progress calculation
+        final sortedChs = chapters
+            .whereType<Map>()
+            .map((c) => Map<String, dynamic>.from(c))
+            .toList()
+          ..sort((a, b) => ((a['chapterIndex'] as int?) ?? 0).compareTo((b['chapterIndex'] as int?) ?? 0));
+        
+        int highestActiveIdx = -1;
+        int activeChapterPosMs = 0;
+
+        for (final chMap in sortedChs) {
+          final idx = (chMap['chapterIndex'] as int?) ?? 0;
           final pos = (chMap['positionMillis'] as int?) ?? 0;
           final dur = (chMap['durationMillis'] as int?) ?? 0;
-          if (pos > totalProgressMs) totalProgressMs = pos;
-          if (dur > bookTotalMs) bookTotalMs = dur;
+          bookTotalMs += dur;
+
+          if (chMap['isCompleted'] == true) {
+            totalProgressMs += dur;
+          } else if (pos > 0) {
+            highestActiveIdx = idx;
+            activeChapterPosMs = pos;
+          }
+        }
+
+        // Add progress within current active chapter if not marked fully completed
+        if (highestActiveIdx != -1) {
+          totalProgressMs += activeChapterPosMs;
         }
       }
       if (totalProgressMs <= 0) {
