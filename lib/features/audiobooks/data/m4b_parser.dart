@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 class M4bChapter {
   final String title;
@@ -138,6 +139,21 @@ class HttpRandomDataReader implements RandomDataReader {
 class M4bParser {
   /// Parses the chapter list from an `.m4b` or `.m4a` file (local path or remote HTTP URL).
   static Future<List<M4bChapter>> parseChapters(String filePathOrUrl) async {
+    if (!filePathOrUrl.startsWith('http://') && !filePathOrUrl.startsWith('https://')) {
+      try {
+        return await compute(_parseLocalChaptersInIsolate, filePathOrUrl);
+      } catch (e) {
+        print('[M4bParser] compute isolate parsing failed ($e), falling back to direct parse');
+      }
+    }
+    return _parseChaptersInternal(filePathOrUrl);
+  }
+
+  static Future<List<M4bChapter>> _parseLocalChaptersInIsolate(String path) async {
+    return _parseChaptersInternal(path);
+  }
+
+  static Future<List<M4bChapter>> _parseChaptersInternal(String filePathOrUrl) async {
     RandomDataReader? reader;
     try {
       print('[M4bParser] Starting parseChapters for: $filePathOrUrl');

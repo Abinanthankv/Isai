@@ -3,17 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../music/presentation/music_providers.dart';
 import 'audiobook_providers.dart';
 import 'audiobook_recommendation_providers.dart';
 import '../data/audiobook_models.dart';
 import '../data/audiobook_recommendation_engine.dart';
-import '../data/audiobook_repository.dart';
 import 'audiobook_detail_screen.dart';
-import 'audiobook_now_playing_screen.dart';
-import 'package:isai/main.dart'; // For audioHandler
 
 class AudiobooksSubScreen extends ConsumerStatefulWidget {
   const AudiobooksSubScreen({super.key});
@@ -802,7 +796,13 @@ class _AudiobooksSubScreenState extends ConsumerState<AudiobooksSubScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: book.artworkUrl != null
-                      ? CachedNetworkImage(imageUrl: book.artworkUrl!, fit: BoxFit.cover, width: 130)
+                      ? CachedNetworkImage(
+                          imageUrl: book.artworkUrl!,
+                          fit: BoxFit.cover,
+                          width: 130,
+                          memCacheWidth: 260,
+                          memCacheHeight: 390,
+                        )
                       : Container(color: theme.colorScheme.surfaceContainerHighest, child: const Icon(Icons.book, size: 40)),
                 ),
               ),

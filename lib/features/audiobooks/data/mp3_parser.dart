@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'm4b_parser.dart'; // To reuse RandomDataReader, FileRandomDataReader, HttpRandomDataReader
 
 class Mp3Chapter {
@@ -34,6 +35,21 @@ class Mp3Parser {
   }
 
   static Future<List<Mp3Chapter>> parseChapters(String pathOrUrl) async {
+    if (!pathOrUrl.startsWith('http://') && !pathOrUrl.startsWith('https://')) {
+      try {
+        return await compute(_parseLocalChaptersInIsolate, pathOrUrl);
+      } catch (e) {
+        print('[Mp3Parser] compute isolate parsing failed ($e), falling back to direct parse');
+      }
+    }
+    return _parseChaptersInternal(pathOrUrl);
+  }
+
+  static Future<List<Mp3Chapter>> _parseLocalChaptersInIsolate(String path) async {
+    return _parseChaptersInternal(path);
+  }
+
+  static Future<List<Mp3Chapter>> _parseChaptersInternal(String pathOrUrl) async {
     RandomDataReader? reader;
     try {
       if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
