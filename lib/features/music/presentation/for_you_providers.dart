@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/database.dart';
@@ -705,24 +706,36 @@ Future<void> _enrichTrackArtwork(List<ItunesTrack> results) async {
   }));
 }
 
-/// Decade + genre mixes from Deezer, paired from the user's listening history.
+/// Decade + genre mixes from Deezer, paired from the user's listening history with full era fallback.
 final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
   final profile = ref.watch(userMusicProfileProvider).value;
   final db = getIt<AppDatabase>();
   final deezer = getIt<DeezerService>();
 
-  // Query DB directly — same as stats page, no stream delay
+  final nowMs = DateTime.now().millisecondsSinceEpoch;
   final allHistory = await db.getAllPlayback();
-  final Map<int, ({int plays, Set<String> tracks})> decades = {};
+  
+  // Calculate time-decayed decade affinity scores
+  final Map<int, double> decadeScores = {};
   for (final h in allHistory) {
-    if (h.releaseYear == null) continue;
+    if (h.releaseYear == null || h.releaseYear! < 1950) continue;
     final decade = (h.releaseYear! ~/ 10) * 10;
-    final entry = decades.putIfAbsent(decade, () => (plays: 0, tracks: {}));
-    decades[decade] = (plays: entry.plays + 1, tracks: {...entry.tracks, '${h.trackTitle}-${h.artist}'});
+    final ageInDays = (nowMs - h.playedAt) / (1000 * 60 * 60 * 24);
+    final weight = exp(-0.05 * max(0.0, ageInDays));
+    decadeScores[decade] = (decadeScores[decade] ?? 0.0) + weight;
   }
-  final sorted = decades.entries.toList()..sort((a, b) => b.value.plays.compareTo(a.value.plays));
-  final topDecades = sorted.map((e) => e.key).toList();
-  if (topDecades.isEmpty) return [];
+
+  // Sort user's top decades, or supply default curated eras if history is sparse
+  final sortedDecades = decadeScores.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  List<int> topDecades = sortedDecades.map((e) => e.key).toList();
+  
+  // Always ensure rich variety across eras (2020s, 2010s, 2000s, 90s, 80s, 70s)
+  final defaultEras = [2020, 2010, 2000, 1990, 1980, 1970];
+  for (final era in defaultEras) {
+    if (!topDecades.contains(era)) {
+      topDecades.add(era);
+    }
+  }
 
   final genres = profile?.genreWeights
       .where((g) => g.genre.isNotEmpty)
@@ -730,15 +743,19 @@ final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
       .toList() ?? [];
 
   final List<({Color from, Color to, Color shadow})> decadeGradients = [
-    (from: const Color(0xFF6B52A0), to: const Color(0xFF2D1B69), shadow: const Color(0xFF6B52A0)),
-    (from: const Color(0xFFD4145A), to: const Color(0xFFBB0B4A), shadow: const Color(0xFFD4145A)),
-    (from: const Color(0xFF11998E), to: const Color(0xFF0B6B5E), shadow: const Color(0xFF11998E)),
+    (from: const Color(0xFF8E2DE2), to: const Color(0xFF4A00E0), shadow: const Color(0xFF8E2DE2)), // 2020s Violet
+    (from: const Color(0xFF00c6ff), to: const Color(0xFF0072ff), shadow: const Color(0xFF00c6ff)), // 2010s Blue
+    (from: const Color(0xFFD4145A), to: const Color(0xFFBB0B4A), shadow: const Color(0xFFD4145A)), // 2000s Crimson
+    (from: const Color(0xFF11998E), to: const Color(0xFF0B6B5E), shadow: const Color(0xFF11998E)), // 90s Teal
+    (from: const Color(0xFFf12711), to: const Color(0xFFf5af19), shadow: const Color(0xFFf12711)), // 80s Neon Sunset
+    (from: const Color(0xFF6B52A0), to: const Color(0xFF2D1B69), shadow: const Color(0xFF6B52A0)), // 70s Retro Purple
   ];
 
   final mixes = <DailyMix>[];
   final seenKeys = <String>{};
   final seenPlaylistIds = <int>{};
-  for (int i = 0; i < topDecades.length; i++) {
+
+  for (int i = 0; i < topDecades.length.clamp(0, 6); i++) {
     final decade = topDecades[i];
     final gradient = decadeGradients[i % decadeGradients.length];
     final genre = genres.isNotEmpty ? genres[i % genres.length] : '';
@@ -747,12 +764,10 @@ final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
     if (!seenKeys.add(mixKey)) continue;
 
     final query = genre.isNotEmpty ? '${decade}s $genre' : '${decade}s hits';
-
     List<ItunesTrack> tracks = [];
-    String mixTitle = genre.isNotEmpty ? '${decade}s $genre Mix' : '${decade}s Mix';
+    String mixTitle = genre.isNotEmpty ? '${decade}s $genre Mix' : '${decade}s Hits Mix';
 
-    // Try Deezer with genre query first, then fall back to generic decade hits
-    final queries = genre.isNotEmpty ? [query, '${decade}s hits'] : [query];
+    final queries = genre.isNotEmpty ? [query, '${decade}s hits', '${decade}s classics'] : [query, '${decade}s classics'];
     for (final q in queries) {
       if (tracks.isNotEmpty) break;
       try {
@@ -763,7 +778,7 @@ final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
             orElse: () => playlists.first,
           );
           final plId = (pl['id'] as num?)?.toInt() ?? pl['title']?.toString().hashCode ?? q.hashCode;
-          final rawTracks = await deezer.getPlaylistTracks(plId.toString(), limit: 20);
+          final rawTracks = await deezer.getPlaylistTracks(plId.toString(), limit: 25);
           for (final t in rawTracks) {
             final artist = t['artist'] as Map<String, dynamic>? ?? {};
             final album = t['album'] as Map<String, dynamic>? ?? {};
@@ -779,11 +794,11 @@ final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
           }
           seenPlaylistIds.add(plId);
         }
-    } catch (_) {}
-  }
+      } catch (_) {}
+    }
 
-  if (tracks.isEmpty) {
-    final library = ref.read(libraryProvider);
+    if (tracks.isEmpty) {
+      final library = ref.read(libraryProvider);
       for (final file in library.allAudioFiles) {
         final meta = library.metadata['${file.torrentId}-${file.id}'];
         if (meta?.releaseYear == null) continue;
@@ -801,7 +816,7 @@ final decadeMixesProvider = FutureProvider<List<DailyMix>>((ref) async {
 
     if (tracks.isEmpty) continue;
 
-    final subtitle = genre.isNotEmpty ? '${tracks.length} tracks • $genre' : '${tracks.length} tracks';
+    final subtitle = genre.isNotEmpty ? '${tracks.length} tracks • $genre Era' : '${tracks.length} tracks • ${decade}s Essentials';
     mixes.add((
       title: mixTitle,
       subtitle: subtitle,

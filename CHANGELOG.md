@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.15] - September 2026
+
+### Added
+- **Addon Priority Ordering**: Installed addons can now be re-ordered via interactive drag-and-drop in Addon Manager with haptic feedback (`HapticFeedback`) and a glowing **`PRIMARY`** badge for top-priority sources.
+- **Sequential Addon Resolution**: Streams and search results now query addons strictly in priority order (1st Addon → 2nd Addon → Fallback), yielding immediately when top-priority addons return valid audio links.
+- **Recommendation Engine Overhaul**: Time-decay scoring ($e^{-0.05 \cdot \text{days}}$) weights recent listening habits over historical plays; feature collaboration parsing (`splitArtists`) enriches artist affinity.
+- **Decade Mixes Revamp**: Decades are now scored with recency-weighted play history and paired with the user's top genres (e.g. *"90s Rock Mix"*, *"2000s R&B Mix"*, *"80s Synth Hits"*) with full era fallbacks (70s - 2020s).
+- **Long-Press MiniPlayer Queue**: Long-pressing the MiniPlayer (music mode only) triggers medium impact haptic feedback and pops open the Up Next Queue modal.
+
+### Fixed
+- **Instant MiniPlayer & Play Button Response**: Eliminated 10–15s initial play lag by broadcasting `mediaItem` metadata upfront and initiating local playback optimistically before background stream resolution.
+- **Duplicate "Play Next" Insertions**: Added duplicate checking on `customAction('play')` to prevent re-inserting identical songs in the queue.
+- **Addon Names & Exact Bitrate Display**: Now Playing screen now resolves exact addon names (e.g. JioSaavn, MassTamilan, SoundCloud) from `PluginManager` and parses real-time bitrates (kbps) and sample rates (kHz).
+- **Lazy Resolution Error Skipping**: Created `_LazyStreamAudioSource` to hold player state without throwing 404 HTTP errors during background track resolution, preventing unintended auto-skips.
+
 ## [1.0.14] - September 2026
 
 ### Added

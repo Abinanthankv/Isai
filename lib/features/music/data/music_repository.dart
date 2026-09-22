@@ -1394,29 +1394,39 @@ class MusicRepositoryImpl implements MusicRepository {
       return;
     }
 
-    final controller = StreamController<ScraperResult>();
-    int completedCount = 0;
+    bool hasFoundResults = false;
 
+    // Search sequentially in order of priority: 1st addon -> 2nd addon (if 1st yields nothing) -> fallbacks
     for (final scraper in activeScrapers) {
-      print('[MusicRepository] Starting scraper: ${scraper.name}');
-      scraper.searchStream(query).listen(
-        (result) {
-          print('[MusicRepository] Result from ${scraper.name}: ${result.title}');
-          controller.add(result);
-        },
-        onError: (e) => print('[MusicRepository] Scraper ${scraper.name} failed: $e'),
-        onDone: () {
-          print('[MusicRepository] Scraper ${scraper.name} completed.');
-          completedCount++;
-          if (completedCount == activeScrapers.length) {
-            print('[MusicRepository] All scrapers finished.');
-            controller.close();
+      print('[MusicRepository] Querying scraper in priority order: ${scraper.name}');
+      try {
+        final results = await scraper.search(query).timeout(
+          const Duration(seconds: 6),
+          onTimeout: () {
+            print('[MusicRepository] Scraper ${scraper.name} timed out');
+            return [];
+          },
+        );
+
+        if (results.isNotEmpty) {
+          print('[MusicRepository] Priority scraper ${scraper.name} returned ${results.length} result(s).');
+          hasFoundResults = true;
+          for (final result in results) {
+            yield result;
           }
-        },
-      );
+          // Break so we don't query secondary addons if the higher-priority addon returned links
+          break;
+        } else {
+          print('[MusicRepository] Scraper ${scraper.name} returned no results. Falling back to next addon...');
+        }
+      } catch (e) {
+        print('[MusicRepository] Scraper ${scraper.name} error: $e. Falling back to next addon...');
+      }
     }
 
-    yield* controller.stream;
+    if (!hasFoundResults) {
+      print('[MusicRepository] No prioritized scrapers returned results for: "$query"');
+    }
   }
 
   @override

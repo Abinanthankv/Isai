@@ -426,10 +426,10 @@ class ForYouScreen extends ConsumerWidget {
           children: [
             const AppleMusicSectionHeader(
               title: 'Your Decade Mixes',
-              subtitle: 'From your most listened eras',
+              subtitle: 'Tailored mixes spanning your favorite music eras',
             ),
             SizedBox(
-              height: 190,
+              height: 195,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -447,7 +447,7 @@ class ForYouScreen extends ConsumerWidget {
                         subtitle: mix.subtitle,
                         isDark: isDark,
                         gradient: mix.colors,
-                        icon: Icons.queue_music_rounded,
+                        icon: Icons.album_rounded,
                       ),
                     ),
                   );

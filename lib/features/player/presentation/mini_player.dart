@@ -210,6 +210,16 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(useLiquid ? 30 : 14),
+                          onLongPress: () {
+                            if (isAudiobook || isPodcast) return;
+                            HapticFeedback.mediumImpact();
+                            showModalBottomSheet(
+                              context: context,
+                              backgroundColor: Colors.transparent,
+                              isScrollControlled: true,
+                              builder: (context) => const QueueBottomSheet(),
+                            );
+                          },
                           onTap: () {
                             final extras = mediaItem.extras;
                             if (extras != null) {

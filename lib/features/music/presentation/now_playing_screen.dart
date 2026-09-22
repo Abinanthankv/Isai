@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:isai/core/theme/material3_theme.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:audio_service/audio_service.dart';
@@ -16,6 +17,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:isai/main.dart';
+import 'visualizer_settings_sheet.dart';
+import 'spotify_canvas_provider.dart';
 import 'music_providers.dart';
 import '../utils/filename_parser.dart';
 import 'player_visuals.dart';
@@ -45,11 +48,11 @@ import 'playlist_picker_sheet.dart';
 import 'playlist_providers.dart';
 import '../../player/data/audio_handler.dart';
 import 'visualizer_layer.dart';
-import 'visualizer_settings_sheet.dart';
 import 'package:isai/core/theme/material3_theme.dart';
 import 'package:isai/core/theme/dynamic_color_provider.dart';
 import 'spotify_canvas_provider.dart';
 import 'interactive_controls.dart';
+import '../data/plugins/plugin_manager.dart';
 
 
 class NowPlayingScreen extends ConsumerWidget {
@@ -2393,12 +2396,24 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
   String _getTrackSource(MediaItem item) {
     String? source = item.extras?['source'] as String?;
-    if (source == null || source.isEmpty) {
+    if (source == null || source.isEmpty || source == 'Streaming Server' || source == 'FLAC Scraper') {
       final url = item.id;
       final localPath = item.extras?['localPath'] as String?;
       final isLocal = localPath != null && localPath.isNotEmpty;
       final linkType = item.extras?['linkType'] as String?;
-      
+      final pluginManager = getIt<PluginManager>();
+
+      if (linkType != null && linkType.isNotEmpty) {
+        if (linkType.startsWith('eclipse_')) {
+          final cleanId = linkType.replaceFirst('eclipse_', '');
+          final addon = pluginManager.eclipseAddons.where((a) => a.id == cleanId).firstOrNull;
+          if (addon != null) return addon.name;
+        } else {
+          final plugin = pluginManager.plugins.where((p) => p.id == linkType).firstOrNull;
+          if (plugin != null) return plugin.name;
+        }
+      }
+
       if (isLocal) {
         source = 'Local Storage';
       } else if (linkType == 'youtube' || url.contains('youtube') || url.contains('googlevideo')) {
@@ -3174,7 +3189,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => const _QueueBottomSheet(),
+      builder: (context) => const QueueBottomSheet(),
     );
   }
 
@@ -4361,13 +4376,13 @@ String _cleanAlbumName(String album) {
     .trim();
 }
 
-class _QueueBottomSheet extends ConsumerStatefulWidget {
-  const _QueueBottomSheet();
+class QueueBottomSheet extends ConsumerStatefulWidget {
+  const QueueBottomSheet({super.key});
   @override
-  ConsumerState<_QueueBottomSheet> createState() => _QueueBottomSheetState();
+  ConsumerState<QueueBottomSheet> createState() => _QueueBottomSheetState();
 }
 
-class _QueueBottomSheetState extends ConsumerState<_QueueBottomSheet> {
+class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
   String _selectedChip = 'All';
   bool _isLoading = false;
   final List<String> _chips = ['All', 'Familiar', 'Discover', 'Popular', 'Deep cuts'];

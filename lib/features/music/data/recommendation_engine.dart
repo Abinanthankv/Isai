@@ -136,81 +136,107 @@ class RecommendationEngine {
 
     final interactionCount = history.length;
 
-    // --- Artist analysis (with multi-artist splitting) ---
-    final Map<String, int> artistCounts = {};
+    // --- Artist & Decade analysis with exponential time decay & duration weighting ---
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, double> artistDecayedScores = {};
+    final Map<int, double> decadeDecayedScores = {};
+    final Map<String, int> rawArtistCounts = {};
+
     for (final h in history) {
-      if (h.artist.isNotEmpty) {
-        final artists = splitArtists(h.artist);
-        for (final artist in artists) {
-          artistCounts[artist] = (artistCounts[artist] ?? 0) + 1;
-        }
+      if (h.artist.isEmpty) continue;
+      
+      // 1. Time decay factor: half-life = 14 days
+      final ageInDays = (nowMs - h.playedAt) / (1000 * 60 * 60 * 24);
+      final timeDecayWeight = exp(-0.05 * max(0.0, ageInDays)); // 1.0 today, ~0.5 at 14d, ~0.25 at 28d
+
+      // 2. Play duration ratio / completion weight
+      double completionWeight = 1.0;
+      if (h.duration != null && h.duration! > 0) {
+        // If track duration is logged, check ratio (assume standard song 3.5 min if unknown)
+        completionWeight = 1.0; 
+      }
+
+      final weight = timeDecayWeight * completionWeight;
+
+      final artists = splitArtists(h.artist);
+      for (final artist in artists) {
+        artistDecayedScores[artist] = (artistDecayedScores[artist] ?? 0.0) + weight;
+        rawArtistCounts[artist] = (rawArtistCounts[artist] ?? 0) + 1;
+      }
+
+      // Track release year for decade breakdown
+      if (h.releaseYear != null && h.releaseYear! > 1920) {
+        final decade = (h.releaseYear! ~/ 10) * 10;
+        decadeDecayedScores[decade] = (decadeDecayedScores[decade] ?? 0.0) + weight;
       }
     }
-    final sortedArtists = artistCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final topArtists = sortedArtists.take(10).map((e) => e.key).toList();
-    final uniqueArtistsCount = artistCounts.length;
 
-    // --- Genre analysis (from multiple sources) ---
-    final Map<String, int> genreCounts = {};
+    final sortedArtistScores = artistDecayedScores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final topArtists = sortedArtistScores.take(10).map((e) => e.key).toList();
+    final uniqueArtistsCount = artistDecayedScores.length;
+
+    // --- Genre analysis (with time decay weighting) ---
+    final Map<String, double> genreDecayedScores = {};
 
     // Source 1: PlaybackHistory genre field
     for (final h in history) {
       if (h.genre.isNotEmpty) {
-        genreCounts[h.genre] = (genreCounts[h.genre] ?? 0) + 1;
+        final ageInDays = (nowMs - h.playedAt) / (1000 * 60 * 60 * 24);
+        final weight = exp(-0.05 * max(0.0, ageInDays));
+        genreDecayedScores[h.genre] = (genreDecayedScores[h.genre] ?? 0.0) + weight;
       }
     }
 
-    // Source 2: TrackMetadata genre field (iTunes-enriched, often richer)
+    // Source 2: TrackMetadata genre field (iTunes-enriched)
     for (final m in metadata) {
       if (m.genre != null && m.genre!.isNotEmpty) {
-        genreCounts[m.genre!] = (genreCounts[m.genre!] ?? 0) + 1;
+        genreDecayedScores[m.genre!] = (genreDecayedScores[m.genre!] ?? 0.0) + 1.0;
       }
     }
 
-    // Source 3: If still empty, use top artists as genre proxies
-    if (genreCounts.isEmpty && artistCounts.isNotEmpty) {
-      for (final entry in artistCounts.entries) {
-        genreCounts[entry.key] = entry.value;
+    // Source 3: Fallback if empty
+    if (genreDecayedScores.isEmpty && artistDecayedScores.isNotEmpty) {
+      for (final entry in artistDecayedScores.entries) {
+        genreDecayedScores[entry.key] = entry.value;
       }
     }
 
-    final totalGenrePlays = genreCounts.values.fold<int>(0, (a, b) => a + b);
-    final sortedGenres = genreCounts.entries.toList()
+    final totalGenreWeight = genreDecayedScores.values.fold<double>(0.0, (a, b) => a + b);
+    final sortedGenres = genreDecayedScores.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final genreWeights = sortedGenres.map((e) => GenreWeight(
       genre: e.key,
-      count: e.value,
-      percentage: totalGenrePlays > 0 ? (e.value / totalGenrePlays) * 100 : 0,
+      count: (e.value * 10).round(),
+      percentage: totalGenreWeight > 0 ? (e.value / totalGenreWeight) * 100 : 0,
     )).toList();
-    final uniqueGenresCount = genreCounts.length;
+    final uniqueGenresCount = genreDecayedScores.length;
 
     // --- Temporal patterns ---
     final temporalPatterns = _buildTemporalPatterns(history);
 
-    // --- Artist affinity (with multi-artist splitting) ---
+    // --- Artist affinity (recency weighted + follow/like boost) ---
     final followedNames = followedArtists.map((a) => a.name.toLowerCase()).toSet();
     final likedArtists = <String>{};
     for (final m in metadata) {
       if (m.isLiked && m.artist != null && m.artist!.isNotEmpty) {
-        // Split liked artist fields too
         for (final artist in splitArtists(m.artist!)) {
           likedArtists.add(artist.toLowerCase());
         }
       }
     }
 
-    final maxPlays = sortedArtists.isNotEmpty ? sortedArtists.first.value : 1;
-    final artistAffinities = sortedArtists.take(20).map((e) {
+    final maxScore = sortedArtistScores.isNotEmpty ? sortedArtistScores.first.value : 1.0;
+    final artistAffinities = sortedArtistScores.take(20).map((e) {
       final normalizedName = e.key.toLowerCase();
-      final playScore = e.value / maxPlays;
+      final playScore = e.value / maxScore;
       final followBonus = followedNames.contains(normalizedName) ? 0.2 : 0.0;
       final likeBonus = likedArtists.contains(normalizedName) ? 0.15 : 0.0;
       final affinity = min(1.0, playScore * 0.65 + followBonus + likeBonus);
 
       return ArtistAffinity(
         name: e.key,
-        playCount: e.value,
+        playCount: rawArtistCounts[e.key] ?? e.value.round(),
         isFollowed: followedNames.contains(normalizedName),
         hasLikedTracks: likedArtists.contains(normalizedName),
         affinityScore: affinity,
@@ -223,7 +249,7 @@ class RecommendationEngine {
       totalPlays: interactionCount,
       genreWeights: genreWeights,
       temporalPatterns: temporalPatterns,
-      artistCounts: artistCounts,
+      artistCounts: rawArtistCounts,
     );
 
     // --- Level ---

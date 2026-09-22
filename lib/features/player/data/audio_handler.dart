@@ -696,13 +696,22 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             return; // Don't double-skip
           }
           
-          final resolved = await _resolveTrack(index);
+          bool resolved = false;
+          try {
+            resolved = await _resolveTrack(index).timeout(const Duration(seconds: 30), onTimeout: () {
+              print('[AudioHandler] Resolution timed out after 30 seconds for track $index: ${tagItem.title}');
+              return false;
+            });
+          } catch (e) {
+            print('[AudioHandler] Resolution exception for track $index: $e');
+            resolved = false;
+          }
+
           if (resolved) {
             _consecutiveFailures = 0; // Reset on success
             if (wasPlaying) _player.play();
           } else {
-            _consecutiveFailures++;
-            print('[AudioHandler] Resolution failed for track $index (Failure Count: $_consecutiveFailures). Pausing playback instead of auto-skipping.');
+            print('[AudioHandler] Resolution failed/not found for track $index. Auto-skip disabled: pausing playback.');
             await _player.pause();
           }
         }
@@ -1216,6 +1225,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       
       String? realUrl;
       String? resolvedLinkType;
+      String? resolvedSource;
       int? torrentId;
       int? fileId;
       
@@ -1228,9 +1238,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         final pluginManager = getIt<PluginManager>();
         
         if (pluginId.startsWith('eclipse_')) {
-          realUrl = await pluginManager.resolveEclipseStream(pluginId.replaceFirst('eclipse_', ''), trackId);
+          final cleanId = pluginId.replaceFirst('eclipse_', '');
+          realUrl = await pluginManager.resolveEclipseStream(cleanId, trackId);
+          final addon = pluginManager.eclipseAddons.where((a) => a.id == cleanId).firstOrNull;
+          resolvedSource = addon?.name;
         } else {
           realUrl = await pluginManager.resolveStream(pluginId, trackId);
+          final plugin = pluginManager.plugins.where((p) => p.id == pluginId).firstOrNull;
+          resolvedSource = plugin?.name;
         }
         
         resolvedLinkType = pluginId;
@@ -1270,6 +1285,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                   print('[AudioHandler] Successfully resolved fallback URL from $altId: $resolvedUrl');
                   realUrl = resolvedUrl;
                   resolvedLinkType = altId;
+                  resolvedSource = match.source;
                   break;
                 }
               }
@@ -1295,6 +1311,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         if (result != null) {
           realUrl = result.url;
           resolvedLinkType = result.linkType;
+          resolvedSource = result.source;
           torrentId = -1; // Dummy values for LockCachingAudioSource naming
           fileId = (item.extras?['fileId'] as num?)?.toInt() ?? -result.url.hashCode.abs();
         } else {
@@ -1410,7 +1427,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             'torrentId': torrentId,
             'fileId': fileId,
             'originalId': item.extras?['originalId'] ?? item.id,
-            if (isFlac) 'linkType': resolvedLinkType ?? 'flac',
+            if (resolvedLinkType != null) 'linkType': resolvedLinkType,
+            if (resolvedSource != null) 'source': resolvedSource,
           },
         );
         
@@ -1471,6 +1489,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
 
         print('[AudioHandler] Successfully resolved track $index');
+        // Trigger extended metadata extraction (bitrate, sampleRate) once resolved
+        _fetchExtendedMetadata(index);
         return true;
       }
     } catch (e, st) {
@@ -2107,9 +2127,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
               rotatedItems.first.id.contains('lazy.flac.internal') || 
               rotatedItems.first.id.contains('lazy.plugin.internal')) {
             print('[AudioHandler] play: Pre-resolving track 0 for rotated items');
+            // Optimistically start local playback so UI updates miniplayer immediately
+            _startLocalPlayback();
             await _resolveTrack(0);
+          } else {
+            await _startLocalPlayback();
           }
-          await _startLocalPlayback();
           _enrichQueueInRange(0);
         } else {
           final item = MediaItem(
@@ -2117,14 +2140,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             title: extras['title'] as String? ?? 'Unknown',
             artist: extras['artist'] as String? ?? 'TorBox',
             artUri: parseArtworkUri(extras['artworkUrl'] as String?),
-        duration: extras['duration'] != null ? parseDuration(extras['duration']) : _player.duration,
-        extras: {
-          ...?requestedExtras,
-          if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
-        },
-      );
-      mediaItem.add(item);
-      await playMediaItem(item);
+            duration: extras['duration'] != null ? parseDuration(extras['duration']) : _player.duration,
+            extras: {
+              ...?requestedExtras,
+              if (extras['mediaType'] != null) 'mediaType': extras['mediaType'],
+            },
+          );
+          mediaItem.add(item);
+          await playMediaItem(item);
         }
         return;
       }
@@ -2177,7 +2200,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           if (wasPlaying) await _startLocalPlayback();
           _reloadCastQueue();
         } else {
-          // Default: Play Next logic
+          // Default: Play Next logic (Check for exact duplicates to prevent duplicate insertion)
           final item = MediaItem(
             id: url ?? '',
             title: extras['title'] as String? ?? 'Unknown',
@@ -2186,14 +2209,28 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             duration: extras['duration'] != null ? parseDuration(extras['duration']) : null,
             extras: requestedExtras,
           );
-          final source = await _createAudioSource(item);
+          
           final insertAt = _player.currentIndex! + 1;
-          await _playlist.insert(insertAt, source);
-          _originalItems.insert(insertAt, item);
-          if (_isMediaKit) _broadcastLinuxQueue();
-          print('[AudioHandler] Play Next: Added "${item.title}" at $insertAt');
-          _enrichTrackMetadata(insertAt);
-          _reloadCastQueue();
+          // Guard: If the immediate next track is already the exact same song, skip re-inserting
+          bool isDuplicateNext = false;
+          if (insertAt < currentQueue.length) {
+            final nextInQueue = currentQueue[insertAt];
+            if (nextInQueue.title == item.title && nextInQueue.artist == item.artist) {
+              isDuplicateNext = true;
+            }
+          }
+
+          if (!isDuplicateNext) {
+            final source = await _createAudioSource(item);
+            await _playlist.insert(insertAt, source);
+            _originalItems.insert(insertAt, item);
+            if (_isMediaKit) _broadcastLinuxQueue();
+            print('[AudioHandler] Play Next: Added "${item.title}" at $insertAt');
+            _enrichTrackMetadata(insertAt);
+            _reloadCastQueue();
+          } else {
+            print('[AudioHandler] Play Next: Skipped duplicate "${item.title}" at $insertAt');
+          }
         }
         return;
       }
@@ -2544,8 +2581,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         (item.extras?['linkType'] == 'soundcloud' && !item.id.startsWith('http'))) {
         final resolvedSource = await _resolveLazySource(item, uri);
         if (resolvedSource != null) return resolvedSource;
-        print('[AudioHandler] _createAudioSource: Lazy resolution failed for "${item.title}", using URI fallback');
-        return _buildAudioSourceUri(uri, tag: item);
+        print('[AudioHandler] _createAudioSource: Lazy resolution pending/failed for "${item.title}". Returning _LazyStreamAudioSource to hold player without error-skipping.');
+        return _LazyStreamAudioSource(item);
     }
     
     final commonHeaders = {
@@ -2745,8 +2782,8 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
 
         final cacheFile = io.File('$_cachePath/${torrentId}_$fileId$ext');
-        // Wait up to 3 seconds for the playing audio handler to start writing the cache file
-        for (int i = 0; i < 6; i++) {
+        // Wait up to 6 seconds for the playing audio handler to start writing the cache file
+        for (int i = 0; i < 12; i++) {
           if (cacheFile.existsSync() && cacheFile.lengthSync() > 32768) { // 32KB is enough for header metadata
             fileToExtract = cacheFile.path;
             break;
@@ -2755,12 +2792,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         }
       }
 
-      // If we don't have a local file path (neither downloaded nor cached), do not fetch extended metadata
-      if (fileToExtract == null) {
+      // Fallback: If no local file path yet, pass HTTP targetUrl directly so AudioMetadataService streams initial header chunk
+      final fetchTarget = fileToExtract ?? (targetUrl.startsWith('http') ? targetUrl : null);
+
+      if (fetchTarget == null) {
         return;
       }
 
-      final extMeta = await audioMetadataService.fetchMetadata(fileToExtract, format: mergedItem.extras?['format'] as String?);
+      final extMeta = await audioMetadataService.fetchMetadata(fetchTarget, format: mergedItem.extras?['format'] as String?);
       if (extMeta != null && (extMeta.bitRate != null || extMeta.sampleRate != null)) {
         final updatedExtras = Map<String, dynamic>.from(mergedItem.extras ?? {});
         if (extMeta.bitRate != null) updatedExtras['bitrate'] = extMeta.bitRate;
@@ -2842,16 +2881,28 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (isLazy) {
       print('[AudioHandler] Linux resolving track $index: ${tagItem.title}');
       if (_player.playing) try { _player.pause(); } catch (_) {}
-      final resolved = await _resolveTrack(index);
+      bool resolved = false;
+      try {
+        resolved = await _resolveTrack(index).timeout(const Duration(seconds: 30), onTimeout: () {
+          print('[AudioHandler] Linux resolution timed out after 30 seconds for track $index: ${tagItem.title}');
+          return false;
+        });
+      } catch (e) {
+        print('[AudioHandler] Linux resolution exception for track $index: $e');
+        resolved = false;
+      }
+      
       if (resolved) {
+        _consecutiveFailures = 0;
         // Re-read tag item after resolution
         final updatedSource = _playlist.children[index];
         tagItem = (updatedSource as IndexedAudioSource).tag as MediaItem;
       } else {
-        try { await _player.stop(); } catch (_) {}
+        print('[AudioHandler] Linux track $index resolution failed. Auto-skip disabled: pausing playback.');
+        try { await _player.pause(); } catch (_) {}
         return;
       }
-      try { await _player.play(); } catch (e) {
+      try { await _startLocalPlayback(); } catch (e) {
         print('[AudioHandler] _playLinuxTrack play failed: $e');
       }
     } else {
@@ -3023,6 +3074,27 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
 
 
+
+class _LazyStreamAudioSource extends StreamAudioSource {
+  final MediaItem item;
+
+  _LazyStreamAudioSource(this.item) : super(tag: item);
+
+  @override
+  Duration? get duration => item.duration;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    print('[LazySource] Request received for pending track: ${item.title}. Supplying silent stream while _resolveTrack runs.');
+    return StreamAudioResponse(
+      sourceLength: null,
+      contentLength: 0,
+      offset: start ?? 0,
+      contentType: 'audio/mpeg',
+      stream: Stream<List<int>>.empty(),
+    );
+  }
+}
 
 class _YouTubeStreamAudioSource extends StreamAudioSource {
   final MyAudioHandler handler;

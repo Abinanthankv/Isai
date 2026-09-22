@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/glassmorphism.dart';
@@ -414,7 +415,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
             // Installed Plugins List
             AppleMusicSectionHeader(
               title: 'Installed Addons',
-              subtitle: '${allItems.length} source(s) active',
+              subtitle: '${allItems.length} source(s) active • Drag to reorder priority',
             ),
             if (allItems.isEmpty)
               Padding(
@@ -433,7 +434,11 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: allItems.length,
+                  onReorderStart: (_) {
+                    HapticFeedback.mediumImpact();
+                  },
                   onReorder: (oldIndex, newIndex) {
+                    HapticFeedback.lightImpact();
                     if (newIndex > oldIndex) {
                       newIndex -= 1;
                     }
@@ -455,6 +460,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                     final description = isEclipse ? item.description : item.description;
                     final enabled = isEclipse ? item.enabled : item.enabled;
                     final keyVal = isEclipse ? 'eclipse_$id' : id;
+                    final isPrimary = index == 0;
 
                     return Column(
                       key: ValueKey(keyVal),
@@ -465,8 +471,11 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                              color: isPrimary 
+                                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
+                                  : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
                               borderRadius: BorderRadius.circular(8),
+                              border: isPrimary ? Border.all(color: Theme.of(context).colorScheme.primary, width: 1.5) : null,
                             ),
                             child: icon != null
                                 ? ClipRRect(
@@ -476,11 +485,14 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) => Icon(
                                         Icons.extension,
-                                        color: Theme.of(context).colorScheme.primary,
+                                        color: isPrimary ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white70 : Colors.black54),
                                       ),
                                     ),
                                   )
-                                : Icon(Icons.extension, color: Theme.of(context).colorScheme.primary),
+                                : Icon(
+                                    Icons.extension,
+                                    color: isPrimary ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white70 : Colors.black54),
+                                  ),
                           ),
                           title: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,6 +507,30 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
+                                  if (isPrimary) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Theme.of(context).colorScheme.primary,
+                                            AppleMusicTheme.primaryPurple,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        'PRIMARY',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(width: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -537,6 +573,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                               Switch(
                                 value: enabled,
                                 onChanged: (val) async {
+                                  HapticFeedback.selectionClick();
                                   if (isEclipse) {
                                     await _pluginManager.toggleEclipseAddon(id, val);
                                   } else {
@@ -548,6 +585,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                               IconButton(
                                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                                 onPressed: () async {
+                                  HapticFeedback.mediumImpact();
                                   if (isEclipse) {
                                     await _pluginManager.deleteEclipseAddon(id);
                                   } else {
@@ -556,9 +594,15 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                                   _refreshPlugins();
                                 },
                               ),
-                              Icon(
-                                Icons.drag_handle_rounded,
-                                color: isDark ? Colors.white30 : Colors.black26,
+                              ReorderableDragStartListener(
+                                index: index,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Icon(
+                                    Icons.drag_handle_rounded,
+                                    color: isPrimary ? Theme.of(context).colorScheme.primary : (isDark ? Colors.white30 : Colors.black26),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
