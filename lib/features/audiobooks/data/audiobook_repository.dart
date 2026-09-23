@@ -70,15 +70,12 @@ class AudiobookRepository {
     'read by', ' mp3 book', 'librivox', 'epub', 'ebook', 'e-book', 'pdf book',
   ];
 
-  /// Returns true if a TorBox torrent looks like an audiobook or ebook (EPUB/PDF/MOBI).
-  bool _looksLikeAudiobook(TorBoxTorrent torrent) {
+  /// Returns true if the torrent title or files explicitly indicate a book or audiobook.
+  bool _looksLikeExplicitBookTorrent(TorBoxTorrent torrent) {
     final nameLower = torrent.name.toLowerCase();
-
-    // 1. Name contains audiobook or ebook keywords
     if (_audiobookKeywords.any((kw) => nameLower.contains(kw))) return true;
 
-    // 2. Has .m4b or ebook format files (.epub, .pdf, .mobi, .azw3)
-    final hasBookFiles = torrent.files.any((f) {
+    return torrent.files.any((f) {
       final ext = f.name.toLowerCase();
       return ext.endsWith('.m4b') ||
              ext.endsWith('.epub') ||
@@ -86,9 +83,11 @@ class AudiobookRepository {
              ext.endsWith('.mobi') ||
              ext.endsWith('.azw3');
     });
-    if (hasBookFiles) return true;
+  }
 
-    return false;
+  /// Returns true if a TorBox torrent looks like an audiobook or ebook (EPUB/PDF/MOBI).
+  bool _looksLikeAudiobook(TorBoxTorrent torrent) {
+    return _looksLikeExplicitBookTorrent(torrent);
   }
 
   /// Returns true if the torrent name suggests it is a video (movie, TV show).
@@ -227,9 +226,29 @@ class AudiobookRepository {
       final cachedMetadataList = await (_db.select(_db.audiobookMetadataCache)).get();
 
       for (final torrent in library) {
+        // Exclude video or unwanted software content
+        if (_looksLikeVideo(torrent.name) || _looksLikeUnwantedContent(torrent.name)) continue;
+
         final hash = torrent.hash.toLowerCase();
         final hasCached = cachedMetadataList.any((m) => m.bookId.toLowerCase().contains(hash));
+
+        // Must look like an audiobook/ebook or have cached book metadata
         if (!hasCached && !_looksLikeAudiobook(torrent)) continue;
+
+        // Filter files within torrent to ONLY book-related files (.m4b, .epub, .pdf, .mobi, .azw3, or files in audiobook-tagged torrents)
+        final bool isExplicitBookTorrent = _looksLikeExplicitBookTorrent(torrent);
+        final bookFiles = torrent.files.where((f) {
+          final nameLower = f.name.toLowerCase();
+          final isEbook = nameLower.endsWith('.epub') || nameLower.endsWith('.pdf') || nameLower.endsWith('.mobi') || nameLower.endsWith('.azw3');
+          final isM4b = nameLower.endsWith('.m4b');
+          if (isEbook || isM4b) return true;
+          // If it's a standard audio file (.mp3, .flac, etc.), only include if torrent itself is explicitly an audiobook/ebook
+          final isAudio = nameLower.endsWith('.mp3') || nameLower.endsWith('.flac') || nameLower.endsWith('.m4a') || nameLower.endsWith('.aac') || nameLower.endsWith('.ogg');
+          if (isAudio && (isExplicitBookTorrent || hasCached)) return true;
+          return false;
+        }).toList();
+
+        if (bookFiles.isEmpty) continue;
 
         // Find torrent-level cached metadata (old format, no file ID)
         DbAudiobookMetadataCache? torrentMatch;
@@ -240,9 +259,9 @@ class AudiobookRepository {
           }
         }
 
-        // Group files by base title
+        // Group book files by base title
         final Map<String, List<TorBoxFile>> groups = {};
-        for (final file in torrent.files) {
+        for (final file in bookFiles) {
           final base = _extractBaseTitle(file.displayName);
           groups.putIfAbsent(base, () => []).add(file);
         }
