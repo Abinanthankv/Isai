@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.16] - September 2026
+
+### Added
+- **TorBox Audiobooks & EPUB Mapping**: TorBox cache check and library actions now support EPUB and Audiobooks natively. TorBox library views strictly filter out FLAC and music tracks, displaying only book formats (`.epub`, `.pdf`, `.mobi`, `.azw3`, `.m4b`, spoken audio).
+- **Flexible Version Updater**: Re-architected in-app GitHub update checker (`_isUpdateAvailable`) to trigger update notifications for pre-releases, patch releases, and version tag string mismatches even when numeric build numbers align.
+
+### Optimized
+- **GPU Blur & Scroll Performance**: Reduced Gaussian blur radius in glassmorphic cards (`sigma: 6`) and optimized image memory cache bounds (`memCacheWidth` / `memCacheHeight`) across key screens to eliminate UI stuttering and rasterizer drops.
+
+### Fixed
+- **Audio Quality Badges & Bitrate Reporting**: Corrected stream format parser logic (`_parseTrackQualityDetails`) to accurately identify AAC/MP3 lossy streams (preventing false "Lossless" badges) and removed static `1411 kbps` fallback values for variable 16-bit FLAC streams.
+
 ## [1.0.15] - September 2026
 
 ### Added
