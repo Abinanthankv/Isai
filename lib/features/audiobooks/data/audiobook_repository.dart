@@ -64,23 +64,29 @@ class AudiobookRepository {
     return bookId;
   }
 
-  /// Audiobook name keywords used to identify audiobook torrents in TorBox library.
+  /// Audiobook & Ebook keywords used to identify book torrents in TorBox library.
   static const _audiobookKeywords = [
     'audiobook', 'audio book', 'audio-book', 'unabridged', 'narrated by',
-    'read by', ' mp3 book', 'librivox',
+    'read by', ' mp3 book', 'librivox', 'epub', 'ebook', 'e-book', 'pdf book',
   ];
 
-  /// Returns true if a TorBox torrent looks like an audiobook.
+  /// Returns true if a TorBox torrent looks like an audiobook or ebook (EPUB/PDF/MOBI).
   bool _looksLikeAudiobook(TorBoxTorrent torrent) {
     final nameLower = torrent.name.toLowerCase();
 
-    // 1. Name contains audiobook-specific keywords
+    // 1. Name contains audiobook or ebook keywords
     if (_audiobookKeywords.any((kw) => nameLower.contains(kw))) return true;
 
-    // 2. Has .m4b files — the audiobook-dedicated container format.
-    //    Music files never use .m4b; only audiobooks do.
-    final hasM4b = torrent.files.any((f) => f.name.toLowerCase().endsWith('.m4b'));
-    if (hasM4b) return true;
+    // 2. Has .m4b or ebook format files (.epub, .pdf, .mobi, .azw3)
+    final hasBookFiles = torrent.files.any((f) {
+      final ext = f.name.toLowerCase();
+      return ext.endsWith('.m4b') ||
+             ext.endsWith('.epub') ||
+             ext.endsWith('.pdf') ||
+             ext.endsWith('.mobi') ||
+             ext.endsWith('.azw3');
+    });
+    if (hasBookFiles) return true;
 
     return false;
   }
