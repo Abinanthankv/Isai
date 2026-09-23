@@ -722,21 +722,48 @@ class AudiobookDetailScreen extends ConsumerWidget {
                   // Show download button ONLY if it's a torrent that is NOT yet in library
                   else if (displayBook.id.startsWith('torrent:')) ...[  
                     Builder(builder: (context) {
-                      // Check if the torrent is already in the user's TorBox library
-                      final inLibrary = torrentStatusAsync?.value?['inLibrary'] == true;
+                      // Check if the torrent is already in the user's TorBox library or cached
+                      final statusMap = torrentStatusAsync?.value;
+                      final inLibrary = statusMap?['inLibrary'] == true;
+                      final isCached = statusMap?['cached'] == true;
+
                       if (inLibrary) {
-                        // Already in library — no need to download, chapters will appear above
+                        // Already in library — chapters will appear above
                         return const SizedBox.shrink();
                       }
-                      // Not yet in library - show download button
+
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const SizedBox(height: 16),
+                          if (isCached)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.green.withOpacity(0.4)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.bolt_rounded, color: Colors.green, size: 20),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Instant Stream Available (Cached on TorBox)',
+                                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           FilledButton.icon(
-                            icon: const Icon(Icons.cloud_download_rounded),
-                            label: const Text('Download Torrent to TorBox'),
-
+                            icon: Icon(isCached ? Icons.play_arrow_rounded : Icons.cloud_download_rounded),
+                            label: Text(isCached ? 'Add & Instant Stream' : 'Download Torrent to TorBox'),
+                            style: isCached
+                                ? FilledButton.styleFrom(backgroundColor: Colors.green.shade700)
+                                : null,
                             onPressed: () async {
                               String bookId = book.id;
                               if (bookId.startsWith('audiobookbay:')) {
@@ -759,7 +786,7 @@ class AudiobookDetailScreen extends ConsumerWidget {
                               final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
                               if (magnet.isNotEmpty) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Adding torrent to TorBox...')),
+                                  SnackBar(content: Text(isCached ? 'Adding cached torrent for instant playback...' : 'Adding torrent to TorBox...')),
                                 );
                                 final success = await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
                                 if (context.mounted) {
@@ -1145,104 +1172,143 @@ class AudiobookDetailScreen extends ConsumerWidget {
                             itemCount: torrents.length,
                             itemBuilder: (context, index) {
                               final torrentBook = torrents[index];
-                              return ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                                leading: ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: SizedBox(
-                                    width: 40,
-                                    height: 40,
-                                    child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
-                                        ? CachedNetworkImage(
-                                            imageUrl: torrentBook.artworkUrl!,
-                                            memCacheWidth: 40,
-                                            memCacheHeight: 40,
-                                            fit: BoxFit.cover,
-                                            placeholder: (_, __) => Container(
-                                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                            ),
-                                            errorWidget: (_, __, ___) => Container(
-                                              color: Theme.of(context).colorScheme.tertiaryContainer,
-                                              child: Icon(
-                                                Icons.download_for_offline_rounded,
-                                                color: Theme.of(context).colorScheme.onTertiaryContainer,
+                              return Consumer(
+                                builder: (context, ref, child) {
+                                  final statusAsync = ref.watch(torrentStatusProvider(torrentBook.id));
+                                  final isCached = statusAsync.value?['cached'] == true;
+                                  final inLibrary = statusAsync.value?['inLibrary'] == true;
+
+                                  return ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: SizedBox(
+                                        width: 40,
+                                        height: 40,
+                                        child: torrentBook.artworkUrl != null && torrentBook.artworkUrl!.isNotEmpty
+                                            ? CachedNetworkImage(
+                                                imageUrl: torrentBook.artworkUrl!,
+                                                memCacheWidth: 40,
+                                                memCacheHeight: 40,
+                                                fit: BoxFit.cover,
+                                                placeholder: (_, __) => Container(
+                                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                                ),
+                                                errorWidget: (_, __, ___) => Container(
+                                                  color: Theme.of(context).colorScheme.tertiaryContainer,
+                                                  child: Icon(
+                                                    Icons.download_for_offline_rounded,
+                                                    color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                                  ),
+                                                ),
+                                              )
+                                            : Container(
+                                                color: Theme.of(context).colorScheme.tertiaryContainer,
+                                                child: Icon(
+                                                  Icons.download_for_offline_rounded,
+                                                  color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                                ),
                                               ),
+                                      ),
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            torrentBook.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                          ),
+                                        ),
+                                        if (isCached || inLibrary) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(color: Colors.green.withOpacity(0.5), width: 0.8),
                                             ),
-                                          )
-                                        : Container(
-                                            color: Theme.of(context).colorScheme.tertiaryContainer,
-                                            child: Icon(
-                                              Icons.download_for_offline_rounded,
-                                              color: Theme.of(context).colorScheme.onTertiaryContainer,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(isCached ? Icons.bolt_rounded : Icons.library_books_rounded, color: Colors.green, size: 12),
+                                                const SizedBox(width: 2),
+                                                Text(
+                                                  isCached ? 'CACHED' : 'LIBRARY',
+                                                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 9),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                  ),
-                                ),
-                                title: Text(
-                                  torrentBook.title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                ),
-                                subtitle: Text(
-                                  torrentBook.description ?? 'Torrent file',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.cloud_download_rounded),
-                                  color: Theme.of(context).colorScheme.primary,
-                                  iconSize: 28,
-                                  onPressed: () async {
-                                    String bookId = torrentBook.id;
-                                    if (bookId.startsWith('audiobookbay:')) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
-                                      );
-                                      final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
-                                      if (resolved != null && resolved.id.startsWith('torrent:')) {
-                                        bookId = resolved.id;
-                                      } else {
-                                        if (context.mounted) {
+                                        ],
+                                      ],
+                                    ),
+                                    subtitle: Text(
+                                      torrentBook.description ?? 'Torrent file',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: Icon(isCached ? Icons.play_arrow_rounded : Icons.cloud_download_rounded),
+                                      color: isCached ? Colors.green : Theme.of(context).colorScheme.primary,
+                                      iconSize: 28,
+                                      onPressed: () async {
+                                        String bookId = torrentBook.id;
+                                        if (bookId.startsWith('audiobookbay:')) {
                                           ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
+                                            const SnackBar(content: Text('Resolving AudiobookBay torrent info...')),
+                                          );
+                                          final resolved = await ref.read(audiobookRepositoryProvider).getBookDetails(bookId);
+                                          if (resolved != null && resolved.id.startsWith('torrent:')) {
+                                            bookId = resolved.id;
+                                          } else {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Failed to resolve AudiobookBay torrent.')),
+                                              );
+                                            }
+                                            return;
+                                          }
+                                        }
+                                        
+                                        final parts = bookId.split(':');
+                                        final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
+                                        if (magnet.isNotEmpty) {
+                                          try {
+                                            await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
+                                            if (context.mounted) {
+                                              ref.invalidate(bookChaptersProvider(torrentBook.id));
+                                              ref.invalidate(torrentStatusProvider(torrentBook.id));
+                                              ref.invalidate(localAudiobooksProvider);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(isCached ? 'Added cached torrent to TorBox! Loading streams...' : 'Torrent added to TorBox!'),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(content: Text('Failed to add torrent: $e')),
+                                              );
+                                            }
+                                          }
+                                        } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Failed to extract magnet link.')),
                                           );
                                         }
-                                        return;
-                                      }
-                                    }
-                                    
-                                    final parts = bookId.split(':');
-                                    final magnet = parts.length > 2 ? Uri.decodeComponent(parts[2]) : '';
-                                    if (magnet.isNotEmpty) {
-                                      try {
-                                        await ref.read(audiobookRepositoryProvider).addTorrent(magnet);
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Torrent added to TorBox!'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(content: Text('Failed to add torrent: $e')),
-                                          );
-                                        }
-                                      }
-                                    } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Failed to extract magnet link.')),
-                                      );
-                                    }
-                                  },
-                                ),
+                                      },
+                                    ),
+                                  );
+                                },
                               );
                             },
                           ),

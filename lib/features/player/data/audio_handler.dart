@@ -1236,30 +1236,70 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         final trackId = Uri.decodeComponent(uri.pathSegments[1]);
         print('[AudioHandler] Resolving dynamic plugin track: pluginId=$pluginId, trackId=$trackId');
         final pluginManager = getIt<PluginManager>();
-        
-        if (pluginId.startsWith('eclipse_')) {
-          final cleanId = pluginId.replaceFirst('eclipse_', '');
-          realUrl = await pluginManager.resolveEclipseStream(cleanId, trackId);
-          final addon = pluginManager.eclipseAddons.where((a) => a.id == cleanId).firstOrNull;
-          resolvedSource = addon?.name;
-        } else {
-          realUrl = await pluginManager.resolveStream(pluginId, trackId);
-          final plugin = pluginManager.plugins.where((p) => p.id == pluginId).firstOrNull;
-          resolvedSource = plugin?.name;
+        final prioritized = pluginManager.prioritizedActiveAddons;
+
+        // Check if there is a higher-priority enabled addon than the track's original pluginId
+        final firstActiveAddon = prioritized.firstOrNull;
+        final firstActiveId = firstActiveAddon != null
+            ? (firstActiveAddon is JsPlugin ? firstActiveAddon.id : 'eclipse_${(firstActiveAddon as EclipseAddon).id}')
+            : null;
+
+        // If a higher-priority addon exists and is active, attempt it first before primary track pluginId
+        if (firstActiveId != null && firstActiveId != pluginId) {
+          print('[AudioHandler] Top-priority addon is $firstActiveId (track originally from $pluginId). Attempting top-priority addon first...');
+          try {
+            final title = item.title;
+            final artist = item.artist ?? '';
+            List<ScraperResult> results;
+            if (firstActiveId.startsWith('eclipse_')) {
+              results = await pluginManager.searchEclipse(firstActiveId.replaceFirst('eclipse_', ''), '$artist $title');
+            } else {
+              results = await pluginManager.search(firstActiveId, '$artist $title');
+            }
+
+            if (results.isNotEmpty) {
+              final match = results.first;
+              final altTrackId = match.extras?['trackId'] as String? ?? match.url;
+              if (firstActiveId.startsWith('eclipse_')) {
+                realUrl = await pluginManager.resolveEclipseStream(firstActiveId.replaceFirst('eclipse_', ''), altTrackId);
+              } else {
+                realUrl = await pluginManager.resolveStream(firstActiveId, altTrackId);
+              }
+              if (realUrl != null && realUrl.isNotEmpty) {
+                resolvedSource = match.source;
+                resolvedLinkType = firstActiveId;
+                print('[AudioHandler] Successfully resolved track using top-priority addon $firstActiveId');
+              }
+            }
+          } catch (e) {
+            print('[AudioHandler] Top-priority addon $firstActiveId search failed: $e');
+          }
         }
-        
-        resolvedLinkType = pluginId;
-        
-        // Priority fallback: if original plugin resolution fails, try other active/prioritized plugins
+
+        // If top priority didn't yield a stream or wasn't applicable, try the track's original pluginId
         if (realUrl == null || realUrl.isEmpty) {
-          print('[AudioHandler] Primary plugin $pluginId failed. Trying alternative plugins in priority order...');
-          final prioritized = pluginManager.prioritizedActiveAddons;
+          if (pluginId.startsWith('eclipse_')) {
+            final cleanId = pluginId.replaceFirst('eclipse_', '');
+            realUrl = await pluginManager.resolveEclipseStream(cleanId, trackId);
+            final addon = pluginManager.eclipseAddons.where((a) => a.id == cleanId).firstOrNull;
+            resolvedSource = addon?.name;
+          } else {
+            realUrl = await pluginManager.resolveStream(pluginId, trackId);
+            final plugin = pluginManager.plugins.where((p) => p.id == pluginId).firstOrNull;
+            resolvedSource = plugin?.name;
+          }
+          resolvedLinkType = pluginId;
+        }
+
+        // Priority fallback: if primary & top priority resolution failed, try remaining active/prioritized plugins
+        if (realUrl == null || realUrl.isEmpty) {
+          print('[AudioHandler] Primary & top-priority plugins failed. Trying remaining alternative plugins in priority order...');
           final title = item.title;
           final artist = item.artist ?? '';
           
           for (final altPlugin in prioritized) {
             final altId = altPlugin is JsPlugin ? altPlugin.id : 'eclipse_${(altPlugin as EclipseAddon).id}';
-            if (altId == pluginId) continue;
+            if (altId == pluginId || altId == firstActiveId) continue;
             
             try {
               print('[AudioHandler] Falling back to alternative addon: $altId');

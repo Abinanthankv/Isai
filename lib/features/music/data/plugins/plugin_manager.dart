@@ -668,7 +668,11 @@ class PluginManager {
 
   /// Dynamic streaming URL resolution
   Future<String?> resolveStream(String pluginId, String trackId) async {
-    final plugin = _plugins.firstWhere((p) => p.id == pluginId);
+    final plugin = _plugins.where((p) => p.id == pluginId).firstOrNull;
+    if (plugin == null || !plugin.enabled) {
+      print('[PluginManager] Cannot resolve stream: Plugin $pluginId is disabled or not found');
+      return null;
+    }
     final runtime = _createRuntime();
 
     try {
@@ -844,7 +848,11 @@ class PluginManager {
   }
 
   Future<String?> resolveEclipseStream(String addonId, String trackId) async {
-    final addon = _eclipseAddons.firstWhere((a) => a.id == addonId);
+    final addon = _eclipseAddons.where((a) => a.id == addonId).firstOrNull;
+    if (addon == null || !addon.enabled) {
+      print('[PluginManager] Cannot resolve Eclipse stream: Addon $addonId is disabled or not found');
+      return null;
+    }
     try {
       final streamUrl = '${addon.baseUrl}/stream/${Uri.encodeComponent(trackId)}';
       final response = await _dio.get<String>(streamUrl);

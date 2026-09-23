@@ -1410,17 +1410,12 @@ class AudiobookRepository {
 
     final normalizedId = normalizeBookId(bookId);
 
-    // If we already have cached metadata, the book is known to be in library
-    final existing = await _db.getAudiobookMetadata(normalizedId);
-    if (existing != null) {
-      return {'inLibrary': true, 'cached': true};
-    }
-
     final parts = bookId.split(':');
     final hash = parts[1].toLowerCase();
 
     bool inLibrary = false;
     bool cached = false;
+    int? torboxTorrentId;
 
     try {
       // 1. Check if cached on TorBox servers
@@ -1436,14 +1431,24 @@ class AudiobookRepository {
 
       if (match.id != 0) {
         inLibrary = true;
+        cached = true;
+        torboxTorrentId = match.id;
       }
     } catch (e) {
       print('[AudiobookRepository] Error checking torrent status: $e');
     }
 
+    // Check local database metadata cache as well
+    final existing = await _db.getAudiobookMetadata(normalizedId);
+    if (existing != null) {
+      inLibrary = true;
+      cached = true;
+    }
+
     return {
       'inLibrary': inLibrary,
       'cached': cached,
+      'torboxTorrentId': torboxTorrentId,
     };
   }
 
