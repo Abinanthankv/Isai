@@ -692,6 +692,8 @@ class ForYouScreen extends ConsumerWidget {
                               child: imageUrl.isNotEmpty
                                   ? CachedNetworkImage(
                                       imageUrl: imageUrl,
+                                      memCacheWidth: 85,
+                                      memCacheHeight: 85,
                                       fit: BoxFit.cover,
                                       placeholder: (_, __) => Container(
                                         color: isDark ? Colors.white10 : Colors.black12,
@@ -803,6 +805,8 @@ class ForYouScreen extends ConsumerWidget {
                             imageUrl: track.artworkUrl,
                             width: 48,
                             height: 48,
+                            memCacheWidth: 48,
+                            memCacheHeight: 48,
                             fit: BoxFit.cover,
                             errorWidget: (_, __, ___) => Container(
                               width: 48, height: 48,
@@ -924,6 +928,8 @@ class ForYouScreen extends ConsumerWidget {
                 imageUrl: track.artworkUrl,
                 width: width,
                 height: height,
+                memCacheWidth: width.toInt(),
+                memCacheHeight: height.toInt(),
                 fit: BoxFit.cover,
                 errorWidget: (_, __, ___) => Container(
                   width: width,

@@ -40,7 +40,7 @@ class GlassContainer extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius ?? BorderRadius.circular(20),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
@@ -110,7 +110,7 @@ class GlassCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
           child: Material(
             color: Colors.transparent,
             child: InkWell(

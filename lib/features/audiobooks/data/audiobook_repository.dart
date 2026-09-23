@@ -76,12 +76,10 @@ class AudiobookRepository {
     if (_audiobookKeywords.any((kw) => nameLower.contains(kw))) return true;
 
     return torrent.files.any((f) {
-      final ext = f.name.toLowerCase();
-      return ext.endsWith('.m4b') ||
-             ext.endsWith('.epub') ||
-             ext.endsWith('.pdf') ||
-             ext.endsWith('.mobi') ||
-             ext.endsWith('.azw3');
+      final name = f.name.toLowerCase();
+      final disp = f.displayName.toLowerCase();
+      return name.endsWith('.m4b') || name.endsWith('.epub') || name.contains('.epub') || name.endsWith('.pdf') || name.endsWith('.mobi') || name.endsWith('.azw3') ||
+             disp.endsWith('.m4b') || disp.endsWith('.epub') || disp.contains('.epub') || disp.endsWith('.pdf') || disp.endsWith('.mobi') || disp.endsWith('.azw3');
     });
   }
 
@@ -121,13 +119,13 @@ class AudiobookRepository {
     final nameLower = name.toLowerCase();
     final words = nameLower.split(RegExp(r'[\s._-]+'));
 
-    // Porn/adult keywords
+    // Porn/adult keywords (use word boundaries to avoid false positives like 'sextet' or titles with 'sex')
     final adultKeywords = [
-      'porn', 'xxx', 'porno', 'sex', 'erotic', 'onlyfans', 'adult',
-      'milf', 'teen', 'anal', 'cock', 'dick', 'pussy', 'blowjob',
-      'camgirl', 'webcam', 'nude', 'naked', 'nsfw',
+      r'\bporn\b', r'\bxxx\b', r'\bporno\b', r'\bonlyfans\b',
+      r'\bmilf\b', r'\banal\b', r'\bcock\b', r'\bdick\b', r'\bpussy\b', r'\bblowjob\b',
+      r'\bcamgirl\b', r'\bwebcam\b', r'\bnsfw\b',
     ];
-    if (adultKeywords.any((k) => nameLower.contains(k))) return true;
+    if (adultKeywords.any((k) => RegExp(k, caseSensitive: false).hasMatch(nameLower))) return true;
 
     // Gaming keywords
     final gameKeywords = [
@@ -226,25 +224,34 @@ class AudiobookRepository {
       final cachedMetadataList = await (_db.select(_db.audiobookMetadataCache)).get();
 
       for (final torrent in library) {
-        // Exclude video or unwanted software content
-        if (_looksLikeVideo(torrent.name) || _looksLikeUnwantedContent(torrent.name)) continue;
+        final bool isExplicitBookTorrent = _looksLikeExplicitBookTorrent(torrent);
+
+        // Exclude video or unwanted software content unless it contains an explicit EPUB/ebook file
+        if (!isExplicitBookTorrent && (_looksLikeVideo(torrent.name) || _looksLikeUnwantedContent(torrent.name))) continue;
 
         final hash = torrent.hash.toLowerCase();
         final hasCached = cachedMetadataList.any((m) => m.bookId.toLowerCase().contains(hash));
 
         // Must look like an audiobook/ebook or have cached book metadata
-        if (!hasCached && !_looksLikeAudiobook(torrent)) continue;
+        if (!hasCached && !isExplicitBookTorrent) continue;
 
-        // Filter files within torrent to ONLY book-related files (.m4b, .epub, .pdf, .mobi, .azw3, or files in audiobook-tagged torrents)
-        final bool isExplicitBookTorrent = _looksLikeExplicitBookTorrent(torrent);
+        // Filter files within torrent to ONLY book-related files (.m4b, .epub, .pdf, .mobi, .azw3, or .mp3/.m4a in audiobook-tagged torrents)
         final bookFiles = torrent.files.where((f) {
-          final nameLower = f.name.toLowerCase();
-          final isEbook = nameLower.endsWith('.epub') || nameLower.endsWith('.pdf') || nameLower.endsWith('.mobi') || nameLower.endsWith('.azw3');
-          final isM4b = nameLower.endsWith('.m4b');
+          final fileName = (f.displayName.isNotEmpty ? f.displayName : f.name).toLowerCase();
+          final isEbook = fileName.endsWith('.epub') ||
+                          fileName.contains('.epub') ||
+                          fileName.endsWith('.pdf') ||
+                          fileName.endsWith('.mobi') ||
+                          fileName.endsWith('.azw3');
+          final isM4b = fileName.endsWith('.m4b');
           if (isEbook || isM4b) return true;
-          // If it's a standard audio file (.mp3, .flac, etc.), only include if torrent itself is explicitly an audiobook/ebook
-          final isAudio = nameLower.endsWith('.mp3') || nameLower.endsWith('.flac') || nameLower.endsWith('.m4a') || nameLower.endsWith('.aac') || nameLower.endsWith('.ogg');
-          if (isAudio && (isExplicitBookTorrent || hasCached)) return true;
+          
+          // Never treat .flac music files as audiobooks unless .m4b/.epub is present
+          if (fileName.endsWith('.flac')) return false;
+
+          // Standard compressed spoken audio (.mp3, .m4a) only included if torrent title is explicitly an audiobook/ebook
+          final isSpokenAudio = fileName.endsWith('.mp3') || fileName.endsWith('.m4a');
+          if (isSpokenAudio && (isExplicitBookTorrent || hasCached)) return true;
           return false;
         }).toList();
 

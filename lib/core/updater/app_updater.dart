@@ -14,21 +14,30 @@ class AppUpdater {
 
   static const MethodChannel _channel = MethodChannel(_methodChannelName);
 
-  /// Performs version comparison
+  /// Performs version comparison between local version and latest GitHub tag.
+  /// Triggers update if latest > local or if strings differ (e.g. build number suffix / patch release).
   static bool _isUpdateAvailable(String local, String latest) {
     try {
-      final localParts = local.split('.').map((e) => int.tryParse(e.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0).toList();
-      final latestParts = latest.split('.').map((e) => int.tryParse(e.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0).toList();
-      for (int i = 0; i < latestParts.length; i++) {
-        final latestPart = latestParts[i];
+      final cleanLocal = local.trim().toLowerCase();
+      final cleanLatest = latest.trim().toLowerCase();
+
+      if (cleanLocal == cleanLatest) return false;
+
+      final localParts = cleanLocal.split('.').map((e) => int.tryParse(e.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0).toList();
+      final latestParts = cleanLatest.split('.').map((e) => int.tryParse(e.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0).toList();
+
+      for (int i = 0; i < latestParts.length || i < localParts.length; i++) {
+        final latestPart = i < latestParts.length ? latestParts[i] : 0;
         final localPart = i < localParts.length ? localParts[i] : 0;
         if (latestPart > localPart) return true;
         if (latestPart < localPart) return false;
       }
+
+      // If numeric version parts are identical (e.g. 1.0.15 vs 1.0.15-patch2), string inequality indicates a new build/release
+      return cleanLocal != cleanLatest;
     } catch (_) {
-      return local != latest;
+      return local.trim() != latest.trim();
     }
-    return false;
   }
 
   /// Checks for updates on GitHub.

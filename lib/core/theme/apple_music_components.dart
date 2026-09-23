@@ -74,6 +74,8 @@ class _AppleMusicCardState extends State<AppleMusicCard> {
                     borderRadius: BorderRadius.circular(16),
                     child: CachedNetworkImage(
                       imageUrl: widget.imageUrl!,
+                      memCacheWidth: (widget.width ?? 160).toInt(),
+                      memCacheHeight: (widget.height ?? 200).toInt(),
                       fit: BoxFit.cover,
                       placeholder: (_, __) => Container(color: Colors.black12),
                       errorWidget: (_, __, ___) => Container(color: Colors.black12),

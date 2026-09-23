@@ -2444,15 +2444,15 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     String codec = 'AAC';
     if (textToSearch.contains('flac') || linkType == 'flac') {
       codec = 'FLAC';
-    } else if (textToSearch.contains('mp3')) {
+    } else if (textToSearch.contains('mp3') || localPath.endsWith('.mp3') || url.endsWith('.mp3')) {
       codec = 'MP3';
-    } else if (textToSearch.contains('wav')) {
+    } else if (textToSearch.contains('wav') || localPath.endsWith('.wav') || url.endsWith('.wav')) {
       codec = 'WAV';
     } else if (textToSearch.contains('alac')) {
       codec = 'ALAC';
     } else if (textToSearch.contains('eac3') || textToSearch.contains('atmos')) {
       codec = 'E-AC3';
-    } else if (textToSearch.contains('opus')) {
+    } else if (textToSearch.contains('opus') || localPath.endsWith('.opus') || url.endsWith('.opus')) {
       codec = 'OPUS';
     } else if (textToSearch.contains('m4a') || textToSearch.contains('aac') || textToSearch.contains('youtube') || textToSearch.contains('googlevideo')) {
       codec = 'AAC';
@@ -2466,6 +2466,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       bitDepthStr = '16-bit';
     } else if (extras['bitDepth'] != null) {
       bitDepthStr = '${extras['bitDepth']}-bit';
+    } else if (codec == 'FLAC' || codec == 'ALAC' || codec == 'WAV') {
+      bitDepthStr = '16-bit';
     }
 
     // 3. Detect Sample Rate
@@ -2482,6 +2484,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       sampleRateStr = '48 kHz';
     } else if (textToSearch.contains('44.1khz') || textToSearch.contains('44.1 kHz') || textToSearch.contains('44100')) {
       sampleRateStr = '44.1 kHz';
+    } else if (codec == 'FLAC' || codec == 'ALAC' || codec == 'WAV') {
+      sampleRateStr = '44.1 kHz';
     }
 
     // 4. Detect Bitrate
@@ -2496,26 +2500,19 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       final match = RegExp(r'(\d+)\s*kbps', caseSensitive: false).firstMatch(textToSearch);
       if (match != null) {
         bitrateStr = '${match.group(1)} kbps';
-      } else if (codec == 'FLAC' && bitDepthStr == '16-bit' && sampleRateStr == '44.1 kHz') {
-        bitrateStr = '1411 kbps';
-      } else if (codec == 'FLAC' && bitDepthStr == '24-bit' && sampleRateStr == '192 kHz') {
-        bitrateStr = '9216 kbps';
-      } else if (codec == 'FLAC' && bitDepthStr == '24-bit' && sampleRateStr == '96 kHz') {
-        bitrateStr = '4608 kbps';
-      } else if (codec == 'FLAC' && bitDepthStr == '24-bit') {
-        bitrateStr = '2304 kbps';
-      } else if ((codec == 'MP3' || codec == 'AAC') && textToSearch.contains('320')) {
+      } else if (codec == 'FLAC') {
+        bitrateStr = null; // FLAC compression varies dynamically (typically 700-1000 kbps), avoid hardcoding uncompressed 1411 kbps
+      } else if (codec == 'MP3') {
         bitrateStr = '320 kbps';
-      } else if (codec == 'AAC' && textToSearch.contains('256')) {
-        bitrateStr = '256 kbps';
-      } else if (codec == 'AAC' && textToSearch.contains('128')) {
-        bitrateStr = '128 kbps';
+      } else if (codec == 'AAC') {
+        bitrateStr = textToSearch.contains('128') ? '128 kbps' : '256 kbps';
       }
     }
 
     // 5. Quality Tier Flags
-    final isHiRes = textToSearch.contains('hi-res') || textToSearch.contains('hires') || bitDepthStr == '24-bit' || (sampleRateStr != null && (sampleRateStr.contains('96') || sampleRateStr.contains('192')));
-    final isLossless = isHiRes || codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC' || textToSearch.contains('lossless');
+    final isHiRes = (codec == 'FLAC' || codec == 'ALAC' || codec == 'WAV') &&
+        (textToSearch.contains('hi-res') || textToSearch.contains('hires') || bitDepthStr == '24-bit' || (sampleRateStr != null && (sampleRateStr.contains('96') || sampleRateStr.contains('192'))));
+    final isLossless = (codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC') || textToSearch.contains('lossless');
 
     // 6. Build Badge Label
     final badgeParts = <String>[codec];
