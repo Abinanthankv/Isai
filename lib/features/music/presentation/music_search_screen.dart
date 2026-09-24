@@ -279,17 +279,19 @@ class _MusicSearchScreenState extends ConsumerState<MusicSearchScreen> {
                           delegate: SliverChildBuilderDelegate(
                             (context, index) {
                               final genre = genres[index];
-                              return BrowseCard(
-                                title: genre.name,
-                                imageUrl: genre.picture,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => CategoryDetailScreen(genre: genre),
-                                    ),
-                                  );
-                                },
+                              return RepaintBoundary(
+                                child: BrowseCard(
+                                  title: genre.name,
+                                  imageUrl: genre.picture,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CategoryDetailScreen(genre: genre),
+                                      ),
+                                    );
+                                  },
+                                ),
                               );
                             },
                             childCount: genres.length,

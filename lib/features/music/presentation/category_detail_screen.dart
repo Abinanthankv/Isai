@@ -40,6 +40,8 @@ class CategoryDetailScreen extends ConsumerWidget {
                 children: [
                   CachedNetworkImage(
                     imageUrl: genre.picture,
+                    memCacheWidth: 600,
+                    memCacheHeight: 400,
                     fit: BoxFit.cover,
                   ),
                   Container(
@@ -85,21 +87,23 @@ class CategoryDetailScreen extends ConsumerWidget {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final playlist = playlists[index];
-                      return AppleMusicCard(
-                        title: playlist.title,
-                        subtitle: '${playlist.nbTracks} tracks',
-                        imageUrl: playlist.artworkUrl,
-                        onTap: () {
-                          debugPrint('[CategoryDetailScreen] Tapped playlist: ${playlist.title} (ID: ${playlist.id})');
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PlaylistDetailsScreen(
-                                deezerPlaylist: playlist,
+                      return RepaintBoundary(
+                        child: AppleMusicCard(
+                          title: playlist.title,
+                          subtitle: '${playlist.nbTracks} tracks',
+                          imageUrl: playlist.artworkUrl,
+                          onTap: () {
+                            debugPrint('[CategoryDetailScreen] Tapped playlist: ${playlist.title} (ID: ${playlist.id})');
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => PlaylistDetailsScreen(
+                                  deezerPlaylist: playlist,
+                                ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       );
                     },
                     childCount: playlists.length,

@@ -168,28 +168,31 @@ class BrowseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return GestureDetector(
-      onTap: () {
-        AppHaptics.light(context);
-        onTap();
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: color ?? (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(color: Colors.black12),
-                  errorWidget: (_, __, ___) => Container(color: Colors.black12),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () {
+          AppHaptics.light(context);
+          onTap();
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: color ?? (isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7)),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    memCacheWidth: 320,
+                    memCacheHeight: 180,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: Colors.black12),
+                    errorWidget: (_, __, ___) => Container(color: Colors.black12),
+                  ),
                 ),
-              ),
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(

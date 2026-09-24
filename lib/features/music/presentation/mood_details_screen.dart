@@ -92,50 +92,54 @@ class MoodDetailsScreen extends ConsumerWidget {
                                     ),
                                   );
                                 },
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 120,
-                                      height: 120,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(16),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: Colors.black.withOpacity(0.2),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: CachedNetworkImage(
-                                          imageUrl: playlist.artworkUrl,
-                                          fit: BoxFit.cover,
-                                          placeholder: (context, url) => Container(
-                                            color: isDark ? Colors.white10 : Colors.black12,
-                                            child: const Icon(Icons.music_note_rounded, color: Colors.grey),
-                                          ),
-                                          errorWidget: (context, url, error) => Container(
-                                            color: isDark ? Colors.white10 : Colors.black12,
-                                            child: const Icon(Icons.queue_music_rounded, color: Colors.grey),
+                                child: RepaintBoundary(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 120,
+                                        height: 120,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.2),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: CachedNetworkImage(
+                                            imageUrl: playlist.artworkUrl,
+                                            memCacheWidth: 240,
+                                            memCacheHeight: 240,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) => Container(
+                                              color: isDark ? Colors.white10 : Colors.black12,
+                                              child: const Icon(Icons.music_note_rounded, color: Colors.grey),
+                                            ),
+                                            errorWidget: (context, url, error) => Container(
+                                              color: isDark ? Colors.white10 : Colors.black12,
+                                              child: const Icon(Icons.queue_music_rounded, color: Colors.grey),
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    SizedBox(
-                                      width: 120,
-                                      child: Text(
-                                        playlist.title,
-                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
-                                          color: isDark ? Colors.white : Colors.black,),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                      const SizedBox(height: 8),
+                                      SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                          playlist.title,
+                                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600,
+                                            color: isDark ? Colors.white : Colors.black,),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
@@ -170,11 +174,13 @@ class MoodDetailsScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => _MoodSongTile(
-                    track: songs[index],
-                    allSongs: songs,
-                    index: index + 1,
-                    gradientColors: gradientColors,
+                  (context, index) => RepaintBoundary(
+                    child: _MoodSongTile(
+                      track: songs[index],
+                      allSongs: songs,
+                      index: index + 1,
+                      gradientColors: gradientColors,
+                    ),
                   ),
                   childCount: songs.length,
                 ),
@@ -283,19 +289,13 @@ class _MoodSongTile extends ConsumerStatefulWidget {
 }
 
 class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
-  TorBoxFile? _matchingFile;
-  ItunesMeta? _meta;
   bool _isCheckingSources = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkLibrary());
-  }
-
   void _handleTap() async {
-    if (_matchingFile != null) {
-      final library = ref.read(libraryProvider);
+    final library = ref.read(libraryProvider);
+    final matchFile = library.findMatchingTrack(widget.track.trackName, widget.track.artistName);
+
+    if (matchFile != null) {
       final customQueue = widget.allSongs.map<TorBoxFile>((t) {
         final match = library.findMatchingTrack(t.trackName, t.artistName);
         if (match != null) return match;
@@ -310,9 +310,9 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
 
       final startIndex = widget.allSongs.indexWhere((t) => t.trackId == widget.track.trackId);
 
-      final url = _matchingFile!.localPath != null
-          ? Uri.file(_matchingFile!.localPath!).toString()
-          : 'https://lazy.torbox.internal/${_matchingFile!.torrentId}/${_matchingFile!.id}';
+      final url = matchFile.localPath != null
+          ? Uri.file(matchFile.localPath!).toString()
+          : 'https://lazy.torbox.internal/${matchFile.torrentId}/${matchFile.id}';
 
       await audioHandler.customAction('play', {
         'url': url,
@@ -348,7 +348,7 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
           context,
           MaterialPageRoute(
             builder: (_) => NowPlayingScreen(
-              file: _matchingFile!,
+              file: matchFile,
               customQueue: customQueue,
             ),
           ),
@@ -430,35 +430,6 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
     );
   }
 
-  Future<void> _checkLibrary() async {
-    final libraryNotifier = ref.read(libraryProvider.notifier);
-    final file = ref.read(libraryProvider).findMatchingTrack(widget.track.trackName, widget.track.artistName);
-    if (file != null) {
-      if (!mounted) return;
-      setState(() {
-        _matchingFile = file;
-      });
-      libraryNotifier.enrichTrack(file);
-      await Future.delayed(const Duration(milliseconds: 600));
-      if (!mounted) return;
-      
-      final trackMeta = ItunesMeta(
-        trackName: widget.track.trackName,
-        artworkUrlLow: widget.track.artworkUrl,
-        artworkUrlHigh: widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
-        artistName: widget.track.artistName,
-        album: widget.track.collectionName,
-      );
-      await libraryNotifier.updateTrackMetadata(file, trackMeta);
-      
-      if (mounted) {
-        setState(() {
-          _meta = trackMeta;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -471,15 +442,17 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
         onTap: _isCheckingSources ? null : _handleTap,
         child: Row(
           children: [
-            Container(
-              width: 58,
-              height: 58,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                image: DecorationImage(
-                  image: CachedNetworkImageProvider(widget.track.artworkUrl),
-                  fit: BoxFit.cover,
-                ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: widget.track.artworkUrl,
+                memCacheWidth: 120,
+                memCacheHeight: 120,
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
+                placeholder: (_, __) => Container(color: isDark ? Colors.white10 : Colors.black12),
+                errorWidget: (_, __, ___) => Container(color: isDark ? Colors.white10 : Colors.black12),
               ),
             ),
             const SizedBox(width: 16),
