@@ -244,10 +244,10 @@ class AudioFxService {
     await _refreshDeviceParameters();
   }
 
-  /// Fetch device capabilities once and cache them.
+  /// Fetch device capabilities once and cache them. Re-fetches if bandCount is 0.
   Future<AudioFxDeviceParameters> ensureParameters() async {
     await _ensurePrefsLoaded();
-    if (_deviceParams != null) return _deviceParams!;
+    if (_deviceParams != null && _deviceParams!.bandCount > 0) return _deviceParams!;
     await _refreshDeviceParameters();
     return _deviceParams ?? const AudioFxDeviceParameters(
       supported: {},
@@ -270,6 +270,7 @@ class AudioFxService {
           _current = _current.copyWith(eqGains: resampleGains(_current.eqGains, _deviceParams!.bandCount));
         }
         await _pushAll();
+        _stateController.add(_current);
       }
     } on PlatformException catch (e) {
       debugPrint('[AudioFxService] getParameters failed: $e');

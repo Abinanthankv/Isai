@@ -2442,20 +2442,25 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     // Clean metadata text search excluding signed streaming URLs (preventing false 44100 / 96 / bit depth matches)
     final cleanMetaText = '$rawFormat $rawQuality $rawCodec $originalId $localPath $linkType'.toLowerCase();
 
-    // 1. Detect Codec
+    // 1. Detect Codec (Prioritize explicit codec / format fields before raw text search)
     String codec = 'AAC';
-    if (cleanMetaText.contains('flac') || linkType == 'flac') {
+    final explicitCodec = rawCodec.toUpperCase();
+    final explicitFormat = rawFormat.toUpperCase();
+
+    if (explicitCodec == 'FLAC' || explicitFormat == 'FLAC' || linkType == 'flac' || cleanMetaText.contains('flac')) {
       codec = 'FLAC';
-    } else if (cleanMetaText.contains('mp3') || localPath.endsWith('.mp3')) {
-      codec = 'MP3';
-    } else if (cleanMetaText.contains('wav') || localPath.endsWith('.wav')) {
-      codec = 'WAV';
-    } else if (cleanMetaText.contains('alac')) {
+    } else if (explicitCodec == 'ALAC' || explicitFormat == 'ALAC' || cleanMetaText.contains('alac')) {
       codec = 'ALAC';
-    } else if (cleanMetaText.contains('eac3') || cleanMetaText.contains('atmos')) {
-      codec = 'E-AC3';
-    } else if (cleanMetaText.contains('opus') || localPath.endsWith('.opus')) {
+    } else if (explicitCodec == 'WAV' || explicitFormat == 'WAV' || localPath.endsWith('.wav') || cleanMetaText.contains('wav')) {
+      codec = 'WAV';
+    } else if (explicitCodec == 'OPUS' || explicitFormat == 'OPUS' || localPath.endsWith('.opus') || cleanMetaText.contains('opus')) {
       codec = 'OPUS';
+    } else if (explicitCodec == 'E-AC3' || explicitFormat == 'E-AC3' || cleanMetaText.contains('eac3') || cleanMetaText.contains('atmos')) {
+      codec = 'E-AC3';
+    } else if (explicitCodec == 'MP3' || explicitFormat.contains('MP3') || localPath.endsWith('.mp3') || cleanMetaText.contains('mp3')) {
+      codec = 'MP3';
+    } else if (explicitCodec == 'AAC' || explicitFormat.contains('AAC') || cleanMetaText.contains('aac') || cleanMetaText.contains('m4a')) {
+      codec = 'AAC';
     } else {
       codec = 'AAC';
     }
@@ -2524,9 +2529,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           : (sampleRateStr ?? bitDepthStr ?? '16-bit / 44.1 kHz');
       badgeLabel = isHiRes ? 'HI-RES $codec • $specs' : '$codec • $specs';
     } else {
-      // Lossy formats (AAC, MP3, OPUS): Purely format + bitrate (preventing noisy sample rates)
+      // Lossy formats (AAC, MP3, OPUS): Format + bitrate + non-standard sample rate (e.g. 48 kHz)
       final kbps = bitrateStr ?? '256 kbps';
-      badgeLabel = '$codec • $kbps';
+      if (sampleRateStr != null && sampleRateStr != '44.1 kHz') {
+        badgeLabel = '$codec • $kbps • $sampleRateStr';
+      } else {
+        badgeLabel = '$codec • $kbps';
+      }
     }
 
     return {

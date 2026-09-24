@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../../core/theme/apple_music_theme.dart';
@@ -20,12 +21,20 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
   Future<AudioFxDeviceParameters>? _paramsFuture;
   List<int>? _bandCountFor; // band count used when building sliders
   List<CustomEqPreset> _customPresets = [];
+  StreamSubscription<AudioFxState>? _sub;
 
   @override
   void initState() {
     super.initState();
     _paramsFuture = _service.ensureParameters();
     _loadCustomPresets();
+    _sub = _service.stream.listen((_) {
+      if (mounted) {
+        setState(() {
+          _paramsFuture = _service.ensureParameters();
+        });
+      }
+    });
   }
 
   Future<void> _loadCustomPresets() async {
@@ -35,6 +44,7 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
 
   @override
   void dispose() {
+    _sub?.cancel();
     _bandCountFor = null;
     super.dispose();
   }
@@ -142,10 +152,17 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
   }
 
   Widget _buildEqualizer(AudioFxState state, int bandCount) {
+    if (!_hasSession) {
+      return const _EmptySection(
+        label: 'EQUALIZER',
+        message: 'Start playing a song to adjust equalizer settings.',
+      );
+    }
+
     return FutureBuilder<AudioFxDeviceParameters>(
       future: _paramsFuture,
       builder: (context, snap) {
-        final params = snap.data ?? AudioFxDeviceParameters(
+        final params = snap.data ?? _service.deviceParameters ?? AudioFxDeviceParameters(
           supported: {},
           bandCount: bandCount,
           minDecibels: -12,
@@ -157,7 +174,27 @@ class _AudioFxSheetState extends State<AudioFxSheet> {
             ? state.eqGains
             : List.filled(params.bandCount, 0.0, growable: false);
         if (params.bandCount <= 0) {
-          return _EmptySection(label: 'EQUALIZER', message: 'No equalizer available on this device.');
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _EmptySection(
+                label: 'EQUALIZER',
+                message: 'Equalizer setup pending or unavailable for this audio stream.',
+              ),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _paramsFuture = _service.ensureParameters();
+                    });
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry Equalizer Setup'),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -2840,10 +2840,15 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       }
 
       final extMeta = await audioMetadataService.fetchMetadata(fetchTarget, format: mergedItem.extras?['format'] as String?);
-      if (extMeta != null && (extMeta.bitRate != null || extMeta.sampleRate != null)) {
+      if (extMeta != null && (extMeta.bitRate != null || extMeta.sampleRate != null || extMeta.format != null)) {
         final updatedExtras = Map<String, dynamic>.from(mergedItem.extras ?? {});
-        if (extMeta.bitRate != null) updatedExtras['bitrate'] = extMeta.bitRate;
-        if (extMeta.sampleRate != null) updatedExtras['sampleRate'] = extMeta.sampleRate;
+        if (extMeta.bitRate != null && extMeta.bitRate! > 0) updatedExtras['bitrate'] = extMeta.bitRate;
+        if (extMeta.sampleRate != null && extMeta.sampleRate! > 0) updatedExtras['sampleRate'] = extMeta.sampleRate;
+        if (extMeta.format != null && extMeta.format!.trim().isNotEmpty) {
+          final fmtClean = extMeta.format!.trim().toUpperCase();
+          updatedExtras['format'] = fmtClean;
+          updatedExtras['codec'] = fmtClean;
+        }
         
         final updatedItem = mergedItem.copyWith(extras: updatedExtras);
         _enrichedItems[originalId] = updatedItem;

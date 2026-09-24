@@ -6,33 +6,11 @@ import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.PresetReverb
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * Native bridge that drives Android's [android.media.audiofx] effects (Equalizer,
- * BassBoost, LoudnessEnhancer, DynamicsProcessing and PresetReverb) for the audio
- * session created by just_audio's ExoPlayer.
- *
- * Equalizer strategy:
- *  - When the device HAL supports [DynamicsProcessing] (API 28+, most modern phones),
- *    a 10-band graphic EQ at ISO octave frequencies (31 Hz – 16 kHz) is driven through
- *    the PreEQ stage, with the limiter riding on the same effect. This gives a precise,
- *    device-independent EQ.
- *  - Otherwise the native [Equalizer] effect is used and its hardware band count
- *    (typically 5) is reported so the UI can show the right number of sliders.
- *
- * The effects are attached to a session id obtained from
- * `AudioPlayer.androidAudioSessionIdStream` on the Dart side. All effects start in a
- * neutral (transparent) state, so simply creating them does not alter playback.
- *
- * Usage from Flutter:
- *   MethodChannel('com.isai.music/audiofx')
- *     .invokeMethod('applySession', {'sessionId': <id>})
- *     .invokeMethod('getParameters')
- *     .invokeMethod('setEqualizerBandGain', {'band': i, 'gainDb': x})
- *     ...
- */
 class AudioFxPlugin(flutterEngine: FlutterEngine) {
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
@@ -41,6 +19,7 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
     private var reverb: PresetReverb? = null
     private var sessionId: Int = -1
     private var dynamicsChannelCount: Int = 2
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val METHOD_CHANNEL = "com.isai.music/audiofx"
@@ -125,41 +104,64 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
 
     /** Attach all effects to [id] (just_audio's audio session). Neutral by default. */
     private fun applySession(id: Int) {
+        if (id <= 0) return
         if (id == sessionId && (equalizer != null || dynamics != null)) return
         release()
         sessionId = id
+        createEffects()
 
-        // Each effect is created independently so an unsupported effect on some
-        // device never prevents the others from working.
-        try {
-            equalizer = Equalizer(0, id).apply { enabled = true }
-        } catch (_: Exception) {
-            equalizer = null
+        // If creation failed (e.g., AudioTrack binding race condition in AudioFlinger),
+        // schedule a delayed retry so effects attach as soon as track starts playing.
+        if (equalizer == null && dynamics == null) {
+            mainHandler.postDelayed({
+                if (sessionId == id && equalizer == null && dynamics == null) {
+                    createEffects()
+                }
+            }, 300)
         }
-        try {
-            bassBoost = BassBoost(0, id).apply { enabled = true }
-        } catch (_: Exception) {
-            bassBoost = null
-        }
-        try {
-            loudnessEnhancer = LoudnessEnhancer(id).apply { enabled = true }
-        } catch (_: Exception) {
-            loudnessEnhancer = null
-        }
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+    }
+
+    private fun createEffects() {
+        val id = sessionId
+        if (id <= 0) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && dynamics == null) {
+            try {
                 dynamics = buildDynamics()
+            } catch (_: Exception) {
+                dynamics = null
             }
-        } catch (_: Exception) {
-            dynamics = null
         }
-        try {
-            reverb = PresetReverb(0, id).apply {
-                setPreset(PresetReverb.PRESET_NONE)
-                enabled = true
+        if (equalizer == null && dynamics == null) {
+            try {
+                equalizer = Equalizer(0, id).apply { enabled = true }
+            } catch (_: Exception) {
+                equalizer = null
             }
-        } catch (_: Exception) {
-            reverb = null
+        }
+        if (bassBoost == null) {
+            try {
+                bassBoost = BassBoost(0, id).apply { enabled = true }
+            } catch (_: Exception) {
+                bassBoost = null
+            }
+        }
+        if (loudnessEnhancer == null) {
+            try {
+                loudnessEnhancer = LoudnessEnhancer(id).apply { enabled = true }
+            } catch (_: Exception) {
+                loudnessEnhancer = null
+            }
+        }
+        if (reverb == null) {
+            try {
+                reverb = PresetReverb(0, id).apply {
+                    setPreset(PresetReverb.PRESET_NONE)
+                    enabled = true
+                }
+            } catch (_: Exception) {
+                reverb = null
+            }
         }
     }
 
@@ -269,6 +271,9 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
 
     /** Device capabilities + equalizer band layout, consumed by the Flutter sheet. */
     private fun getParameters(): Map<String, Any> {
+        if (sessionId > 0 && equalizer == null && dynamics == null) {
+            createEffects()
+        }
         val eq10 = hasDynamicsEq
         val supported = mapOf(
             "equalizer" to (eq10 || equalizer != null),
