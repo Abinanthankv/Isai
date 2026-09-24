@@ -223,8 +223,9 @@ class BrowseCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class AppleMusicListTile extends ConsumerWidget {
