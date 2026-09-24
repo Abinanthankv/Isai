@@ -847,6 +847,13 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
         final previewTracks = tracks.take(10).toList();
         final hasMore = tracks.length > 10;
         final library = ref.read(libraryProvider);
+        
+        // Pre-calculate matches to prevent expensive string normalization during scroll flings
+        final matchingFiles = <int, TorBoxFile?>{};
+        for (int i = 0; i < previewTracks.length; i++) {
+          final track = previewTracks[i];
+          matchingFiles[i] = library.findMatchingTrack(track.trackName, track.artistName);
+        }
 
         return SliverMainAxisGroup(
           slivers: [
@@ -855,12 +862,11 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final track = previewTracks[index];
-                  final matchingFile = library.findMatchingTrack(track.trackName, track.artistName);
                   return _ArtistSongTile(
                     key: ValueKey(track.trackId),
                     track: track,
                     index: index,
-                    matchingFile: matchingFile,
+                    matchingFile: matchingFiles[index],
                   );
                 },
                 childCount: previewTracks.length,
