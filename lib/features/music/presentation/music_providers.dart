@@ -1604,28 +1604,40 @@ extension LibraryMatching on LibraryState {
     if (title.isEmpty) return null;
     final normalizedTitle = StringUtils.normalize(title);
     final normalizedArtist = StringUtils.normalize(artist);
+    final lookupKey = '$normalizedTitle|$normalizedArtist';
 
-    // Pass 1: Strict match using enriched metadata
-    for (final torrent in torrents) {
-      for (final file in torrent.files) {
-        final meta = metadata['${torrent.id}-${file.id}'];
-        if (meta != null) {
-          final metaTitle = StringUtils.normalize(meta.trackName ?? '');
-          final metaArtist = StringUtils.normalize(meta.artistName ?? '');
-          if (metaTitle == normalizedTitle && 
-              (normalizedArtist.isEmpty || metaArtist == normalizedArtist)) {
-            return file;
+    // Fast path: Exact match from metadata values
+    for (final entry in metadata.entries) {
+      final meta = entry.value;
+      if (meta.trackName != null) {
+        final metaTitle = StringUtils.normalize(meta.trackName!);
+        final metaArtist = StringUtils.normalize(meta.artistName ?? '');
+        if (metaTitle == normalizedTitle && (normalizedArtist.isEmpty || metaArtist == normalizedArtist)) {
+          // Parse file info from key (torrentId-fileId)
+          final parts = entry.key.split('-');
+          if (parts.length == 2) {
+            final tId = int.tryParse(parts[0]);
+            final fId = int.tryParse(parts[1]);
+            if (tId != null && fId != null) {
+              for (final torrent in torrents) {
+                if (torrent.id == tId) {
+                  for (final file in torrent.files) {
+                    if (file.id == fId) return file;
+                  }
+                }
+              }
+            }
           }
         }
       }
     }
 
-    // Pass 2: Loose match using filename parsing
+    // Secondary path: Loose match on filename
     for (final torrent in torrents) {
       for (final file in torrent.files) {
         final parsed = parseFilename(file.displayName);
-        final fileTitle = parsed.title.toLowerCase().trim();
-        final fileArtist = parsed.artist.toLowerCase().trim();
+        final fileTitle = StringUtils.normalize(parsed.title);
+        final fileArtist = StringUtils.normalize(parsed.artist);
 
         if (fileTitle == normalizedTitle && 
             (normalizedArtist.isEmpty || fileArtist == normalizedArtist)) {

@@ -2011,6 +2011,10 @@ class AllPopularSongsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final library = ProviderScope.containerOf(context).read(libraryProvider);
+    final matchCache = <int, TorBoxFile?>{
+      for (final song in songs)
+        song.trackId: library.findMatchingTrack(song.trackName, song.artistName),
+    };
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
@@ -2047,12 +2051,11 @@ class AllPopularSongsScreen extends StatelessWidget {
         itemCount: songs.length,
         itemBuilder: (context, index) {
           final song = songs[index];
-          final matchingFile = library.findMatchingTrack(song.trackName, song.artistName);
           return _ArtistSongTile(
             key: ValueKey(song.trackId),
             track: song,
             index: index,
-            matchingFile: matchingFile,
+            matchingFile: matchCache[song.trackId],
           );
         },
       ),
