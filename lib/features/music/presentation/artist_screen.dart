@@ -2005,12 +2005,8 @@ class AllPopularSongsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Read once — library is static API data, no need to watch and trigger rebuilds
-    final library = ProviderScope.containerOf(context).read(libraryProvider);
-    final matchedFiles = [
-      for (final s in songs) library.findMatchingTrack(s.trackName, s.artistName),
-    ];
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final library = ProviderScope.containerOf(context).read(libraryProvider);
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
@@ -2046,11 +2042,13 @@ class AllPopularSongsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
         itemCount: songs.length,
         itemBuilder: (context, index) {
+          final song = songs[index];
+          final matchingFile = library.findMatchingTrack(song.trackName, song.artistName);
           return _ArtistSongTile(
-            key: ValueKey(songs[index].trackId),
-            track: songs[index],
+            key: ValueKey(song.trackId),
+            track: song,
             index: index,
-            matchingFile: matchedFiles[index],
+            matchingFile: matchingFile,
           );
         },
       ),
