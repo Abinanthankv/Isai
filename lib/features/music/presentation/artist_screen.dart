@@ -35,25 +35,6 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final topSongsAsync = ref.watch(artistSongsProvider(widget.artistName));
-    final albumsAsync = ref.watch(artistAlbumsProvider(widget.artistName));
-    final artistDetailsAsync = ref.watch(artistDetailsProvider(widget.artistName));
-    final url = artistDetailsAsync.asData?.value?.artistLinkUrl;
-    final artistImageAsync = ref.watch(artistImageProvider(ArtistImageParams(name: widget.artistName, url: url)));
-    final bioAsync = ref.watch(artistBioProvider(widget.artistName));
-    final similarAsync = ref.watch(similarArtistsProvider(widget.artistName));
-    final metadataAsync = ref.watch(artistMetadataProvider(widget.artistName));
-    final deezerPlaylistsAsync = ref.watch(deezerArtistPlaylistsProvider(widget.artistName));
-    final deezerRelatedAsync = ref.watch(deezerRelatedArtistsProvider(widget.artistName));
-    final deezerArtistDetailsAsync = ref.watch(deezerArtistDetailsProvider(widget.artistName));
-    
-    // Check if followed if we have artistId
-    AsyncValue<bool> isFollowedAsync = const AsyncValue.data(false);
-    final artistId = artistDetailsAsync.asData?.value?.artistId;
-    if (artistId != null) {
-      isFollowedAsync = ref.watch(isArtistFollowedProvider(artistId));
-    }
-    final isFollowed = isFollowedAsync.asData?.value ?? false;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -75,122 +56,158 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           physics: const BouncingScrollPhysics(),
           slivers: [
             _buildSimplifiedAppBar(context, isDark),
-            SliverToBoxAdapter(child: RepaintBoundary(child: const SizedBox.shrink())),
-            _buildArtistHeader(context, isDark, artistImageAsync, artistDetailsAsync, isFollowed, metadataAsync, deezerArtistDetailsAsync, topSongsAsync, albumsAsync),
-            // TODO:
-            // - [ ] Improved Artist Image Fetching
-            //   - [ ] Update `ItunesMetadataService` to fetch profile image from `artistViewUrl`.
-            //   - [ ] Test with several artists (e.g. Frank Ocean, Michael Jackson).
             
-            // Section divider
+            // Header Section
+            Consumer(builder: (context, ref, _) {
+              final topSongsAsync = ref.watch(artistSongsProvider(widget.artistName));
+              final albumsAsync = ref.watch(artistAlbumsProvider(widget.artistName));
+              final artistDetailsAsync = ref.watch(artistDetailsProvider(widget.artistName));
+              final url = artistDetailsAsync.asData?.value?.artistLinkUrl;
+              final artistImageAsync = ref.watch(artistImageProvider(ArtistImageParams(name: widget.artistName, url: url)));
+              final metadataAsync = ref.watch(artistMetadataProvider(widget.artistName));
+              final deezerArtistDetailsAsync = ref.watch(deezerArtistDetailsProvider(widget.artistName));
+              
+              AsyncValue<bool> isFollowedAsync = const AsyncValue.data(false);
+              final artistId = artistDetailsAsync.asData?.value?.artistId;
+              if (artistId != null) {
+                isFollowedAsync = ref.watch(isArtistFollowedProvider(artistId));
+              }
+              final isFollowed = isFollowedAsync.asData?.value ?? false;
+              
+              return _buildArtistHeader(context, isDark, artistImageAsync, artistDetailsAsync, isFollowed, metadataAsync, deezerArtistDetailsAsync, topSongsAsync, albumsAsync);
+            }),
+
             SliverToBoxAdapter(child: _buildSectionDivider(context, isDark)),
 
-            // Popular Songs Header
-            SliverToBoxAdapter(
-              child: _buildSectionHeader(
-                context: context,
-                isDark: isDark,
-                icon: Icons.music_note_rounded,
-                title: 'Popular Songs',
-                count: topSongsAsync.asData?.value?.length,
-                onSeeAll: (topSongsAsync.asData?.value != null && (topSongsAsync.asData?.value?.length ?? 0) > 10)
-                    ? () {
-                        AppHaptics.light(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AllPopularSongsScreen(
-                              artistName: widget.artistName,
-                              songs: topSongsAsync.asData!.value,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              ),
-            ),
+            // Popular Songs
+            Consumer(builder: (context, ref, _) {
+              final topSongsAsync = ref.watch(artistSongsProvider(widget.artistName));
+              return SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildSectionHeader(
+                      context: context,
+                      isDark: isDark,
+                      icon: Icons.music_note_rounded,
+                      title: 'Popular Songs',
+                      count: topSongsAsync.asData?.value?.length,
+                      onSeeAll: (topSongsAsync.asData?.value != null && (topSongsAsync.asData?.value?.length ?? 0) > 10)
+                          ? () {
+                              AppHaptics.light(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AllPopularSongsScreen(
+                                    artistName: widget.artistName,
+                                    songs: topSongsAsync.asData!.value,
+                                  ),
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                  ),
+                  _buildSongsList(topSongsAsync, isDark),
+                ],
+              );
+            }),
 
-            _buildSongsList(topSongsAsync, isDark),
-
-            // Section divider
             SliverToBoxAdapter(child: _buildSectionDivider(context, isDark)),
-
-            // Albums Section Header
-            SliverToBoxAdapter(
-              child: _buildSectionHeader(
-                context: context,
-                isDark: isDark,
-                icon: Icons.album_rounded,
-                title: 'Albums',
-                count: albumsAsync.asData?.value?.length,
-                onSeeAll: (albumsAsync.asData?.value != null && (albumsAsync.asData?.value?.length ?? 0) > 10)
-                    ? () {
-                        AppHaptics.light(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AllAlbumsScreen(
-                              artistName: widget.artistName,
-                              albums: albumsAsync.asData!.value,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              ),
-            ),
 
             // Albums Section
-            _buildAlbumsSectionSliver(albumsAsync, isDark),
+            Consumer(builder: (context, ref, _) {
+              final albumsAsync = ref.watch(artistAlbumsProvider(widget.artistName));
+              return SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildSectionHeader(
+                      context: context,
+                      isDark: isDark,
+                      icon: Icons.album_rounded,
+                      title: 'Albums',
+                      count: albumsAsync.asData?.value?.length,
+                      onSeeAll: (albumsAsync.asData?.value != null && (albumsAsync.asData?.value?.length ?? 0) > 10)
+                          ? () {
+                              AppHaptics.light(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AllAlbumsScreen(
+                                    artistName: widget.artistName,
+                                    albums: albumsAsync.asData!.value,
+                                  ),
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                  ),
+                  _buildAlbumsSectionSliver(albumsAsync, isDark),
+                ],
+              );
+            }),
 
-            // Section divider
             SliverToBoxAdapter(child: _buildSectionDivider(context, isDark)),
 
-            // Artist Playlists Header
-            SliverToBoxAdapter(
-              child: _buildSectionHeader(
-                context: context,
-                isDark: isDark,
-                icon: Icons.queue_music_rounded,
-                title: 'Artist Playlists',
-                count: deezerPlaylistsAsync.asData?.value?.length,
-                onSeeAll: (deezerPlaylistsAsync.asData?.value != null && (deezerPlaylistsAsync.asData?.value?.length ?? 0) > 10)
-                    ? () {
-                        AppHaptics.light(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AllArtistPlaylistsScreen(
-                              artistName: widget.artistName,
-                              playlists: deezerPlaylistsAsync.asData!.value,
-                            ),
-                          ),
-                        );
-                      }
-                    : null,
-              ),
-            ),
+            // Artist Playlists
+            Consumer(builder: (context, ref, _) {
+              final deezerPlaylistsAsync = ref.watch(deezerArtistPlaylistsProvider(widget.artistName));
+              return SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildSectionHeader(
+                      context: context,
+                      isDark: isDark,
+                      icon: Icons.queue_music_rounded,
+                      title: 'Artist Playlists',
+                      count: deezerPlaylistsAsync.asData?.value?.length,
+                      onSeeAll: (deezerPlaylistsAsync.asData?.value != null && (deezerPlaylistsAsync.asData?.value?.length ?? 0) > 10)
+                          ? () {
+                              AppHaptics.light(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AllArtistPlaylistsScreen(
+                                    artistName: widget.artistName,
+                                    playlists: deezerPlaylistsAsync.asData!.value,
+                                  ),
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: RepaintBoundary(child: _buildDeezerPlaylistsSection(deezerPlaylistsAsync, isDark)),
+                  ),
+                ],
+              );
+            }),
 
-            SliverToBoxAdapter(
-              child: RepaintBoundary(child: _buildDeezerPlaylistsSection(deezerPlaylistsAsync, isDark)),
-            ),
-
-            // Section divider
             SliverToBoxAdapter(child: _buildSectionDivider(context, isDark)),
 
             // About Header
-            SliverToBoxAdapter(
-              child: _buildSectionHeader(
-                context: context,
-                isDark: isDark,
-                icon: Icons.info_outline_rounded,
-                title: 'About',
-              ),
-            ),
-
-            SliverToBoxAdapter(
-              child: RepaintBoundary(child: _buildAboutSection(context, isDark, bioAsync, similarAsync, metadataAsync, deezerRelatedAsync)),
-            ),
+            Consumer(builder: (context, ref, _) {
+              final bioAsync = ref.watch(artistBioProvider(widget.artistName));
+              final similarAsync = ref.watch(similarArtistsProvider(widget.artistName));
+              final metadataAsync = ref.watch(artistMetadataProvider(widget.artistName));
+              final deezerRelatedAsync = ref.watch(deezerRelatedArtistsProvider(widget.artistName));
+              return SliverMainAxisGroup(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _buildSectionHeader(
+                      context: context,
+                      isDark: isDark,
+                      icon: Icons.info_outline_rounded,
+                      title: 'About',
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: RepaintBoundary(child: _buildAboutSection(context, isDark, bioAsync, similarAsync, metadataAsync, deezerRelatedAsync)),
+                  ),
+                ],
+              );
+            }),
             
             const SliverPadding(padding: EdgeInsets.only(bottom: 150)),
           ],
