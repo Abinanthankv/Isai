@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:injectable/injectable.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ItunesMeta {
   final String? trackName;
@@ -28,20 +29,121 @@ class ItunesMeta {
     this.id,
     this.extras,
   });
+
+  Map<String, dynamic> toJsonMap() {
+    return {
+      'trackName': trackName,
+      'artistName': artistName,
+      'artworkUrlLow': artworkUrlLow,
+      'artworkUrlHigh': artworkUrlHigh,
+      'album': album,
+      'genre': genre,
+      'releaseYear': releaseYear,
+      'trackTimeMillis': trackTimeMillis,
+      'previewUrl': previewUrl,
+      'id': id,
+      if (extras != null) 'extras': extras,
+    };
+  }
+
+  factory ItunesMeta.fromJsonMap(Map<String, dynamic> json) {
+    return ItunesMeta(
+      trackName: json['trackName'] as String?,
+      artistName: json['artistName'] as String?,
+      artworkUrlLow: json['artworkUrlLow'] as String?,
+      artworkUrlHigh: json['artworkUrlHigh'] as String?,
+      album: json['album'] as String?,
+      genre: json['genre'] as String?,
+      releaseYear: json['releaseYear'] as int?,
+      trackTimeMillis: json['trackTimeMillis'] as int?,
+      previewUrl: json['previewUrl'] as String?,
+      id: json['id'] as String?,
+      extras: json['extras'] as Map<String, dynamic>?,
+    );
+  }
 }
 
 @lazySingleton
 class ItunesMetadataService {
   final Dio _dio;
+  static const String _diskCachePrefKey = 'itunes_meta_disk_cache_v1';
+  static const int _maxCacheSize = 2000;
 
   // In-memory cache: "title|artist" → metadata (null means already tried, no result)
   final Map<String, ItunesMeta?> _cache = {};
+  bool _diskLoaded = false;
 
   static const _itunesBase = 'https://itunes.apple.com';
 
   ItunesMetadataService(this._dio);
 
+  Future<void> _ensureLoadedFromDisk() async {
+    if (_diskLoaded) return;
+    _diskLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawJson = prefs.getString(_diskCachePrefKey);
+      if (rawJson != null && rawJson.isNotEmpty) {
+        final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+        for (final entry in decoded.entries) {
+          if (entry.value == null) {
+            _cache[entry.key] = null;
+          } else if (entry.value is Map<String, dynamic>) {
+            _cache[entry.key] = ItunesMeta.fromJsonMap(entry.value as Map<String, dynamic>);
+          }
+        }
+        print('[ItunesService] Loaded ${_cache.length} entries from persistent disk cache.');
+      }
+    } catch (e) {
+      print('[ItunesService] Failed to load disk cache: $e');
+    }
+  }
+
+  Future<void> _putCache(String key, ItunesMeta? value) async {
+    _cache[key] = value;
+    _enforceMaxCacheEntries();
+    _saveCacheToDiskThrottled();
+  }
+
+  void _enforceMaxCacheEntries() {
+    if (_cache.length > _maxCacheSize) {
+      final keysToRemove = _cache.keys.take(_cache.length - _maxCacheSize).toList();
+      for (final key in keysToRemove) {
+        _cache.remove(key);
+      }
+    }
+  }
+
+  bool _isSaving = false;
+  bool _savePending = false;
+
+  Future<void> _saveCacheToDiskThrottled() async {
+    if (_isSaving) {
+      _savePending = true;
+      return;
+    }
+    _isSaving = true;
+    try {
+      await Future.delayed(const Duration(milliseconds: 1500));
+      final prefs = await SharedPreferences.getInstance();
+      final mapToSave = <String, dynamic>{};
+      _cache.forEach((k, v) {
+        mapToSave[k] = v?.toJsonMap();
+      });
+      await prefs.setString(_diskCachePrefKey, jsonEncode(mapToSave));
+    } catch (e) {
+      print('[ItunesService] Error saving disk cache: $e');
+    } finally {
+      _isSaving = false;
+      if (_savePending) {
+        _savePending = false;
+        _saveCacheToDiskThrottled();
+      }
+    }
+  }
+
   Future<ItunesMeta?> fetchMeta(String title, String artist) async {
+    await _ensureLoadedFromDisk();
     final cacheKey = '${title.toLowerCase()}|${artist.toLowerCase()}';
 
     if (_cache.containsKey(cacheKey)) {
@@ -79,24 +181,24 @@ class ItunesMetadataService {
           json = jsonDecode(data) as Map<String, dynamic>;
         } catch (e) {
           print('[ItunesService] Failed to decode JSON string: $e');
-          _cache[cacheKey] = null;
+          _putCache(cacheKey, null);
           return null;
         }
       } else {
         print('[ItunesService] Unexpected response type: ${data.runtimeType}');
-        _cache[cacheKey] = null;
+        _putCache(cacheKey, null);
         return null;
       }
 
       final results = (json['results'] as List<dynamic>?) ?? [];
       print('[ItunesService] Results for "$title": ${results.length}');
       if (results.isEmpty) {
-        _cache[cacheKey] = null;
+        _putCache(cacheKey, null);
         return null;
       }
 
       final meta = _parseResult(results.first as Map<String, dynamic>);
-      _cache[cacheKey] = meta;
+      _putCache(cacheKey, meta);
       return meta;
     } catch (e) {
       print('[ItunesService] Error fetching "$title": $e');
@@ -111,13 +213,14 @@ class ItunesMetadataService {
       }
 
       if (!isTransient) {
-        _cache[cacheKey] = null;
+        _putCache(cacheKey, null);
       }
       return null;
     }
   }
 
   Future<ItunesMeta?> lookupById(int trackId) async {
+    await _ensureLoadedFromDisk();
     final cacheKey = 'lookup_$trackId';
     if (_cache.containsKey(cacheKey)) return _cache[cacheKey];
 
@@ -145,22 +248,22 @@ class ItunesMetadataService {
       } else if (data is String) {
         json = jsonDecode(data) as Map<String, dynamic>;
       } else {
-        _cache[cacheKey] = null;
+        _putCache(cacheKey, null);
         return null;
       }
 
       final results = (json['results'] as List<dynamic>?) ?? [];
       if (results.isEmpty) {
-        _cache[cacheKey] = null;
+        _putCache(cacheKey, null);
         return null;
       }
 
       final meta = _parseResult(results.first as Map<String, dynamic>);
-      _cache[cacheKey] = meta;
+      _putCache(cacheKey, meta);
       return meta;
     } catch (e) {
       print('[ItunesService] Lookup error for id=$trackId: $e');
-      _cache[cacheKey] = null;
+      _putCache(cacheKey, null);
       return null;
     }
   }
@@ -242,6 +345,7 @@ class ItunesMetadataService {
   }
 
   Future<String?> fetchArtistImage(String artistName, {bool highRes = true, String? artistViewUrl}) async {
+    await _ensureLoadedFromDisk();
     final cacheKey = 'artist_img|${highRes ? 'hi' : 'lo'}|${artistName.toLowerCase()}';
     if (_cache.containsKey(cacheKey)) {
       final meta = _cache[cacheKey];
@@ -358,7 +462,7 @@ class ItunesMetadataService {
         final processedUrl = ogImageUrl.replaceAll(RegExp(r'/\d+x\d+[^/]+\.(jpg|png|jpeg)$'), '/$targetRes');
             
         print('[ItunesService] Scraped ${highRes ? 'HI' : 'LO'} artist image: $processedUrl');
-        _cache[cacheKey] = ItunesMeta(artworkUrlHigh: processedUrl);
+        _putCache(cacheKey, ItunesMeta(artworkUrlHigh: processedUrl));
         return processedUrl;
       }
     } catch (e) {
@@ -401,7 +505,7 @@ class ItunesMetadataService {
           if (rawArtwork.isNotEmpty) {
             final resolution = highRes ? '1024x1024' : '320x320';
             final resultUrl = rawArtwork.replaceAll('100x100bb', '${resolution}bb').replaceAll('100x100', resolution);
-            _cache[cacheKey] = ItunesMeta(artworkUrlHigh: resultUrl);
+            _putCache(cacheKey, ItunesMeta(artworkUrlHigh: resultUrl));
             return resultUrl;
           }
         }
@@ -410,6 +514,11 @@ class ItunesMetadataService {
     return null;
   }
 
-  /// Clears the in-memory cache (call on app restart if needed).
-  void clearCache() => _cache.clear();
+  /// Clears both in-memory and persistent disk cache.
+  void clearCache() {
+    _cache.clear();
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_diskCachePrefKey);
+    }).catchError((_) {});
+  }
 }

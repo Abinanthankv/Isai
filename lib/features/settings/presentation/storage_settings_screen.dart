@@ -4,12 +4,14 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:io' as io;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/database/database.dart';
 import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/glassmorphism.dart';
 import '../../../core/theme/apple_music_components.dart';
 import '../../music/presentation/music_providers.dart';
+import '../../music/data/itunes_metadata_service.dart';
 
 // Slider discrete values for Song Cache
 const List<int> songCacheLimitSteps = [512, 1024, 2048, 5120, 10240, -1]; // -1 represents Unlimited
@@ -23,34 +25,42 @@ class StorageSettingsState {
   final int downloadedSongsSize;
   final int songCacheSize;
   final int imageCacheSize;
+  final int metadataCacheSize;
   final bool isClearingDownloads;
   final bool isClearingSongCache;
   final bool isClearingImageCache;
+  final bool isClearingMetadataCache;
 
   StorageSettingsState({
     this.downloadedSongsSize = 0,
     this.songCacheSize = 0,
     this.imageCacheSize = 0,
+    this.metadataCacheSize = 0,
     this.isClearingDownloads = false,
     this.isClearingSongCache = false,
     this.isClearingImageCache = false,
+    this.isClearingMetadataCache = false,
   });
 
   StorageSettingsState copyWith({
     int? downloadedSongsSize,
     int? songCacheSize,
     int? imageCacheSize,
+    int? metadataCacheSize,
     bool? isClearingDownloads,
     bool? isClearingSongCache,
     bool? isClearingImageCache,
+    bool? isClearingMetadataCache,
   }) {
     return StorageSettingsState(
       downloadedSongsSize: downloadedSongsSize ?? this.downloadedSongsSize,
       songCacheSize: songCacheSize ?? this.songCacheSize,
       imageCacheSize: imageCacheSize ?? this.imageCacheSize,
+      metadataCacheSize: metadataCacheSize ?? this.metadataCacheSize,
       isClearingDownloads: isClearingDownloads ?? this.isClearingDownloads,
       isClearingSongCache: isClearingSongCache ?? this.isClearingSongCache,
       isClearingImageCache: isClearingImageCache ?? this.isClearingImageCache,
+      isClearingMetadataCache: isClearingMetadataCache ?? this.isClearingMetadataCache,
     );
   }
 }
@@ -69,11 +79,13 @@ class StorageSettingsNotifier extends Notifier<StorageSettingsState> {
     final downloaded = await _calcDownloadedSize();
     final songCache = await _calcSongCacheSize();
     final imageCache = await _calcImageCacheSize();
+    final metadataCache = await _calcMetadataCacheSize();
 
     state = state.copyWith(
       downloadedSongsSize: downloaded,
       songCacheSize: songCache,
       imageCacheSize: imageCache,
+      metadataCacheSize: metadataCache,
     );
   }
 
@@ -114,6 +126,20 @@ class StorageSettingsNotifier extends Notifier<StorageSettingsState> {
       return await _getDirSize(imageCacheDir);
     } catch (e) {
       print('[StorageSettings] Error calculating image cache size: $e');
+      return 0;
+    }
+  }
+
+  Future<int> _calcMetadataCacheSize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawJson = prefs.getString('itunes_meta_disk_cache_v1');
+      if (rawJson != null) {
+        return rawJson.length; // Approximate UTF-8 byte count of JSON metadata string
+      }
+      return 0;
+    } catch (e) {
+      print('[StorageSettings] Error calculating metadata cache size: $e');
       return 0;
     }
   }
@@ -185,6 +211,18 @@ class StorageSettingsNotifier extends Notifier<StorageSettingsState> {
       print('[StorageSettings] Error clearing image cache: $e');
     } finally {
       state = state.copyWith(isClearingImageCache: false);
+    }
+  }
+
+  Future<void> clearMetadataCache() async {
+    state = state.copyWith(isClearingMetadataCache: true);
+    try {
+      getIt<ItunesMetadataService>().clearCache();
+      await refreshSizes();
+    } catch (e) {
+      print('[StorageSettings] Error clearing metadata cache: $e');
+    } finally {
+      state = state.copyWith(isClearingMetadataCache: false);
     }
   }
 }
@@ -471,6 +509,71 @@ class StorageSettingsScreen extends ConsumerWidget {
                               title: 'Clear image cache?',
                               message: 'This will delete cached album art and artist images.',
                               onConfirm: () => ref.read(storageSettingsProvider.notifier).clearImageCache(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // SECTION 4: METADATA CACHE
+                    AppleMusicSectionHeader(title: 'Metadata Cache'),
+                    GlassCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.data_object_rounded,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'iTunes Track & Artist Metadata',
+                                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : Colors.black,
+                                      ),
+                                    ),
+                                    Text(
+                                      _formatBytes(storageState.metadataCacheSize),
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: isDark ? Colors.white54 : Colors.black45,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Divider(height: 1),
+                          const SizedBox(height: 8),
+                          _ActionTile(
+                            icon: Icons.delete_outline_rounded,
+                            title: 'Clear metadata cache',
+                            isLoading: storageState.isClearingMetadataCache,
+                            padding: EdgeInsets.zero,
+                            onTap: () => _confirmClear(
+                              context,
+                              title: 'Clear iTunes metadata cache?',
+                              message: 'This will clear saved track info, genres, and artist image URLs stored for offline instant loading.',
+                              onConfirm: () => ref.read(storageSettingsProvider.notifier).clearMetadataCache(),
                             ),
                           ),
                         ],
