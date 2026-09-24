@@ -2025,7 +2025,7 @@ class _AllAlbumsScreenState extends State<AllAlbumsScreen> {
   }
 }
 
-class AllPopularSongsScreen extends StatelessWidget {
+class AllPopularSongsScreen extends StatefulWidget {
   final String artistName;
   final List<ItunesTrack> songs;
 
@@ -2036,13 +2036,46 @@ class AllPopularSongsScreen extends StatelessWidget {
   });
 
   @override
+  State<AllPopularSongsScreen> createState() => _AllPopularSongsScreenState();
+}
+
+class _AllPopularSongsScreenState extends State<AllPopularSongsScreen> {
+  final Map<int, TorBoxFile?> _matchCache = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateMatchesAsync();
+  }
+
+  Future<void> _calculateMatchesAsync() async {
+    // Yield to the event loop so the route transition can finish smoothly
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    if (!mounted) return;
+    final library = ProviderScope.containerOf(context).read(libraryProvider);
+    
+    // We compute this in chunks so we don't completely freeze the UI thread
+    for (int i = 0; i < widget.songs.length; i++) {
+      final song = widget.songs[i];
+      _matchCache[song.trackId] = library.findMatchingTrack(song.trackName, song.artistName);
+      
+      if (i % 5 == 0) {
+        await Future.delayed(Duration.zero);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final library = ProviderScope.containerOf(context).read(libraryProvider);
-    final matchCache = <int, TorBoxFile?>{
-      for (final song in songs)
-        song.trackId: library.findMatchingTrack(song.trackName, song.artistName),
-    };
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7),
@@ -2064,7 +2097,7 @@ class AllPopularSongsScreen extends StatelessWidget {
               ),
             ),
             Text(
-              '${songs.length} Tracks • $artistName',
+              '${widget.songs.length} Tracks • ${widget.artistName}',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: isDark ? Colors.white54 : Colors.black45,
               ),
@@ -2073,20 +2106,22 @@ class AllPopularSongsScreen extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: ListView.builder(
-        itemExtent: 72.0,
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        itemCount: songs.length,
-        itemBuilder: (context, index) {
-          final song = songs[index];
-          return _ArtistSongTile(
-            key: ValueKey(song.trackId),
-            track: song,
-            index: index,
-            matchingFile: matchCache[song.trackId],
-          );
-        },
-      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : ListView.builder(
+            itemExtent: 72.0,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+            itemCount: widget.songs.length,
+            itemBuilder: (context, index) {
+              final song = widget.songs[index];
+              return _ArtistSongTile(
+                key: ValueKey(song.trackId),
+                track: song,
+                index: index,
+                matchingFile: _matchCache[song.trackId],
+              );
+            },
+          ),
     );
   }
 }
