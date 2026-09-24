@@ -75,6 +75,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
           physics: const BouncingScrollPhysics(),
           slivers: [
             _buildSimplifiedAppBar(context, isDark),
+            SliverToBoxAdapter(child: RepaintBoundary(child: const SizedBox.shrink())),
             _buildArtistHeader(context, isDark, artistImageAsync, artistDetailsAsync, isFollowed, metadataAsync, deezerArtistDetailsAsync, topSongsAsync, albumsAsync),
             // TODO:
             // - [ ] Improved Artist Image Fetching
@@ -171,7 +172,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
             ),
 
             SliverToBoxAdapter(
-              child: _buildDeezerPlaylistsSection(deezerPlaylistsAsync, isDark),
+              child: RepaintBoundary(child: _buildDeezerPlaylistsSection(deezerPlaylistsAsync, isDark)),
             ),
 
             // Section divider
@@ -188,7 +189,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
             ),
 
             SliverToBoxAdapter(
-              child: _buildAboutSection(context, isDark, bioAsync, similarAsync, metadataAsync, deezerRelatedAsync),
+              child: RepaintBoundary(child: _buildAboutSection(context, isDark, bioAsync, similarAsync, metadataAsync, deezerRelatedAsync)),
             ),
             
             const SliverPadding(padding: EdgeInsets.only(bottom: 150)),
@@ -724,7 +725,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
         final hasMore = albums.length > 10;
         
         return SliverToBoxAdapter(
-          child: SizedBox(
+          child: RepaintBoundary(
+            child: SizedBox(
             height: 240,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
@@ -802,6 +804,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                 );
               },
             ),
+          ),
           ),
         );
       },
@@ -1605,11 +1608,12 @@ class _ArtistSongTileState extends State<_ArtistSongTile> {
     final textColor = isDark ? Colors.white : Colors.black;
     final subTextColor = isDark ? Colors.white54 : Colors.black45;
     
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      child: InkWell(
-        onTap: _isCheckingSources ? null : _handleTap,
-        borderRadius: BorderRadius.circular(12),
+    return RepaintBoundary(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+        child: InkWell(
+          onTap: _isCheckingSources ? null : _handleTap,
+          borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
           child: Row(
@@ -1685,6 +1689,7 @@ class _ArtistSongTileState extends State<_ArtistSongTile> {
           ),
         ),
       ),
+    ),
     );
   }
 }
