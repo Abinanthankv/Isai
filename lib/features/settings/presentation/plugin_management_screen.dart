@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -435,10 +436,10 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: allItems.length,
                   onReorderStart: (_) {
-                    HapticFeedback.mediumImpact();
+                    AppHaptics.medium(context);
                   },
                   onReorder: (oldIndex, newIndex) {
-                    HapticFeedback.lightImpact();
+                    AppHaptics.light(context);
                     if (newIndex > oldIndex) {
                       newIndex -= 1;
                     }
@@ -573,7 +574,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                               Switch(
                                 value: enabled,
                                 onChanged: (val) async {
-                                  HapticFeedback.selectionClick();
+                                  AppHaptics.selection(context);
                                   if (isEclipse) {
                                     await _pluginManager.toggleEclipseAddon(id, val);
                                   } else {
@@ -585,7 +586,7 @@ class _PluginManagementScreenState extends ConsumerState<PluginManagementScreen>
                               IconButton(
                                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                                 onPressed: () async {
-                                  HapticFeedback.mediumImpact();
+                                  AppHaptics.medium(context);
                                   if (isEclipse) {
                                     await _pluginManager.deleteEclipseAddon(id);
                                   } else {

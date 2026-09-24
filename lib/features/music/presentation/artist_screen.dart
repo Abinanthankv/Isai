@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -184,7 +185,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   }
 
   void _shareArtist(BuildContext context) {
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     final text = 'Check out ${widget.artistName} on Isai!';
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -406,7 +407,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                   label: 'Shuffle',
                   isDark: isDark,
                   onTap: () {
-                    HapticFeedback.lightImpact();
+                    AppHaptics.light(context);
                     _playAllTopSongs(topSongsAsync.asData?.value);
                   },
                 ),
@@ -580,7 +581,7 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
   }
 
   void _handleFollowTap(ItunesArtist details, bool isFollowed, String? artworkUrl) async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.medium(context);
     final repo = getIt<MusicRepository>();
     if (isFollowed) {
       await repo.unfollowArtist(details.artistId);

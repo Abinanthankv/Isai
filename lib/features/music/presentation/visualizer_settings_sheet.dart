@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -360,7 +361,7 @@ class _ToggleTile extends StatelessWidget {
             value: value,
             onChanged: onChanged != null 
                 ? (v) {
-                    HapticFeedback.lightImpact();
+                    AppHaptics.light(context);
                     onChanged!(v);
                   } 
                 : null,
@@ -398,7 +399,7 @@ class _SegmentedSelector extends StatelessWidget {
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.lightImpact();
+                AppHaptics.light(context);
                 onSelect(i);
               },
               child: AnimatedContainer(
@@ -477,7 +478,7 @@ class _SliderRow extends StatelessWidget {
             max: max,
             onChanged: onChanged,
             onChangeEnd: (v) {
-              HapticFeedback.lightImpact();
+              AppHaptics.light(context);
             },
           ),
         ),

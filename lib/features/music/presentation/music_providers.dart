@@ -125,6 +125,8 @@ class SettingsState {
   final bool eclipseScrobbleEnabled;
   final List<String> discoverSectionOrder;
   final List<String> disabledDiscoverSections;
+  final bool hapticsEnabled;
+  final String hapticIntensity;
 
   bool get hardcoverHasKey => hardcoverApiKey.isNotEmpty;
 
@@ -198,6 +200,8 @@ class SettingsState {
     this.eclipseScrobbleEnabled = false,
     this.discoverSectionOrder = kDefaultDiscoverSectionOrder,
     this.disabledDiscoverSections = const [],
+    this.hapticsEnabled = true,
+    this.hapticIntensity = 'medium',
   });
 
   SettingsState copyWith({
@@ -270,6 +274,8 @@ class SettingsState {
     bool? eclipseScrobbleEnabled,
     List<String>? discoverSectionOrder,
     List<String>? disabledDiscoverSections,
+    bool? hapticsEnabled,
+    String? hapticIntensity,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -341,6 +347,8 @@ class SettingsState {
       eclipseScrobbleEnabled: eclipseScrobbleEnabled ?? this.eclipseScrobbleEnabled,
       discoverSectionOrder: discoverSectionOrder ?? this.discoverSectionOrder,
       disabledDiscoverSections: disabledDiscoverSections ?? this.disabledDiscoverSections,
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
+      hapticIntensity: hapticIntensity ?? this.hapticIntensity,
     );
   }
 }
@@ -423,6 +431,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
           ? _settings.discoverSectionOrder
           : kDefaultDiscoverSectionOrder,
       disabledDiscoverSections: _settings.disabledDiscoverSections,
+      hapticsEnabled: _settings.hapticsEnabled,
+      hapticIntensity: _settings.hapticIntensity,
     );
   }
 
@@ -475,6 +485,16 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setAppleLiquidGlassOpacity(double value) async {
     state = state.copyWith(appleLiquidGlassOpacity: value);
     await _settings.setAppleLiquidGlassOpacity(value);
+  }
+
+  Future<void> setHapticsEnabled(bool enabled) async {
+    state = state.copyWith(hapticsEnabled: enabled);
+    await _settings.setHapticsEnabled(enabled);
+  }
+
+  Future<void> setHapticIntensity(String intensity) async {
+    state = state.copyWith(hapticIntensity: intensity);
+    await _settings.setHapticIntensity(intensity);
   }
 
   Future<bool> saveAndValidateApiKey(String key) async {

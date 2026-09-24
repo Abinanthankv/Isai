@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,7 +44,7 @@ class _MonthlyWrappedSectionState
   }
 
   void _goToPreviousMonth() {
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     final current = ref.read(selectedWrappedMonthProvider);
     ref.read(selectedWrappedMonthProvider.notifier).state =
         DateTime(current.year, current.month - 1);
@@ -55,7 +56,7 @@ class _MonthlyWrappedSectionState
     final currentMonthStart = DateTime(now.year, now.month);
     if (current.year == currentMonthStart.year &&
         current.month == currentMonthStart.month) return;
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     ref.read(selectedWrappedMonthProvider.notifier).state =
         DateTime(current.year, current.month + 1);
   }
@@ -964,7 +965,7 @@ class _MilestonesCardState extends ConsumerState<_MilestonesCard> {
       String label, bool isActive, VoidCallback onTap, bool isDark) {
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         onTap();
       },
       child: Container(

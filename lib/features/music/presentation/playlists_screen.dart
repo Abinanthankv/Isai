@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -456,7 +457,7 @@ class _PlaylistCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -467,7 +468,7 @@ class _PlaylistCard extends StatelessWidget {
         );
       },
       onLongPress: () {
-        HapticFeedback.mediumImpact();
+        AppHaptics.medium(context);
         showModalBottomSheet(
           context: context,
           backgroundColor: Colors.transparent,
@@ -936,7 +937,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                             icon: Icons.shuffle_rounded,
                             isDark: isDark,
                             onTap: () {
-                              HapticFeedback.lightImpact();
+                              AppHaptics.light(context);
                               if (tracks.isNotEmpty) {
                                 if (localPlaylist != null) {
                                   final shuffled = List<DbPlaylistTrack>.from(tracks)..shuffle();
@@ -953,7 +954,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                           // Play button (large pill)
                           GestureDetector(
                             onTap: () {
-                              HapticFeedback.lightImpact();
+                              AppHaptics.light(context);
                               if (tracks.isNotEmpty) {
                                 if (localPlaylist != null) {
                                   _playLocalTracks(ref, context, tracks as List<DbPlaylistTrack>, forceFullQueue: true);
@@ -995,9 +996,9 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                             isDark: isDark,
                             iconColor: localPlaylist != null ? Colors.green : null,
                             onTap: localPlaylist != null
-                                ? () { HapticFeedback.lightImpact(); } // Already saved
+                                ? () { AppHaptics.light(context); } // Already saved
                                 : () async {
-                                    HapticFeedback.lightImpact();
+                                    AppHaptics.light(context);
                                     if (tracks.isNotEmpty) {
                                       try {
                                         final itunesTracks = tracks as List<ItunesTrack>;
@@ -1154,11 +1155,11 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
   }) {
     return InkWell(
       onTap: () {
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         onTap();
       },
       onLongPress: onLongPress != null ? () {
-        HapticFeedback.mediumImpact();
+        AppHaptics.medium(context);
         onLongPress();
       } : null,
       child: Padding(

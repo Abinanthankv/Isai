@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:math';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -62,7 +63,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
   }
 
   void _onSwipeComplete(DiscoveryNotifier notifier, bool liked) {
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     setState(() {
       _dragX = 0;
       _dragY = 0;
@@ -209,7 +210,7 @@ class _DiscoverySwipeScreenState extends ConsumerState<DiscoverySwipeScreen>
                     // Haptic when crossing the decision threshold
                     if (!_hasTriggeredHaptic && _dragX.abs() > screenWidth * 0.3) {
                       _hasTriggeredHaptic = true;
-                      HapticFeedback.mediumImpact();
+                      AppHaptics.medium(context);
                     }
                   },
                   onPanEnd: (details) {

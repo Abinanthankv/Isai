@@ -156,6 +156,12 @@ abstract class TorBoxSettingsRepository {
 
   Future<void> setDisabledDiscoverSections(List<String> ids);
   List<String> get disabledDiscoverSections;
+
+  Future<void> setHapticsEnabled(bool enabled);
+  bool get hapticsEnabled;
+
+  Future<void> setHapticIntensity(String intensity);
+  String get hapticIntensity;
 }
 
 @LazySingleton(as: TorBoxSettingsRepository)
@@ -483,4 +489,16 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
   @override
   Future<void> setDisabledDiscoverSections(List<String> ids) =>
       _prefs.setStringList('disabled_discover_sections', ids);
+
+  @override
+  bool get hapticsEnabled => _prefs.getBool('haptics_enabled') ?? true;
+
+  @override
+  Future<void> setHapticsEnabled(bool enabled) => _prefs.setBool('haptics_enabled', enabled);
+
+  @override
+  String get hapticIntensity => _prefs.getString('haptic_intensity') ?? 'medium';
+
+  @override
+  Future<void> setHapticIntensity(String intensity) => _prefs.setString('haptic_intensity', intensity);
 }

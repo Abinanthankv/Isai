@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -125,7 +126,7 @@ class LikedSongsScreen extends ConsumerWidget {
                               constraints: const BoxConstraints(),
                               icon: Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary, size: 22),
                               onPressed: () {
-                                HapticFeedback.lightImpact();
+                                AppHaptics.light(context);
                                 ref.read(likedSongsProvider.notifier).toggleLike(
                                   file.torrentId,
                                   file.id,
@@ -144,7 +145,7 @@ class LikedSongsScreen extends ConsumerWidget {
                           ],
                         ),
                         onTap: () async {
-                          HapticFeedback.lightImpact();
+                          AppHaptics.light(context);
                           final customQueue = entries.map((e) => e.file).toList();
                           final url = file.localPath != null 
                               ? Uri.file(file.localPath!).toString() 

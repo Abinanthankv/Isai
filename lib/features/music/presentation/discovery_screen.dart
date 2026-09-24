@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -104,7 +105,12 @@ class DiscoveryScreen extends ConsumerWidget {
                 .toList();
             final futures = <Future>[];
             if (enabled.contains('trending')) {
-              ref.invalidate(cachedTrendingSongsProvider);
+              final params = RegionalChartParams(selectedRegion, limit: 30);
+              ref.invalidate(regionalTrendingSongsProvider(params));
+              futures.add(
+                ref.read(regionalTrendingSongsProvider(params).future)
+                    .catchError((_) => <ItunesTrack>[]),
+              );
             }
             if (enabled.contains('new_releases')) {
               ref.invalidate(newReleasesProvider(selectedRegion));
@@ -300,7 +306,7 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   void _handleTrackTap(BuildContext context, WidgetRef ref, ItunesTrack track) async {
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     final libraryNotifier = ref.read(libraryProvider.notifier);
     final matchingFile = ref.read(libraryProvider).findMatchingTrack(track.trackName, track.artistName);
 
@@ -405,8 +411,10 @@ class DiscoveryScreen extends ConsumerWidget {
   }
 
   Widget _buildTrendingSongsSection(BuildContext context, WidgetRef ref) {
-    final topSongsAsync = ref.watch(cachedTrendingSongsProvider);
     final selectedRegion = ref.watch(selectedRegionProvider);
+    final topSongsAsync = ref.watch(
+      regionalTrendingSongsProvider(RegionalChartParams(selectedRegion, limit: 30)),
+    );
     final regionFlag = RegionPickerSheet.regions[selectedRegion]?.split(' ').first ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -761,7 +769,7 @@ class DiscoveryScreen extends ConsumerWidget {
                     child: GestureDetector(
                       onTap: () => _handleTrackTap(context, ref, itunesTrack),
                       onLongPress: () {
-                        HapticFeedback.mediumImpact();
+                        AppHaptics.medium(context);
                         showModalBottomSheet(
                           context: context,
                           isScrollControlled: true,
@@ -912,7 +920,7 @@ class DiscoveryScreen extends ConsumerWidget {
                   return GestureDetector(
                     onTap: () => _handleTrackTap(context, ref, track),
                     onLongPress: () {
-                      HapticFeedback.mediumImpact();
+                      AppHaptics.medium(context);
                       showModalBottomSheet(
                         context: context,
                         isScrollControlled: true,

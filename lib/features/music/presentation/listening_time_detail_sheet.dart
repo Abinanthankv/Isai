@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,7 +35,7 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
   }
 
   Future<void> _selectCustomRange() async {
-    HapticFeedback.mediumImpact();
+    AppHaptics.medium(context);
     final picked = await showDateRangePicker(
       context: context,
       initialDateRange: _customRange,
@@ -402,7 +403,7 @@ class _ListeningTimeDetailSheetState extends ConsumerState<ListeningTimeDetailSh
     return Expanded(
       child: GestureDetector(
         onTap: () {
-          HapticFeedback.lightImpact();
+          AppHaptics.light(context);
           setState(() {
             _selectedPeriod = period;
           });

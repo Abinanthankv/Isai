@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -274,7 +275,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
 
     return GestureDetector(
       onLongPress: () {
-        HapticFeedback.mediumImpact();
+        AppHaptics.medium(context);
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -293,7 +294,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
         onSubtitleTap: (isEnriching || artist == 'TorBox')
             ? null
             : () {
-                HapticFeedback.lightImpact();
+                AppHaptics.light(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -313,7 +314,7 @@ class _SongTileState extends ConsumerState<_SongTile> {
               size: 26,
             ),
         onTap: () {
-          HapticFeedback.lightImpact();
+          AppHaptics.light(context);
           Navigator.push(
             context,
             MaterialPageRoute(

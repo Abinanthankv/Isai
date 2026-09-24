@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/music/presentation/music_providers.dart';
+import '../utils/app_haptics.dart';
 
 class GlassContainer extends StatelessWidget {
   final Widget child;
@@ -73,7 +74,7 @@ class GlassContainer extends StatelessWidget {
   }
 }
 
-class GlassCard extends StatelessWidget {
+class GlassCard extends ConsumerWidget {
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -100,7 +101,7 @@ class GlassCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
@@ -114,8 +115,18 @@ class GlassCard extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: onTap,
-              onLongPress: onLongPress,
+              onTap: onTap != null
+                  ? () {
+                      AppHaptics.trigger(ref, type: HapticFeedbackType.light);
+                      onTap!();
+                    }
+                  : null,
+              onLongPress: onLongPress != null
+                  ? () {
+                      AppHaptics.trigger(ref, type: HapticFeedbackType.medium);
+                      onLongPress!();
+                    }
+                  : null,
               borderRadius: BorderRadius.circular(borderRadius),
               child: Container(
                 padding: padding ?? const EdgeInsets.all(16),
@@ -151,7 +162,7 @@ class GlassCard extends StatelessWidget {
   }
 }
 
-class GlassButton extends StatelessWidget {
+class GlassButton extends ConsumerWidget {
   final Widget child;
   final VoidCallback? onPressed;
   final double borderRadius;
@@ -170,7 +181,7 @@ class GlassButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return ClipRRect(
@@ -180,7 +191,12 @@ class GlassButton extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onPressed,
+            onTap: onPressed != null
+                ? () {
+                    AppHaptics.trigger(ref, type: HapticFeedbackType.light);
+                    onPressed!();
+                  }
+                : null,
             borderRadius: BorderRadius.circular(borderRadius),
             child: Container(
               alignment: Alignment.center,
@@ -250,7 +266,12 @@ class GlassIconButton extends ConsumerWidget {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: onPressed,
+            onTap: onPressed != null
+                ? () {
+                    AppHaptics.trigger(ref, type: HapticFeedbackType.light);
+                    onPressed!();
+                  }
+                : null,
             borderRadius: BorderRadius.circular(size / 2),
             child: Container(
               width: size,

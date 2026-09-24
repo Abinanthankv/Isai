@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -146,7 +147,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                     _dragOffset += details.primaryDelta ?? 0;
                     // Provide a tactile tick as soon as they cross the threshold
                     if (_dragOffset.abs() > sensitivity && !_hasTriggeredHaptic) {
-                      HapticFeedback.mediumImpact();
+                      AppHaptics.medium(context);
                       _hasTriggeredHaptic = true;
                     } else if (_dragOffset.abs() <= sensitivity && _hasTriggeredHaptic) {
                       _hasTriggeredHaptic = false;
@@ -212,7 +213,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                           borderRadius: BorderRadius.circular(useLiquid ? 30 : 14),
                           onLongPress: () {
                             if (isAudiobook || isPodcast) return;
-                            HapticFeedback.mediumImpact();
+                            AppHaptics.medium(context);
                             showModalBottomSheet(
                               context: context,
                               backgroundColor: Colors.transparent,
@@ -350,7 +351,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                         colors: context.accentGradient,
                                       ),
                                       onPressed: () {
-                                        HapticFeedback.mediumImpact();
+                                        AppHaptics.medium(context);
                                         if (playing) {
                                           audioHandler.pause();
                                         } else {
@@ -365,7 +366,7 @@ class _MiniPlayerState extends ConsumerState<MiniPlayer> with SingleTickerProvid
                                           : Icons.skip_next_rounded,
                                       size: 32,
                                       onPressed: () {
-                                        HapticFeedback.mediumImpact();
+                                        AppHaptics.medium(context);
                                         if (isAudiobook || isPodcast) {
                                           audioHandler.stop();
                                         } else {

@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -160,7 +161,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
             icon: Icons.more_horiz,
             size: 36,
             onPressed: () {
-              HapticFeedback.mediumImpact();
+              AppHaptics.medium(context);
               _showAlbumActionSheet(context, tracks);
             },
           ),
@@ -281,7 +282,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                           padding: const EdgeInsets.only(left: 24, right: 8),
                           child: ElevatedButton(
                             onPressed: () {
-                              HapticFeedback.lightImpact();
+                              AppHaptics.light(context);
                               _handlePlayAlbum(tracks, context, shuffle: false);
                             },
                             style: ElevatedButton.styleFrom(
@@ -316,7 +317,7 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                           padding: const EdgeInsets.only(left: 8, right: 24),
                           child: ElevatedButton(
                             onPressed: () {
-                              HapticFeedback.lightImpact();
+                              AppHaptics.light(context);
                               _handlePlayAlbum(tracks, context, shuffle: true);
                             },
                             style: ElevatedButton.styleFrom(
@@ -915,11 +916,11 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
     
     return InkWell(
       onTap: _isCheckingSources ? null : () {
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         _handleTap(matchingFile);
       },
       onLongPress: () {
-        HapticFeedback.mediumImpact();
+        AppHaptics.medium(context);
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -994,7 +995,7 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
             else
               GestureDetector(
                 onTap: () {
-                  HapticFeedback.lightImpact();
+                  AppHaptics.light(context);
                   _handleTap(matchingFile);
                 },
                 child: Container(

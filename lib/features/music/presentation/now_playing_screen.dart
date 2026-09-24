@@ -20,6 +20,7 @@ import 'package:isai/main.dart';
 import 'visualizer_settings_sheet.dart';
 import 'spotify_canvas_provider.dart';
 import 'music_providers.dart';
+import '../../../core/utils/app_haptics.dart';
 import '../utils/filename_parser.dart';
 import 'player_visuals.dart';
 import 'share_card_widget.dart';
@@ -849,7 +850,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                                                               icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
                                                               iconSize: 28,
                                                               onPressed: () {
-                                                                HapticFeedback.mediumImpact();
+                                                                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
                                                                 audioHandler.skipToPrevious();
                                                               },
                                                             ),
@@ -860,7 +861,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                                                               ),
                                                               iconSize: 32,
                                                               onPressed: () {
-                                                                HapticFeedback.mediumImpact();
+                                                                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
                                                                 if (playing) audioHandler.pause();
                                                                 else audioHandler.play();
                                                               },
@@ -869,7 +870,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                                                               icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
                                                               iconSize: 28,
                                                               onPressed: () {
-                                                                HapticFeedback.mediumImpact();
+                                                                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
                                                                 audioHandler.skipToNext();
                                                               },
                                                             ),
@@ -2122,7 +2123,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                         final queueIndex = currentIndex + 1 + i;
                         return GestureDetector(
                           onTap: () {
-                            HapticFeedback.mediumImpact();
+                            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
                             audioHandler.skipToQueueItem(queueIndex);
                           },
                           child: _buildNextUpItem(nextItems[i], displayStyle),
@@ -2435,34 +2436,35 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     final rawQuality = (extras['quality']?.toString() ?? '').trim();
     final rawCodec = (extras['codec']?.toString() ?? '').trim();
     final localPath = extras['localPath']?.toString() ?? '';
-    final url = item.id;
     final originalId = extras['originalId']?.toString() ?? '';
     final linkType = extras['linkType']?.toString() ?? '';
-    final textToSearch = '$rawFormat $rawQuality $rawCodec $url $originalId $localPath $linkType'.toLowerCase();
+    
+    // Clean metadata text search excluding signed streaming URLs (preventing false 44100 / 96 / bit depth matches)
+    final cleanMetaText = '$rawFormat $rawQuality $rawCodec $originalId $localPath $linkType'.toLowerCase();
 
     // 1. Detect Codec
     String codec = 'AAC';
-    if (textToSearch.contains('flac') || linkType == 'flac') {
+    if (cleanMetaText.contains('flac') || linkType == 'flac') {
       codec = 'FLAC';
-    } else if (textToSearch.contains('mp3') || localPath.endsWith('.mp3') || url.endsWith('.mp3')) {
+    } else if (cleanMetaText.contains('mp3') || localPath.endsWith('.mp3')) {
       codec = 'MP3';
-    } else if (textToSearch.contains('wav') || localPath.endsWith('.wav') || url.endsWith('.wav')) {
+    } else if (cleanMetaText.contains('wav') || localPath.endsWith('.wav')) {
       codec = 'WAV';
-    } else if (textToSearch.contains('alac')) {
+    } else if (cleanMetaText.contains('alac')) {
       codec = 'ALAC';
-    } else if (textToSearch.contains('eac3') || textToSearch.contains('atmos')) {
+    } else if (cleanMetaText.contains('eac3') || cleanMetaText.contains('atmos')) {
       codec = 'E-AC3';
-    } else if (textToSearch.contains('opus') || localPath.endsWith('.opus') || url.endsWith('.opus')) {
+    } else if (cleanMetaText.contains('opus') || localPath.endsWith('.opus')) {
       codec = 'OPUS';
-    } else if (textToSearch.contains('m4a') || textToSearch.contains('aac') || textToSearch.contains('youtube') || textToSearch.contains('googlevideo')) {
+    } else {
       codec = 'AAC';
     }
 
     // 2. Detect Bit Depth
     String? bitDepthStr;
-    if (textToSearch.contains('24-bit') || textToSearch.contains('24bit') || textToSearch.contains('24 bit')) {
+    if (cleanMetaText.contains('24-bit') || cleanMetaText.contains('24bit') || cleanMetaText.contains('24 bit')) {
       bitDepthStr = '24-bit';
-    } else if (textToSearch.contains('16-bit') || textToSearch.contains('16bit') || textToSearch.contains('16 bit')) {
+    } else if (cleanMetaText.contains('16-bit') || cleanMetaText.contains('16bit') || cleanMetaText.contains('16 bit')) {
       bitDepthStr = '16-bit';
     } else if (extras['bitDepth'] != null) {
       bitDepthStr = '${extras['bitDepth']}-bit';
@@ -2476,13 +2478,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     if (rawSampleRate != null && rawSampleRate > 0) {
       final khz = rawSampleRate >= 1000 ? (rawSampleRate / 1000) : rawSampleRate;
       sampleRateStr = khz % 1 == 0 ? '${khz.toInt()} kHz' : '${khz.toStringAsFixed(1)} kHz';
-    } else if (textToSearch.contains('192khz') || textToSearch.contains('192.0 kHz') || textToSearch.contains('192 kHz')) {
+    } else if (cleanMetaText.contains('192khz') || cleanMetaText.contains('192.0 kHz') || cleanMetaText.contains('192 kHz')) {
       sampleRateStr = '192 kHz';
-    } else if (textToSearch.contains('96khz') || textToSearch.contains('96.0 kHz') || textToSearch.contains('96 kHz')) {
+    } else if (cleanMetaText.contains('96khz') || cleanMetaText.contains('96.0 kHz') || cleanMetaText.contains('96 kHz')) {
       sampleRateStr = '96 kHz';
-    } else if (textToSearch.contains('48khz') || textToSearch.contains('48.0 kHz') || textToSearch.contains('48 kHz')) {
+    } else if (cleanMetaText.contains('48khz') || cleanMetaText.contains('48.0 kHz') || cleanMetaText.contains('48 kHz')) {
       sampleRateStr = '48 kHz';
-    } else if (textToSearch.contains('44.1khz') || textToSearch.contains('44.1 kHz') || textToSearch.contains('44100')) {
+    } else if (cleanMetaText.contains('44.1khz') || cleanMetaText.contains('44.1 kHz')) {
       sampleRateStr = '44.1 kHz';
     } else if (codec == 'FLAC' || codec == 'ALAC' || codec == 'WAV') {
       sampleRateStr = '44.1 kHz';
@@ -2497,34 +2499,34 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           : (rawBitrate > 48000) ? (rawBitrate / 1000).round() : rawBitrate.toInt();
       bitrateStr = '$kbps kbps';
     } else {
-      final match = RegExp(r'(\d+)\s*kbps', caseSensitive: false).firstMatch(textToSearch);
+      final match = RegExp(r'(\d+)\s*kbps', caseSensitive: false).firstMatch(cleanMetaText);
       if (match != null) {
         bitrateStr = '${match.group(1)} kbps';
-      } else if (codec == 'FLAC') {
-        bitrateStr = null; // FLAC compression varies dynamically (typically 700-1000 kbps), avoid hardcoding uncompressed 1411 kbps
       } else if (codec == 'MP3') {
         bitrateStr = '320 kbps';
       } else if (codec == 'AAC') {
-        bitrateStr = textToSearch.contains('128') ? '128 kbps' : '256 kbps';
+        bitrateStr = cleanMetaText.contains('128') ? '128 kbps' : '256 kbps';
       }
     }
 
     // 5. Quality Tier Flags
-    final isHiRes = (codec == 'FLAC' || codec == 'ALAC' || codec == 'WAV') &&
-        (textToSearch.contains('hi-res') || textToSearch.contains('hires') || bitDepthStr == '24-bit' || (sampleRateStr != null && (sampleRateStr.contains('96') || sampleRateStr.contains('192'))));
-    final isLossless = (codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC') || textToSearch.contains('lossless');
+    final isLossless = (codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC') || cleanMetaText.contains('lossless');
+    final isHiRes = isLossless &&
+        (cleanMetaText.contains('hi-res') || cleanMetaText.contains('hires') || bitDepthStr == '24-bit' || (sampleRateStr != null && (sampleRateStr.contains('96') || sampleRateStr.contains('192'))));
 
-    // 6. Build Badge Label
-    final badgeParts = <String>[codec];
-    if (bitDepthStr != null && sampleRateStr != null) {
-      badgeParts.add('$bitDepthStr / $sampleRateStr');
-    } else if (sampleRateStr != null) {
-      badgeParts.add(sampleRateStr);
-    } else if (bitDepthStr != null) {
-      badgeParts.add(bitDepthStr);
-    }
-    if (bitrateStr != null && !badgeParts.any((p) => p.contains('kbps'))) {
-      badgeParts.add(bitrateStr);
+    // 6. Build Streamlined Badge Label
+    String badgeLabel;
+    if (codec == 'E-AC3' || cleanMetaText.contains('atmos')) {
+      badgeLabel = 'DOLBY ATMOS';
+    } else if (isLossless) {
+      final specs = (bitDepthStr != null && sampleRateStr != null)
+          ? '$bitDepthStr / $sampleRateStr'
+          : (sampleRateStr ?? bitDepthStr ?? '16-bit / 44.1 kHz');
+      badgeLabel = isHiRes ? 'HI-RES $codec • $specs' : '$codec • $specs';
+    } else {
+      // Lossy formats (AAC, MP3, OPUS): Purely format + bitrate (preventing noisy sample rates)
+      final kbps = bitrateStr ?? '256 kbps';
+      badgeLabel = '$codec • $kbps';
     }
 
     return {
@@ -2534,7 +2536,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       'bitrate': bitrateStr,
       'isHiRes': isHiRes,
       'isLossless': isLossless,
-      'badgeLabel': badgeParts.join(' • '),
+      'badgeLabel': badgeLabel,
     };
   }
 
@@ -2738,7 +2740,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                       }
                     },
                     onChangeEnd: (v) {
-                      HapticFeedback.lightImpact();
+                      AppHaptics.trigger(context, type: HapticFeedbackType.light);
                     },
                   ),
                 ),
@@ -2902,15 +2904,15 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           playing: playing,
           colorScheme: colorScheme,
           onPrevious: () {
-            HapticFeedback.mediumImpact();
+            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
             audioHandler.skipToPrevious();
           },
           onNext: () {
-            HapticFeedback.mediumImpact();
+            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
             audioHandler.skipToNext();
           },
           onPlayPause: () {
-            HapticFeedback.mediumImpact();
+            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
             if (playing) {
               audioHandler.pause();
             } else {
@@ -3102,7 +3104,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     }
 
     // Trigger haptic feedback
-    HapticFeedback.mediumImpact();
+    AppHaptics.trigger(context, type: HapticFeedbackType.medium);
 
     final notifier = ref.read(libraryProvider.notifier);
     notifier.clearDownloadError();
@@ -3519,7 +3521,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   _dragOffsetStartY = details.globalPosition.dy;
                   _dragOffsetStart = _lyricsOffset;
                 });
-                HapticFeedback.mediumImpact();
+                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
               },
               onLongPressMoveUpdate: (details) {
                 final delta = details.globalPosition.dy - _dragOffsetStartY;
@@ -3530,7 +3532,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
               },
               onLongPressEnd: (_) {
                 setState(() => _isDraggingOffset = false);
-                HapticFeedback.lightImpact();
+                AppHaptics.trigger(context, type: HapticFeedbackType.light);
               },
               child: Stack(
               children: [
@@ -3678,7 +3680,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                       children: [
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
+                            AppHaptics.trigger(context, type: HapticFeedbackType.light);
                             setState(() {
                               _lyricsOffset -= const Duration(milliseconds: 500);
                             });
@@ -3693,7 +3695,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                         const SizedBox(width: 12),
                         GestureDetector(
                           onTap: () {
-                            HapticFeedback.lightImpact();
+                            AppHaptics.trigger(context, type: HapticFeedbackType.light);
                             setState(() {
                               _lyricsOffset += const Duration(milliseconds: 500);
                             });
@@ -3706,7 +3708,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           const SizedBox(width: 10),
                           GestureDetector(
                             onTap: () {
-                              HapticFeedback.mediumImpact();
+                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
                               setState(() {
                                 _lyricsOffset = Duration.zero;
                               });

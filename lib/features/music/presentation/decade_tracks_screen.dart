@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,7 @@ class DecadeTracksScreen extends ConsumerWidget {
 
                 return InkWell(
                   onTap: () {
-                    HapticFeedback.lightImpact();
+                    AppHaptics.light(context);
                     final library = ref.read(libraryProvider);
                     TorBoxFile? file;
                     if (fileId != null && torrentId != null) {

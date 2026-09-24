@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -789,7 +790,7 @@ class ForYouScreen extends ConsumerWidget {
                     borderRadius: 12,
                     onTap: () => _handleTrackTap(context, ref, track),
                     onLongPress: () {
-                      HapticFeedback.mediumImpact();
+                      AppHaptics.medium(context);
                       showModalBottomSheet(
                         context: context,
                         isScrollControlled: true,
@@ -911,7 +912,7 @@ class ForYouScreen extends ConsumerWidget {
       child: GestureDetector(
         onTap: () => _handleTrackTap(context, ref, track),
         onLongPress: () {
-          HapticFeedback.mediumImpact();
+          AppHaptics.medium(context);
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
@@ -1181,7 +1182,7 @@ class ForYouScreen extends ConsumerWidget {
   }
 
   void _handleTrackTap(BuildContext context, WidgetRef ref, ItunesTrack track) async {
-    HapticFeedback.lightImpact();
+    AppHaptics.light(context);
     final matchingFile = ref.read(libraryProvider).findMatchingTrack(track.trackName, track.artistName);
 
     if (matchingFile != null) {

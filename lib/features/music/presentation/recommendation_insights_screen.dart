@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -496,7 +497,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 14),
             child: InkWell(
               onTap: () async {
-                HapticFeedback.mediumImpact();
+                AppHaptics.medium(context);
                 final deezer = getIt<DeezerService>();
                 
                 showModalBottomSheet(
@@ -640,7 +641,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
 
             return GestureDetector(
               onTap: () async {
-                HapticFeedback.mediumImpact();
+                AppHaptics.medium(context);
                 final deezer = getIt<DeezerService>();
                 
                 showModalBottomSheet(
@@ -751,7 +752,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
         final gradient = gradients[p.slot] ?? AppleMusicTheme.pinkGradient;
         return GlassCard(
           onTap: () {
-            HapticFeedback.mediumImpact();
+            AppHaptics.medium(context);
             final libraryState = ref.read(libraryProvider);
             final history = ref.read(allPlaybackProvider).value ?? [];
             
@@ -890,7 +891,7 @@ class RecommendationInsightsScreen extends ConsumerWidget {
 
           return InkWell(
             onTap: () {
-              HapticFeedback.lightImpact();
+              AppHaptics.light(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1149,7 +1150,7 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      HapticFeedback.mediumImpact();
+                      AppHaptics.medium(context);
                       _handleTrackTap(context, ref, widget.tracks.first, widget.tracks);
                     },
                     icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
@@ -1194,7 +1195,7 @@ class _RecommendationMixSheetState extends ConsumerState<_RecommendationMixSheet
                           size: 24,
                         ),
                         onTap: () {
-                          HapticFeedback.lightImpact();
+                          AppHaptics.light(context);
                           _handleTrackTap(context, ref, track, widget.tracks);
                         },
                       );

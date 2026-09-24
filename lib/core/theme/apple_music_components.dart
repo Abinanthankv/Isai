@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/app_haptics.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +43,7 @@ class _AppleMusicCardState extends State<AppleMusicCard> {
       onTapDown: widget.onTap != null ? (_) => setState(() => _isPressed = true) : null,
       onTapUp: widget.onTap != null ? (_) {
         setState(() => _isPressed = false);
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         widget.onTap!();
       } : null,
       onTapCancel: widget.onTap != null ? () => setState(() => _isPressed = false) : null,
@@ -169,7 +170,7 @@ class BrowseCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
+        AppHaptics.light(context);
         onTap();
       },
       child: Container(
@@ -223,7 +224,7 @@ class BrowseCard extends StatelessWidget {
   }
 }
 
-class AppleMusicListTile extends StatelessWidget {
+class AppleMusicListTile extends ConsumerWidget {
   final String title;
   final String? subtitle;
   final String? imageUrl;
@@ -248,19 +249,19 @@ class AppleMusicListTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return InkWell(
       onTap: onTap != null
           ? () {
-              HapticFeedback.lightImpact();
+              AppHaptics.trigger(ref, type: HapticFeedbackType.light);
               onTap!();
             }
           : null,
       onLongPress: onLongPress != null
           ? () {
-              HapticFeedback.mediumImpact();
+              AppHaptics.trigger(ref, type: HapticFeedbackType.medium);
               onLongPress!();
             }
           : null,
@@ -311,7 +312,7 @@ class AppleMusicListTile extends StatelessWidget {
                     GestureDetector(
                       onTap: onSubtitleTap != null
                           ? () {
-                              HapticFeedback.lightImpact();
+                              AppHaptics.light(context);
                               onSubtitleTap!();
                             }
                           : null,
@@ -508,7 +509,7 @@ class AppleMusicChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap != null
           ? () {
-              HapticFeedback.lightImpact();
+              AppHaptics.light(context);
               onTap!();
             }
           : null,
@@ -678,7 +679,7 @@ class AppleMusicButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap != null
           ? () {
-              HapticFeedback.lightImpact();
+              AppHaptics.light(context);
               onTap!();
             }
           : null,

@@ -1,3 +1,4 @@
+import 'package:isai/core/utils/app_haptics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -354,7 +355,7 @@ class _MoodSongTileState extends ConsumerState<_MoodSongTile> {
         );
       }
     } else {
-      HapticFeedback.lightImpact();
+      AppHaptics.light(context);
       setState(() => _isCheckingSources = true);
       try {
         final flacResult = await ref.read(flacSearchProvider.notifier).resolveDirectFlac(
