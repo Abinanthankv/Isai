@@ -1,10 +1,9 @@
 import 'dart:io' as io;
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:injectable/injectable.dart';
-import 'package:sqlite3/open.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 part 'database.g.dart';
@@ -233,73 +232,109 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onUpgrade: (m, from, to) async {
-          if (from < 20) {
-            await m.addColumn(podcastEpisodes, podcastEpisodes.isPaused);
-          }
-          if (from < 19) {
-            await m.createTable(podcastSubscriptions);
-            await m.createTable(podcastEpisodes);
-            await m.createTable(podcastProgress);
-          }
-          if (from < 18) {
-            await m.addColumn(externalTrackMetadata, externalTrackMetadata.isrc);
-            await m.addColumn(trackMetadata, trackMetadata.isrc);
-          }
-          if (from < 17) {
-            await m.addColumn(playbackHistory, playbackHistory.releaseYear);
-          }
-          if (from < 16) {
-            await m.createTable(audiobookBookmarks);
-          }
-          if (from < 14) {
-            await m.createTable(audiobookProgress);
-            await m.createTable(audiobookMetadataCache);
-          }
-          if (from < 13) {
-            await m.database.customStatement(
-              'ALTER TABLE playlist_tracks ADD COLUMN torrent_id INTEGER'
-            );
-            await m.database.customStatement(
-              'ALTER TABLE playlist_tracks ADD COLUMN file_id INTEGER'
-            );
-          }
-          if (from < 12) {
-            await m.database.customStatement(
-              'ALTER TABLE playlist_tracks ADD COLUMN genre TEXT'
-            );
-          }
-          if (from < 11) {
-            await m.createTable(followedArtists);
-          }
-          if (from < 10) {
-            await m.createTable(externalTrackMetadata);
-          }
-          if (from < 9) {
-            await m.addColumn(playbackHistory, playbackHistory.artworkUrlLow);
-            await m.addColumn(playbackHistory, playbackHistory.artworkUrlHigh);
-          }
-          if (from < 8) {
-            await m.createTable(playlists);
-            await m.createTable(playlistTracks);
-          }
-          if (from < 7) {
-            await m.createTable(playbackHistory);
-          }
-          if (from < 6) {
-            await m.addColumn(trackMetadata, trackMetadata.isLiked);
-          }
-          if (from < 5) {
-            await m.addColumn(trackMetadata, trackMetadata.trackTimeMillis);
+        onUpgrade: (m, from, to) async {
+          debugPrint('[AppDatabase] Migrating database from version $from to $to');
+          if (from < 3) {
+            try {
+              await m.drop(torrents);
+              await m.drop(files);
+              await m.drop(trackMetadata);
+            } catch (_) {}
+            await m.createAll();
+            return;
           }
           if (from < 4) {
-            await m.createTable(syncMeta);
+            try {
+              await m.createTable(syncMeta);
+            } catch (_) {}
           }
-          if (from < 3) {
-            await m.drop(torrents);
-            await m.drop(files);
-            await m.drop(trackMetadata);
-            await m.createAll();
+          if (from < 5) {
+            try {
+              await m.addColumn(trackMetadata, trackMetadata.trackTimeMillis);
+            } catch (_) {}
+          }
+          if (from < 6) {
+            try {
+              await m.addColumn(trackMetadata, trackMetadata.isLiked);
+            } catch (_) {}
+          }
+          if (from < 7) {
+            try {
+              await m.createTable(playbackHistory);
+            } catch (_) {}
+          }
+          if (from < 8) {
+            try {
+              await m.createTable(playlists);
+              await m.createTable(playlistTracks);
+            } catch (_) {}
+          }
+          if (from < 9) {
+            try {
+              await m.addColumn(playbackHistory, playbackHistory.artworkUrlLow);
+              await m.addColumn(playbackHistory, playbackHistory.artworkUrlHigh);
+            } catch (_) {}
+          }
+          if (from < 10) {
+            try {
+              await m.createTable(externalTrackMetadata);
+            } catch (_) {}
+          }
+          if (from < 11) {
+            try {
+              await m.createTable(followedArtists);
+            } catch (_) {}
+          }
+          if (from < 12) {
+            try {
+              await m.database.customStatement('ALTER TABLE playlist_tracks ADD COLUMN genre TEXT');
+            } catch (_) {}
+          }
+          if (from < 13) {
+            try {
+              await m.database.customStatement('ALTER TABLE playlist_tracks ADD COLUMN torrent_id INTEGER');
+              await m.database.customStatement('ALTER TABLE playlist_tracks ADD COLUMN file_id INTEGER');
+            } catch (_) {}
+          }
+          if (from < 14) {
+            try {
+              await m.createTable(audiobookProgress);
+              await m.createTable(audiobookMetadataCache);
+            } catch (_) {}
+          }
+          if (from < 16) {
+            try {
+              await m.createTable(audiobookBookmarks);
+            } catch (_) {}
+          }
+          if (from < 17) {
+            try {
+              await m.addColumn(playbackHistory, playbackHistory.releaseYear);
+            } catch (_) {}
+          }
+          if (from < 18) {
+            try {
+              await m.addColumn(externalTrackMetadata, externalTrackMetadata.isrc);
+              await m.addColumn(trackMetadata, trackMetadata.isrc);
+            } catch (_) {}
+          }
+          if (from < 19) {
+            try {
+              await m.createTable(podcastSubscriptions);
+            } catch (_) {}
+            try {
+              await m.createTable(podcastEpisodes);
+            } catch (_) {}
+            try {
+              await m.createTable(podcastProgress);
+            } catch (_) {}
+          }
+          if (from < 20) {
+            if (from >= 19) {
+              try {
+                await m.addColumn(podcastEpisodes, podcastEpisodes.isPaused);
+              } catch (_) {}
+            }
           }
         },
       );

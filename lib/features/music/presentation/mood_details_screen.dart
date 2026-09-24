@@ -1,6 +1,5 @@
 import 'package:isai/core/utils/app_haptics.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'music_providers.dart';
@@ -8,10 +7,7 @@ import 'source_picker_sheet.dart';
 import 'now_playing_screen.dart';
 import 'playlists_screen.dart';
 import '../data/music_models.dart';
-import '../data/itunes_metadata_service.dart';
-import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/glassmorphism.dart';
-import '../../../core/theme/apple_music_components.dart';
 import 'package:isai/main.dart';
 
 class MoodDetailsScreen extends ConsumerWidget {
@@ -146,32 +142,65 @@ class MoodDetailsScreen extends ConsumerWidget {
                           },
                         ),
                       ),
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(20, 24, 20, 0),
-                        child: Text(
-                          'Top Songs',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold,
-                            letterSpacing: -0.5,),
-                        ),
-                      ),
                     ],
                   ),
                 );
               },
-              loading: () => SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 150,
-                  child: Center(
-                    child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary),
-                  ),
-                ),
-              ),
+              loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
               error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
             ),
 
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Top Songs',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  moodSongs.maybeWhen(
+                    data: (songs) => songs.isEmpty
+                        ? const SizedBox.shrink()
+                        : Row(
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () => _playAllSongs(context, ref, songs),
+                                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                                label: const Text('Play All'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton.filledTonal(
+                                onPressed: () => _playAllSongs(context, ref, songs, shuffle: true),
+                                icon: const Icon(Icons.shuffle_rounded, size: 18),
+                                tooltip: 'Shuffle All',
+                                style: IconButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ],
+                          ),
+                    orElse: () => const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           moodSongs.when(
             data: (songs) => SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) => RepaintBoundary(
@@ -267,6 +296,77 @@ class MoodDetailsScreen extends ConsumerWidget {
       case 'Focus': return Icons.psychology_rounded;
       case 'Energy': return Icons.bolt_rounded;
       default: return Icons.music_note_rounded;
+    }
+  }
+
+  Future<void> _playAllSongs(BuildContext context, WidgetRef ref, List<ItunesTrack> songs, {bool shuffle = false}) async {
+    if (songs.isEmpty) return;
+    AppHaptics.light(context);
+
+    final trackList = List<ItunesTrack>.from(songs);
+    if (shuffle) {
+      trackList.shuffle();
+    }
+
+    final library = ref.read(libraryProvider);
+    final customQueue = trackList.map<TorBoxFile>((t) {
+      final match = library.findMatchingTrack(t.trackName, t.artistName);
+      if (match != null) return match;
+      return TorBoxFile(
+        id: -t.trackId,
+        torrentId: -1,
+        name: t.trackName,
+        size: 0,
+        localPath: null,
+      );
+    }).toList();
+
+    final firstTrack = trackList.first;
+    final matchFile = customQueue.first;
+
+    final url = matchFile.localPath != null
+        ? Uri.file(matchFile.localPath!).toString()
+        : 'https://lazy.torbox.internal/${matchFile.torrentId}/${matchFile.id}';
+
+    await audioHandler.customAction('play', {
+      'url': url,
+      'title': firstTrack.trackName,
+      'artist': firstTrack.artistName,
+      'artworkUrl': firstTrack.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
+      'forceReplace': true,
+      'queue': List.generate(customQueue.length, (i) {
+        final e = customQueue[i];
+        final qTrack = trackList[i];
+        String fUrl = 'https://lazy.torbox.internal/${e.torrentId}/${e.id}';
+        if (e.torrentId == -1) {
+          fUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(qTrack.trackName)}&artist=${Uri.encodeComponent(qTrack.artistName)}';
+        }
+        return {
+          'url': fUrl,
+          'title': qTrack.trackName,
+          'artist': qTrack.artistName,
+          'artworkUrl': qTrack.artworkUrl,
+          'extras': {
+            'torrentId': e.torrentId,
+            'fileId': e.id,
+            'size': e.size,
+            'localPath': e.localPath,
+          },
+        };
+      }),
+      'index': 0,
+    });
+
+    if (context.mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NowPlayingScreen(
+            file: matchFile,
+            customQueue: customQueue,
+          ),
+        ),
+      );
     }
   }
 }

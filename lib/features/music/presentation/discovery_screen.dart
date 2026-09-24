@@ -233,65 +233,76 @@ class DiscoveryScreen extends ConsumerWidget {
       data: (genres) {
         if (genres.isEmpty) return const SizedBox.shrink();
         final displayGenres = genres.where((g) => g.id != 0).take(10).toList();
-        final pillGradients = [
-          [const Color(0xFFFF6B6B), const Color(0xFFEE5A24)],
-          [const Color(0xFF7C4DFF), const Color(0xFF536DFE)],
-          [const Color(0xFF00C9FF), const Color(0xFF92FE9D)],
-          [const Color(0xFFF7971E), const Color(0xFFFFD200)],
-          [const Color(0xFFFA709A), const Color(0xFFFEE140)],
-          [const Color(0xFF667EEA), const Color(0xFF764BA2)],
-          [const Color(0xFF11998e), const Color(0xFF38ef7d)],
-          [const Color(0xFFFC5C7D), const Color(0xFF6A82FB)],
-          [const Color(0xFFf093fb), const Color(0xFFf5576c)],
-          [const Color(0xFF4facfe), const Color(0xFF00f2fe)],
+        final moodGradients = [
+          [const Color(0xFF2C2D35), const Color(0xFF15161A)],
+          [const Color(0xFF1F2430), const Color(0xFF0F1218)],
+          [const Color(0xFF2B2633), const Color(0xFF14111A)],
+          [const Color(0xFF1E282A), const Color(0xFF0E1315)],
+          [const Color(0xFF2E2224), const Color(0xFF171011)],
         ];
+
         return SizedBox(
-          height: 52,
+          height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             itemCount: displayGenres.length,
             separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final genre = displayGenres[index];
-              final gradient = pillGradients[index % pillGradients.length];
-              return GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MoodDetailsScreen(
-                        mood: genre.name,
-                        gradientColors: gradient,
-                        contextQuery: genre.name,
-                        genreId: genre.id,
+              final detailGradient = moodGradients[index % moodGradients.length];
+
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    AppHaptics.light(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MoodDetailsScreen(
+                          mood: genre.name,
+                          gradientColors: detailGradient,
+                          contextQuery: genre.name,
+                          genreId: genre.id,
+                        ),
                       ),
-                    ),
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: gradient,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: gradient[0].withOpacity(0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 3),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF1C1C1E)
+                          : const Color(0xFFF2F2F7),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.14)
+                            : Colors.black.withValues(alpha: 0.10),
+                        width: 1,
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    genre.name,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.2,
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark
+                              ? Colors.black.withValues(alpha: 0.35)
+                              : Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        genre.name,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -1433,8 +1433,16 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
             mediaItem.add(newItem);
             playbackState.add(_transformEvent(_player.playbackEvent));
             if (_isMediaKit) {
-              final singleSource = await _createAudioSource(newItem);
-              await _player.setAudioSource(singleSource);
+              try {
+                final singleSource = await _createAudioSource(newItem);
+                await _player.setAudioSource(singleSource);
+              } catch (e) {
+                if (e.toString().contains('interrupted')) {
+                  print('[AudioHandler] _resolveTrack local file setAudioSource interrupted gracefully: $e');
+                } else {
+                  rethrow;
+                }
+              }
             }
           }
           print('[AudioHandler] Successfully resolved track $index using local file');
@@ -1517,15 +1525,19 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         // IMPORTANT: If this is the active track, update mediaItem so UI changes
         if (isActive) {
           if (_isMediaKit) {
-            // Set source first so playbackEvent queries are valid
-            final singleSource = await _createAudioSource(newItem);
-            await _player.setAudioSource(singleSource);
+            try {
+              final singleSource = await _createAudioSource(newItem);
+              await _player.setAudioSource(singleSource);
+            } catch (e) {
+              if (e.toString().contains('interrupted')) {
+                print('[AudioHandler] _resolveTrack setAudioSource interrupted gracefully: $e');
+              } else {
+                rethrow;
+              }
+            }
           }
           mediaItem.add(newItem);
           playbackState.add(_transformEvent(_player.playbackEvent));
-          if (_isMediaKit) {
-            // already set above
-          }
         }
 
         print('[AudioHandler] Successfully resolved track $index');
@@ -2159,6 +2171,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           }
 
           await updateQueue(rotatedItems);
+          if (_isMediaKit) {
+            // updateQueue already invokes _playLinuxTrack(0) which resolves & plays on Linux
+            return;
+          }
           mediaItem.add(rotatedItems.first);
           await _player.seek(Duration.zero, index: 0);
           _consecutiveFailures = 0; // Reset on new play request
@@ -2947,14 +2963,28 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         try { await _player.pause(); } catch (_) {}
         return;
       }
-      try { await _startLocalPlayback(); } catch (e) {
-        print('[AudioHandler] _playLinuxTrack play failed: $e');
+      try { 
+        await _startLocalPlayback(); 
+      } catch (e) {
+        if (e.toString().contains('interrupted')) {
+          print('[AudioHandler] _playLinuxTrack play interrupted gracefully');
+        } else {
+          print('[AudioHandler] _playLinuxTrack play failed: $e');
+        }
       }
     } else {
       // Create native single AudioSource
-      final singleSource = await _createAudioSource(tagItem);
-      await _player.setAudioSource(singleSource);
-      await _player.play();
+      try {
+        final singleSource = await _createAudioSource(tagItem);
+        await _player.setAudioSource(singleSource);
+        await _player.play();
+      } catch (e) {
+        if (e.toString().contains('interrupted')) {
+          print('[AudioHandler] _playLinuxTrack setAudioSource interrupted gracefully: $e');
+        } else {
+          print('[AudioHandler] _playLinuxTrack setAudioSource/play error: $e');
+        }
+      }
     }
     
     // Trigger pre-fetch, enrichments, autoplay etc.
