@@ -826,61 +826,63 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
         
         final previewTracks = tracks.take(10).toList();
         final hasMore = tracks.length > 10;
-        // Resolve all matching files once here — avoids per-tile library lookups during scroll
         final library = ref.read(libraryProvider);
-        final matchedFiles = [
-          for (final t in previewTracks)
-            library.findMatchingTrack(t.trackName, t.artistName),
-        ];
 
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (index < previewTracks.length) {
-                return _ArtistSongTile(
-                  key: ValueKey(previewTracks[index].trackId),
-                  track: previewTracks[index],
-                  index: index,
-                  matchingFile: matchedFiles[index],
-                );
-              }
-
-              return Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 8),
-                child: Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      AppHaptics.light(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => AllPopularSongsScreen(
-                            artistName: widget.artistName,
-                            songs: tracks,
+        return SliverMainAxisGroup(
+          slivers: [
+            SliverFixedExtentList(
+              itemExtent: 64.0,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final track = previewTracks[index];
+                  final matchingFile = library.findMatchingTrack(track.trackName, track.artistName);
+                  return _ArtistSongTile(
+                    key: ValueKey(track.trackId),
+                    track: track,
+                    index: index,
+                    matchingFile: matchingFile,
+                  );
+                },
+                childCount: previewTracks.length,
+              ),
+            ),
+            if (hasMore)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Center(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        AppHaptics.light(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AllPopularSongsScreen(
+                              artistName: widget.artistName,
+                              songs: tracks,
+                            ),
                           ),
+                        );
+                      },
+                      icon: Icon(Icons.arrow_forward_rounded, size: 16, color: isDark ? Colors.white : Colors.black),
+                      label: Text(
+                        'SHOW ALL (${tracks.length})',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black,
+                          letterSpacing: 0.5,
                         ),
-                      );
-                    },
-                    icon: Icon(Icons.arrow_forward_rounded, size: 16, color: isDark ? Colors.white : Colors.black),
-                    label: Text(
-                      'SHOW ALL (${tracks.length})',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black,
-                        letterSpacing: 0.5,
                       ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+                      ),
                     ),
                   ),
                 ),
-              );
-            },
-            childCount: previewTracks.length + (hasMore ? 1 : 0),
-          ),
+              ),
+          ],
         );
       },
       loading: () => const SliverToBoxAdapter(
