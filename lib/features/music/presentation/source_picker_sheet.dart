@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:isai/core/utils/string_utils.dart';
-import '../../../core/theme/apple_music_theme.dart';
 import '../../../core/theme/apple_music_components.dart';
 import '../data/music_models.dart';
 import '../data/itunes_metadata_service.dart';
@@ -72,9 +71,9 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.75,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1E), // Always dark
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         children: [
@@ -99,13 +98,17 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                     children: [
                       Text(
                         'Choose Source',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white,
-                          fontWeight: FontWeight.bold,),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: isDark ? Colors.white : Colors.black87,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${StringUtils.unescapeHtml(widget.track.trackName)} · ${StringUtils.unescapeHtml(widget.track.artistName)}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white54,),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: isDark ? Colors.white54 : Colors.black54,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -114,7 +117,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                 ),
                 if (isSearching)
                   Padding(
-                    padding: EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(12),
                     child: SizedBox(
                       width: 20,
                       height: 20,
@@ -126,8 +129,8 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                   )
                 else
                   IconButton(
-                    icon: const Icon(Icons.refresh,
-                        color: Colors.white54,
+                    icon: Icon(Icons.refresh,
+                        color: isDark ? Colors.white54 : Colors.black54,
                         size: 20),
                     onPressed: () => _fetchSources(force: true),
                   ),
@@ -147,7 +150,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                     label: 'All',
                     isSelected: flacState.selectedSource == 'All' ||
                         flacState.selectedSource == null,
-                    isDarkOverride: true,
+                    isDarkOverride: isDark,
                     onTap: () =>
                         ref.read(flacSearchProvider.notifier).setSource('All'),
                   ),
@@ -156,7 +159,7 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                         child: AppleMusicChip(
                           label: source,
                           isSelected: flacState.selectedSource == source,
-                          isDarkOverride: true,
+                          isDarkOverride: isDark,
                           onTap: () => ref
                               .read(flacSearchProvider.notifier)
                               .setSource(source),
@@ -217,9 +220,11 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.primary,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
           fontWeight: FontWeight.bold,
-          letterSpacing: 1.2,),
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }
@@ -229,6 +234,16 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
     final meta =
         ref.read(libraryProvider).metadata['${file.torrentId}-${file.id}'];
     final parsed = _parseFilename(file.displayName);
+
+    final metaTrackName = meta?.trackName;
+    final displayTitle = (metaTrackName != null && metaTrackName.trim().isNotEmpty)
+        ? metaTrackName
+        : (parsed.title.trim().isNotEmpty ? parsed.title : file.displayName);
+
+    final metaArtistName = meta?.artistName;
+    final displayArtist = (metaArtistName != null && metaArtistName.trim().isNotEmpty)
+        ? metaArtistName
+        : (parsed.artist.trim().isNotEmpty && parsed.artist != 'Unknown' ? parsed.artist : 'Library');
 
     return ListTile(
       leading: Container(
@@ -244,16 +259,18 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
             color: Theme.of(context).colorScheme.primary, size: 22),
       ),
       title: Text(
-        StringUtils.unescapeHtml(meta?.trackName ?? parsed.title),
-        style: const TextStyle(
-            color: Colors.white,
+        StringUtils.unescapeHtml(displayTitle),
+        style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
             fontWeight: FontWeight.w500),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        '${_limitArtists(meta?.artistName ?? parsed.artist)} · Library · ${file.formattedSize}',
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
+        '${_limitArtists(displayArtist)} · Library · ${file.formattedSize}',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: isDark ? Colors.white54 : Colors.black54,
+        ),
       ),
       trailing: Icon(Icons.play_circle_filled_rounded,
           color: Theme.of(context).colorScheme.primary.withOpacity(0.8), size: 28),
@@ -280,8 +297,8 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
       ),
       title: Text(
         StringUtils.unescapeHtml(result.title),
-        style: const TextStyle(
-            color: Colors.white,
+        style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
             fontWeight: FontWeight.w500),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -294,7 +311,9 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
             const SizedBox(height: 2),
             Text(
               StringUtils.unescapeHtml(_limitArtists(result.artist)),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white54,),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -350,8 +369,10 @@ class _SourcePickerSheetState extends ConsumerState<SourcePickerSheet> {
                 children: [
                   Text(
                     'Add via Torrent (Apibay)',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white,
-                      fontWeight: FontWeight.w500,),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   Text(
                     'Search and download to your TorBox library',

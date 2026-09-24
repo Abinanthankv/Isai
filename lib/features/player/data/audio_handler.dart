@@ -23,6 +23,7 @@ import 'dart:async';
 import 'package:drift/drift.dart';
 import '../../music/data/lastfm_service.dart';
 import '../../settings/data/lastfm_repository.dart';
+import '../../music/presentation/music_providers.dart';
 import 'audio_metadata_service.dart';
 import 'audio_fx_service.dart';
 import 'cast_controller.dart';
@@ -1031,6 +1032,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   bool _isExtendingQueue = false;
 
   /// Automatically extend the queue if the user reaches the end.
+  /// Automatically extend the queue using Discover Pills / Mood recommendations when user reaches end of queue.
   Future<void> _checkAndExtendQueue(int currentIndex) async {
     if (_isExtendingQueue) return;
     final currentQueue = queue.value;
@@ -1040,11 +1042,6 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (currentIndex != currentQueue.length - 1) return;
     
     _isExtendingQueue = true;
-    
-    if (currentIndex != currentQueue.length - 1) return;
-    
-    _isExtendingQueue = true;
-
 
     final currentItem = currentQueue[currentIndex];
     
@@ -1054,16 +1051,107 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       _isExtendingQueue = false;
       return;
     }
-    
+
+    try {
+      final repo = getIt<MusicRepository>();
+      final existingTitles = currentQueue.map((i) => i.title.toLowerCase().trim()).toSet();
+
+      List<ItunesTrack> discoverCandidates = [];
+      String chosenCategory = 'Discover';
+
+      // 1. Check current track's genre or mood
+      final currentGenre = currentItem.extras?['genre'] as String? ?? currentItem.extras?['mood'] as String?;
+      if (currentGenre != null && currentGenre.isNotEmpty) {
+        final genreId = getItunesGenreId(currentGenre);
+        chosenCategory = currentGenre;
+        if (genreId != null) {
+          discoverCandidates = await repo.getTopSongs(genreId: genreId, limit: 30);
+        } else {
+          discoverCandidates = await repo.searchItunes('$currentGenre Hits');
+        }
+      }
+
+      // 2. If no genre candidates, try current track's artist top tracks
+      if (discoverCandidates.isEmpty && currentItem.artist != null && currentItem.artist!.isNotEmpty && currentItem.artist != 'Unknown Artist' && currentItem.artist != 'TorBox') {
+        chosenCategory = '${currentItem.artist} Radio';
+        discoverCandidates = await repo.searchItunes('${currentItem.artist} Top Tracks');
+      }
+
+      // 3. If still empty, pick a random Discover Pill genre
+      if (discoverCandidates.isEmpty) {
+        final discoverPills = ['Pop', 'Rap/Hip Hop', 'Rock', 'Dance', 'R&B', 'Alternative', 'Electro', 'Folk', 'Reggae', 'Jazz'];
+        discoverPills.shuffle();
+        chosenCategory = discoverPills.first;
+        final genreId = getItunesGenreId(chosenCategory);
+        if (genreId != null) {
+          discoverCandidates = await repo.getTopSongs(genreId: genreId, limit: 30);
+        } else {
+          discoverCandidates = await repo.searchItunes('$chosenCategory Hits');
+        }
+      }
+
+      // Filter out tracks already in current queue
+      final unqueued = discoverCandidates.where((t) => !existingTitles.contains(t.trackName.toLowerCase().trim())).toList();
+
+      if (unqueued.isNotEmpty) {
+        unqueued.shuffle();
+        final selectedTrack = unqueued.first;
+
+        final lazyUrl = 'https://lazy.flac.internal/?title=${Uri.encodeComponent(selectedTrack.trackName)}&artist=${Uri.encodeComponent(selectedTrack.artistName)}';
+        
+        final nextItem = MediaItem(
+          id: lazyUrl,
+          title: selectedTrack.trackName,
+          artist: selectedTrack.artistName,
+          album: selectedTrack.collectionName,
+          artUri: Uri.tryParse(selectedTrack.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000')),
+          duration: selectedTrack.trackTimeMillis != null ? Duration(milliseconds: selectedTrack.trackTimeMillis!) : null,
+          extras: {
+            'torrentId': -1,
+            'fileId': -selectedTrack.trackId,
+            'size': 0,
+            'originalId': lazyUrl,
+            'genre': chosenCategory,
+            'source': '$chosenCategory Discover Pill',
+          },
+        );
+
+        final nextSource = await _createAudioSource(nextItem);
+        await _playlist.add(nextSource);
+        _originalItems.add(nextItem);
+        
+        if (_isMediaKit) {
+          _broadcastLinuxQueue();
+        } else if (_isCasting) {
+          print('[AudioHandler] Discover Pill autoplay extended queue, reloading cast queue');
+          _reloadCastQueue();
+        }
+        
+        print('[AudioHandler] Discover Pill Autoplay: Added "${nextItem.title}" ($chosenCategory) to queue end.');
+        _enrichQueueInRange(currentIndex + 1);
+        return;
+      }
+
+      // Fallback: If network discover candidates are empty/offline, extend from local library
+      await _extendFromLocalLibrary(currentItem);
+
+    } catch (e) {
+      print('[AudioHandler] Discover Autoplay Extension error: $e');
+      await _extendFromLocalLibrary(currentItem);
+    } finally {
+      _isExtendingQueue = false;
+    }
+  }
+
+  Future<void> _extendFromLocalLibrary(MediaItem currentItem) async {
     try {
       final db = getIt<AppDatabase>();
       final allFiles = await db.getAllFiles();
-      if (allFiles.isEmpty) return; // No local library to pull from
+      if (allFiles.isEmpty) return;
 
       final allMeta = await db.getAllMetadata();
       final currentFileId = (currentItem.extras?['fileId'] as num?)?.toInt();
       
-      // 1. Try to find a song by the same artist
       final matchingMeta = allMeta.where((m) => 
         m.artist != null && 
         m.artist!.isNotEmpty && 
@@ -1081,11 +1169,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         nextMeta = matchingMeta.first;
         final possibleFiles = allFiles.where((f) => f.id == nextMeta!.fileId && f.torrentId == nextMeta!.torrentId);
         if (possibleFiles.isNotEmpty) {
-            nextFile = possibleFiles.first;
+          nextFile = possibleFiles.first;
         }
       }
 
-      // 2. If no artist match, just pick a random song from library
       if (nextFile == null) {
         final randFiles = allFiles.where((f) => f.id != currentFileId && f.torrentId != -1).toList();
         if (randFiles.isNotEmpty) {
@@ -1093,60 +1180,17 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           nextFile = randFiles.first;
           final possibleMeta = allMeta.where((m) => m.torrentId == nextFile!.torrentId && m.fileId == nextFile!.id);
           if (possibleMeta.isNotEmpty) {
-             nextMeta = possibleMeta.first;
+            nextMeta = possibleMeta.first;
           }
         }
       }
 
-      // Append to queue
       if (nextFile != null) {
         final strippedName = nextFile.name.split('/').last.split('\\').last;
         String title = nextMeta?.trackTitle ?? strippedName;
         String artist = nextMeta?.artist ?? 'Unknown Artist';
         String artworkUrl = nextMeta?.artworkUrlHigh ?? nextMeta?.artworkUrlLow ?? '';
         int? trackTimeMillis = nextMeta?.trackTimeMillis;
-
-        // Proactively enrich from iTunes if it's missing artwork/proper artist
-        final needsEnrichment = artist == 'Unknown Artist' || artist == 'TorBox' || artworkUrl.isEmpty;
-        if (needsEnrichment && artist != 'Unknown Artist') {
-           final itunes = getIt<ItunesMetadataService>();
-           final meta = await itunes.fetchMeta(title, artist);
-           if (meta != null) {
-              title = meta.trackName ?? title;
-              artist = meta.artistName ?? artist;
-              artworkUrl = meta.artworkUrlHigh ?? meta.artworkUrlLow ?? artworkUrl;
-              trackTimeMillis = meta.trackTimeMillis ?? trackTimeMillis;
-              
-              // Cache it so future lookups are fast
-              final cacheKey = nextFile.torrentId == -1 ? nextFile.id.abs().toString() : '$title|$artist';
-              await db.saveExternalTrackMetadata(ExternalTrackMetadataCompanion.insert(
-                trackUrl: cacheKey,
-                trackTitle: title,
-                artist: artist,
-                album: Value(meta.album),
-                genre: Value(meta.genre),
-                releaseYear: Value(meta.releaseYear),
-                artworkUrlHigh: Value(meta.artworkUrlHigh),
-                artworkUrlLow: Value(meta.artworkUrlLow),
-                trackTimeMillis: Value(meta.trackTimeMillis),
-                lastUpdated: DateTime.now().millisecondsSinceEpoch,
-              ));
-              if (nextFile.torrentId > 0) {
-                await db.saveTrackMetadata(TrackMetadataCompanion.insert(
-                  fileId: nextFile.id,
-                  torrentId: nextFile.torrentId,
-                  trackTitle: Value(meta.trackName ?? title),
-                  artist: Value(meta.artistName ?? artist),
-                  album: Value(meta.album),
-                  genre: Value(meta.genre),
-                  releaseYear: Value(meta.releaseYear),
-                  artworkUrlLow: Value(meta.artworkUrlLow),
-                  artworkUrlHigh: Value(meta.artworkUrlHigh),
-                  trackTimeMillis: Value(meta.trackTimeMillis),
-                ));
-              }
-           }
-        }
 
         final nextItem = MediaItem(
           id: nextFile.torrentId == -1 
@@ -1171,20 +1215,14 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         if (_isMediaKit) {
           _broadcastLinuxQueue();
         } else if (_isCasting) {
-          // Keep the receiver queue in sync with the phone's auto-extended queue.
-          print('[AudioHandler] Autoplay extended queue, reloading cast queue');
           _reloadCastQueue();
         }
         
-        print('[AudioHandler] Autoplay: Added "${nextItem.title}" to queue end.');
-        
-        // Enrich it fully in the background
-        _enrichQueueInRange(currentIndex + 1);
+        print('[AudioHandler] Local Autoplay Fallback: Added "${nextItem.title}" to queue end.');
+        _enrichQueueInRange(_playlist.length - 1);
       }
     } catch (e) {
-      print('[AudioHandler] Autoplay Extension error: $e');
-    } finally {
-      _isExtendingQueue = false;
+      print('[AudioHandler] Local library extension error: $e');
     }
   }
 
