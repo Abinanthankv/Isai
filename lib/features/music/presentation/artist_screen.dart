@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:isai/core/utils/app_haptics.dart';
 import 'dart:ui';
 import 'package:flutter/services.dart';
@@ -1477,7 +1478,8 @@ class _ArtistSongTileState extends State<_ArtistSongTile> {
         artworkUrlHigh: widget.track.artworkUrl.replaceAll('600x600bb', '1000x1000bb'),
         album: widget.track.collectionName,
       );
-      await ProviderScope.containerOf(context).read(libraryProvider.notifier).updateTrackMetadata(matchingFile, trackMeta);
+      // Fire-and-forget metadata persistence to prevent blocking instant playback start
+      unawaited(ProviderScope.containerOf(context).read(libraryProvider.notifier).updateTrackMetadata(matchingFile, trackMeta));
 
       if (mounted) {
       final trackUrl = matchingFile.localPath != null 
