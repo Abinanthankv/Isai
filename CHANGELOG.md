@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.17] - September 2026
+
+### Added
+- **3-Segmented Audio Quality & Inspection Sheet** [`055ea78`]: Refactored the Now Playing quality modal into 3 distinct tabs — Track Metadata, Audio Signal Path, and PCM Quality Analysis. Added tap & hold to copy on all metadata fields.
+- **Audio Signal Path & Bit-Perfect USB Output** [`31687f8`]: Introduced a 5-stage audio signal path visualization (*Track Source → Audio Decoder → Resampler & DSP → Android Engine → Active Output Device Hardware*) with real-time Bluetooth A2DP codec detection (**LDAC**, **AptX HD**, **AAC**, **SBC**) and direct Bit-Perfect USB DAC mode bypassing system AudioFlinger (Android 14+).
+- **SpotiFLAC Metadata & Real PCM Analysis** [`a97627d`]: Integrated SpotiFLAC-styled Deezer ISRC track metadata enrichment card and real PCM audio analyzer computing LUFS (ITU-R BS.1770-4), Peak/RMS dB, True Peak dBTP, Nyquist, Spectral Cutoff, Dynamic Range, and clipping detection.
+- **Autoplay Queue Extension & Source Picker UI** [`2984d98`]: Automatically extends the playback queue with Discover Pill recommendations upon reaching the end of the queue. Fixed source picker text visibility in dark mode.
+- **Play/Shuffle All & Regional Charts** [`1900cdf`, `16261e0`]: Added Play and Shuffle All controls to category/mood screens, redesigned genre pills, added app-wide haptic feedback intensity settings, and integrated regional trending charts.
+
+### Optimized
+- **Settings Screen 120Hz Scroll Acceleration** [`055ea78`]: Replaced heavy `BackdropFilter` GPU blur on cards with lightweight translucent container styling and isolated card repaints with `RepaintBoundary` to eliminate Settings screen scroll lag.
+- **Memory Caching & Seekbar Isolation** [`9d24240`]: Added `memCacheWidth` / `memCacheHeight` constraints to image decoding and isolated seekbar repaints across all player screens.
+- **Artist & Popular Songs Performance** [`95dac06`, `e6959ca`, `4ef19b7`, `c131b5d`, `a9e5857`, `1356d87`, `2e57916`, `8a507a6`, `b0310a6`]: Eliminated scroll stutter on Artist and Popular Songs screens with $O(1)$ track match map lookups, lazy item building, `SliverFixedExtentList` rendering, and local Consumer widget isolation.
+- **Instant Playback Start** [`c8a4e7b`]: Un-awaited background metadata updates on track selection for zero-delay instant playback initiation.
+
+### Fixed
+- **Linux Audio Engine & Equalizer Race Condition** [`1900cdf`, `58c26bf`]: Fixed Linux `media_kit` audio engine playback initialization, resolved equalizer availability race conditions, and corrected sample rate badge detection.
+- **UI Syntax & Layout** [`9a6e03c`]: Corrected BrowseCard `RepaintBoundary` syntax and layout boundary constraints.
+
 ## [1.0.16] - September 2026
 
 ### Added
