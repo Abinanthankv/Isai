@@ -893,6 +893,8 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
                       width: 52,
                       height: 52,
                       fit: BoxFit.cover,
+                      memCacheWidth: 150,
+                      memCacheHeight: 150,
                       placeholder: (_, __) => _artworkPlaceholder(),
                       errorWidget: (_, __, ___) => _artworkPlaceholder(),
                     )
@@ -1263,6 +1265,8 @@ class _LibraryAlbumCard extends ConsumerWidget {
                           ? CachedNetworkImage(
                               imageUrl: artwork,
                               fit: BoxFit.cover,
+                              memCacheWidth: 300,
+                              memCacheHeight: 300,
                               placeholder: (_, __) => Container(color: Colors.white.withOpacity(0.05)),
                               errorWidget: (_, __, ___) => Container(
                                 color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05),

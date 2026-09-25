@@ -705,6 +705,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     child: CachedNetworkImage(
                       imageUrl: displayArtwork!,
                       fit: BoxFit.cover,
+                      memCacheWidth: 200,
+                      memCacheHeight: 200,
                       errorWidget: (context, url, error) {
                          print('[NowPlayingScreen] Error loading blurred background image: $error, url: $url');
                          return Container(color: const Color(0xFF1A1A2E));
@@ -1352,6 +1354,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                               width: 50,
                               height: 50,
                               fit: BoxFit.cover,
+                              memCacheWidth: 150,
+                              memCacheHeight: 150,
                               placeholder: (_, __) => Container(width: 50, height: 50, color: Colors.white10),
                               errorWidget: (_, __, ___) => Container(
                                 width: 50,
@@ -1712,6 +1716,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             child: CachedNetworkImage(
                               imageUrl: artworkUrl!,
                               fit: BoxFit.cover,
+                              memCacheWidth: 150,
+                              memCacheHeight: 150,
                             ),
                           ),
                         ),
@@ -1742,6 +1748,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                               ? CachedNetworkImage(
                                   imageUrl: artworkUrl!,
                                   fit: BoxFit.cover,
+                                  memCacheWidth: 600,
+                                  memCacheHeight: 600,
                                   errorWidget: (context, url, error) => _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
                                 )
                               : _artworkPlaceholder(size: displaySize, iconSize: displaySize * 0.4),
@@ -1850,6 +1858,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             fit: BoxFit.cover,
                             width: 48,
                             height: 48,
+                            memCacheWidth: 150,
+                            memCacheHeight: 150,
                           ),
                         )
                       : const Icon(Icons.music_note, color: Colors.white38, size: 24),
@@ -2191,6 +2201,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   ? CachedNetworkImage(
                       imageUrl: artworkUrl,
                       fit: BoxFit.cover,
+                      memCacheWidth: 150,
+                      memCacheHeight: 150,
                       placeholder: (_, __) => Container(color: Colors.white10),
                       errorWidget: (_, __, ___) => Container(color: Colors.white10, child: Icon(Icons.music_note, color: Colors.white24, size: 20)),
                     )
@@ -2657,8 +2669,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   }
 
   Widget _buildSeekBar({bool isLyricsMode = false}) {
-    return StreamBuilder<MediaItem?>(
-      stream: audioHandler.mediaItem,
+    return RepaintBoundary(
+      child: StreamBuilder<MediaItem?>(
+        stream: audioHandler.mediaItem,
       builder: (context, mediaSnap) {
         final totalDuration = mediaSnap.data?.duration ?? Duration.zero;
 
@@ -2765,6 +2778,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
           },
         );
       },
+    ),
     );
   }
 
@@ -2790,6 +2804,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
+                  memCacheWidth: 150,
+                  memCacheHeight: 150,
                   errorWidget: (context, url, error) => Container(
                     width: 48,
                     height: 48,
@@ -4228,6 +4244,8 @@ class _SourceSheetState extends ConsumerState<_SourceSheet> {
                 width: 40,
                 height: 40,
                 fit: BoxFit.cover,
+                memCacheWidth: 150,
+                memCacheHeight: 150,
                 errorWidget: (_, __, ___) => _placeholder(),
               )
             : _placeholder(),
@@ -4710,6 +4728,7 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
                                             height: 48,
                                             fit: BoxFit.cover,
                                             memCacheWidth: 100,
+                                            memCacheHeight: 100,
                                             errorWidget: (_, __, ___) => _artworkPlaceholder(size: 48, iconSize: 24),
                                           )
                                         : _artworkPlaceholder(size: 48, iconSize: 24),

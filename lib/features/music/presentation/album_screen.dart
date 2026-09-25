@@ -175,6 +175,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
               CachedNetworkImage(
                 imageUrl: artworkUrl,
                 fit: BoxFit.cover,
+                memCacheWidth: 200,
+                memCacheHeight: 200,
               ),
             BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
@@ -218,6 +220,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                             ? CachedNetworkImage(
                                 imageUrl: artworkUrl,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 600,
+                                memCacheHeight: 600,
                               )
                             : Container(
                                 decoration: BoxDecoration(
@@ -536,6 +540,8 @@ class _AlbumScreenState extends ConsumerState<AlbumScreen> {
                         width: 60,
                         height: 60,
                         fit: BoxFit.cover,
+                        memCacheWidth: 150,
+                        memCacheHeight: 150,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -943,6 +949,8 @@ class _AlbumTrackTileState extends ConsumerState<_AlbumTrackTile> {
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
+                memCacheWidth: 150,
+                memCacheHeight: 150,
                 errorWidget: (_, __, ___) => Container(
                   width: 48,
                   height: 48,

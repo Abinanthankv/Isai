@@ -352,6 +352,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                             ? CachedNetworkImage(
                                 imageUrl: imageUrl,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 600,
+                                memCacheHeight: 600,
                                 placeholder: (context, url) => Container(
                                   color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
                                 ),
@@ -363,6 +365,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                           ? CachedNetworkImage(
                               imageUrl: url,
                               fit: BoxFit.cover,
+                              memCacheWidth: 600,
+                              memCacheHeight: 600,
                               placeholder: (context, url) => Container(
                                 color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
                               ),
@@ -373,6 +377,8 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                           ? CachedNetworkImage(
                               imageUrl: url,
                               fit: BoxFit.cover,
+                              memCacheWidth: 600,
+                              memCacheHeight: 600,
                               placeholder: (context, url) => Container(
                                 color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
                               ),
@@ -1751,6 +1757,8 @@ class _SimilarArtistAvatar extends ConsumerWidget {
                       ? CachedNetworkImage(
                           imageUrl: url,
                           fit: BoxFit.cover,
+                          memCacheWidth: 150,
+                          memCacheHeight: 150,
                           placeholder: (context, url) => Container(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
                           errorWidget: (context, url, e) => _defaultPlaceholder(isDark),
                         )

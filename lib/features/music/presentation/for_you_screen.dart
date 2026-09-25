@@ -1077,6 +1077,8 @@ class ForYouScreen extends ConsumerWidget {
                           child: imageUrl.isNotEmpty
                               ? CachedNetworkImage(
                                   imageUrl: imageUrl,
+                                  memCacheWidth: 85,
+                                  memCacheHeight: 85,
                                   fit: BoxFit.cover,
                                   placeholder: (_, __) => Container(
                                     color: isDark ? Colors.white10 : Colors.black12,

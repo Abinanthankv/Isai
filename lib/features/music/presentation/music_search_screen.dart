@@ -416,6 +416,8 @@ class _FlacResultTile extends ConsumerWidget {
                       width: 50,
                       height: 50,
                       fit: BoxFit.cover,
+                      memCacheWidth: 150,
+                      memCacheHeight: 150,
                       placeholder: (_, __) => Container(width: 50, height: 50, color: Colors.black12),
                       errorWidget: (_, __, ___) => Container(width: 50, height: 50, color: Colors.black12, child: const Icon(Icons.high_quality)),
                     )
@@ -785,6 +787,8 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
                   width: 50,
                   height: 50,
                   fit: BoxFit.cover,
+                  memCacheWidth: 150,
+                  memCacheHeight: 150,
                   placeholder: (_, __) => Container(
                     width: 50,
                     height: 50,
@@ -890,6 +894,8 @@ class _AlbumResultTile extends StatelessWidget {
                 width: 50,
                 height: 50,
                 fit: BoxFit.cover,
+                memCacheWidth: 150,
+                memCacheHeight: 150,
                 placeholder: (_, __) => Container(
                   width: 50,
                   height: 50,
@@ -977,6 +983,8 @@ class _ArtistResultTile extends ConsumerWidget {
                       ? CachedNetworkImage(
                           imageUrl: url,
                           fit: BoxFit.cover,
+                          memCacheWidth: 150,
+                          memCacheHeight: 150,
                           placeholder: (_, __) => Icon(
                             Icons.person,
                             color: isDark ? Colors.white24 : Colors.black26,

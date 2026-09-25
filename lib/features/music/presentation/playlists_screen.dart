@@ -540,6 +540,8 @@ class _PlaylistCard extends StatelessWidget {
                                   ? CachedNetworkImage(
                                       imageUrl: imageUrl,
                                       fit: BoxFit.cover,
+                                      memCacheWidth: 300,
+                                      memCacheHeight: 300,
                                       placeholder: (context, url) => Container(color: Colors.grey[800]),
                                       errorWidget: (context, url, error) => _IconPlaceholder(),
                                     )
@@ -880,6 +882,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                               ? CachedNetworkImage(
                                   imageUrl: displayArtwork,
                                   fit: BoxFit.cover,
+                                  memCacheWidth: 600,
+                                  memCacheHeight: 600,
                                   placeholder: (_, __) => Container(
                                     color: isDark ? Colors.grey[900] : Colors.grey[300],
                                     child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary)),
@@ -1176,6 +1180,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                     ? CachedNetworkImage(
                         imageUrl: imageUrl,
                         fit: BoxFit.cover,
+                        memCacheWidth: 150,
+                        memCacheHeight: 150,
                         placeholder: (_, __) => Container(color: isDark ? Colors.grey[800] : Colors.grey[300]),
                         errorWidget: (_, __, ___) => Container(
                           color: isDark ? Colors.grey[800] : Colors.grey[300],
