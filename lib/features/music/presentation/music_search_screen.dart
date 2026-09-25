@@ -477,7 +477,7 @@ class _FlacResultTile extends ConsumerWidget {
       'title': result.title,
       'artist': result.artist,
       'artworkUrl': result.thumbnail ?? '',
-      'forceReplace': audioHandler.playbackState.value.processingState == AudioProcessingState.idle,
+      'forceReplace': true,
       'extras': {
         'torrentId': dummyFile.torrentId,
         'fileId': dummyFile.id,
@@ -488,15 +488,6 @@ class _FlacResultTile extends ConsumerWidget {
     });
 
     if (context.mounted) {
-      if (audioHandler.playbackState.value.playing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added to Next in Queue'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
-        );
-      }
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -522,7 +513,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
   bool _isCheckingSources = false;
 
   void _handleTap(TorBoxFile? matchingFile) async {
-    // If the file is already in library, check if we should play next or play now
+    // If the file is already in library, play it directly
     if (matchingFile != null) {
       final trackMeta = ItunesMeta(
         trackName: widget.track.trackName,
@@ -542,7 +533,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         'title': widget.track.trackName,
         'artist': widget.track.artistName,
         'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
-        'forceReplace': false,
+        'forceReplace': true,
         'extras': {
           'torrentId': matchingFile.torrentId,
           'fileId': matchingFile.id,
@@ -552,19 +543,6 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
       });
 
       if (!mounted) return;
-
-      final playbackState = audioHandler.playbackState.value;
-      if (playbackState.playing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added to Next in Queue'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
 
       Navigator.push(
         context,
@@ -605,7 +583,7 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
         'title': widget.track.trackName, 
         'artist': widget.track.artistName,
         'artworkUrl': widget.track.artworkUrl.replaceAll(RegExp(r'\d+x\d+'), '1000x1000'),
-        'forceReplace': false,
+        'forceReplace': true,
         'extras': {
           'torrentId': dummyFile.torrentId,
           'fileId': dummyFile.id,
@@ -616,18 +594,6 @@ class _TrackTileState extends ConsumerState<_TrackTile> {
       });
 
       if (!mounted) return;
-
-      if (audioHandler.playbackState.value.playing) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Added to Next in Queue'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
 
       Navigator.push(
         context,

@@ -48,6 +48,8 @@ import 'metadata_picker_sheet.dart';
 import 'playlist_picker_sheet.dart';
 import 'playlist_providers.dart';
 import '../../player/data/audio_handler.dart';
+import 'audio_quality_analysis_sheet.dart';
+import '../data/real_audio_analyzer.dart';
 import 'visualizer_layer.dart';
 import 'package:isai/core/theme/material3_theme.dart';
 import 'package:isai/core/theme/dynamic_color_provider.dart';
@@ -2514,6 +2516,16 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       }
     }
 
+    // Override with Real Analyzed Audio Data if available
+    final cachedAnalysis = RealAudioAnalyzer.getCachedResult(item);
+    if (cachedAnalysis != null) {
+      codec = cachedAnalysis.codec;
+      bitDepthStr = '${cachedAnalysis.bitDepth}-bit';
+      final khz = cachedAnalysis.sampleRate / 1000.0;
+      sampleRateStr = khz % 1 == 0 ? '${khz.toInt()} kHz' : '${khz.toStringAsFixed(1)} kHz';
+      bitrateStr = '${cachedAnalysis.bitrateKbps} kbps';
+    }
+
     // 5. Quality Tier Flags
     final isLossless = (codec == 'FLAC' || codec == 'WAV' || codec == 'ALAC') || cleanMetaText.contains('lossless');
     final isHiRes = isLossless &&
@@ -2551,6 +2563,19 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
   Widget _buildQualityBadge(MediaItem? item) {
     if (item == null) return const SizedBox.shrink();
+    
+    // Auto-trigger real audio analysis in background to compute exact measured bitrate & format specs
+    if (RealAudioAnalyzer.getCachedResult(item) == null && !RealAudioAnalyzer.isAnalyzing(item)) {
+      final details = _parseTrackQualityDetails(item);
+      RealAudioAnalyzer.analyzeTrack(
+        item: item,
+        qualityDetails: details,
+        allowNetworkDownload: false,
+      ).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+
     final details = _parseTrackQualityDetails(item);
     final isHiRes = details['isHiRes'] as bool;
     final isLossless = details['isLossless'] as bool;
@@ -2608,55 +2633,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   void _showQualityInfoSheet(BuildContext context, MediaItem? item) {
     if (item == null) return;
     final details = _parseTrackQualityDetails(item);
-    final isHiRes = details['isHiRes'] as bool;
-    final isLossless = details['isLossless'] as bool;
-    final codec = details['codec'] as String;
-    final bitrate = details['bitrate'] as String?;
-    final sampleRate = details['sampleRate'] as String?;
-    final bitDepth = details['bitDepth'] as String?;
     final source = _getTrackSource(item);
-    final size = item.extras?['size'] as num? ?? 0;
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1C24).withOpacity(0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.5),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 24),
-            Row(children: [
-              Icon(isHiRes ? Icons.star_rounded : (isLossless ? Icons.music_note_rounded : Icons.high_quality_rounded), color: isHiRes ? const Color(0xFFFF2D55) : Colors.white70, size: 28),
-              const SizedBox(width: 12),
-              Text(isHiRes ? 'Hi-Res Lossless Audio' : (isLossless ? 'Lossless Audio' : 'High Quality Audio'), style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-            ]),
-            const SizedBox(height: 16),
-            Text(
-              isHiRes 
-                ? 'Studio quality recording format (up to 24-bit/192 kHz) preserving every detail of the performance.' 
-                : (isLossless ? 'Lossless compression preserves all of the original data in the audio file for CD-quality playback.' : 'High Quality compression formats (AAC/MP3) provide excellent acoustic reproduction with efficient network usage.'),
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.7), height: 1.4),
-            ),
-            const Divider(color: Colors.white10, height: 32),
-            _buildInfoRow('Audio Codec', codec),
-            if (bitrate != null) _buildInfoRow('Exact Bitrate', bitrate),
-            if (sampleRate != null) _buildInfoRow('Sample Rate', sampleRate),
-            if (bitDepth != null) _buildInfoRow('Bit Depth', bitDepth),
-            _buildInfoRow('Source Provider', source),
-            if (size > 0) _buildInfoRow('File Size', '${(size / (1024 * 1024)).toStringAsFixed(1)} MB'),
-            const SizedBox(height: 24),
-            Center(child: TextButton(onPressed: () => Navigator.pop(context), style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.08), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Close', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)))),
-          ],
-        ),
-      ),
+    AudioQualityAnalysisSheet.show(
+      context,
+      item: item,
+      qualityDetails: details,
+      sourceProvider: source,
     );
   }
 
