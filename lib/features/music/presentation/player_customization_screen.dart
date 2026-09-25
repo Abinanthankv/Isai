@@ -677,6 +677,25 @@ class PlayerCustomizationScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
+
+                  const SizedBox(height: 24),
+
+                  // --- Audio Output & Hardware DAC ---
+                  AppleMusicSectionHeader(title: 'Audio Output & Hardware DAC'),
+                  GlassCard(
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _CustomizationSwitchTile(
+                          icon: Icons.usb_rounded,
+                          title: 'Bit-Perfect USB Output',
+                          subtitle: 'Bypass Android system mixer (AudioFlinger) for un-resampled bit-for-bit playback on external USB DACs (Android 14+)',
+                          value: settings.bitPerfectUsbOutputEnabled,
+                          onChanged: (val) => ref.read(settingsProvider.notifier).setBitPerfectUsbOutputEnabled(val),
+                        ),
+                      ],
+                    ),
+                  ),
                   
                   const SizedBox(height: 100),
                 ],

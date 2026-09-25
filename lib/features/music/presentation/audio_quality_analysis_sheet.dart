@@ -2,10 +2,13 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isai/core/di/injection.dart';
 import '../data/real_audio_analyzer.dart';
+import '../data/audio_device_service.dart';
 import '../data/metadata/deezer_metadata_provider.dart';
 import '../data/metadata/metadata_provider.dart';
+import 'music_providers.dart';
 
 class AudioQualityAnalysisSheet extends StatefulWidget {
   final MediaItem item;
@@ -296,7 +299,17 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
 
                   const SizedBox(height: 16),
 
-                  // 2. Audio Quality Analysis Main Container Box
+                  // 2. Audio Signal Path Card (Source -> Engine -> Active Bluetooth / USB Output Device)
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final settings = ref.watch(settingsProvider);
+                      return _buildAudioSignalPathCard(context, settings.bitPerfectUsbOutputEnabled);
+                    },
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 3. Audio Quality Analysis Main Container Box
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -661,5 +674,177 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     final minutes = d.inMinutes;
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  Widget _buildAudioSignalPathCard(BuildContext context, bool isBitPerfectEnabled) {
+    return FutureBuilder<AudioOutputInfo>(
+      future: AudioDeviceService.getCurrentOutputInfo(
+        isBitPerfectSettingEnabled: isBitPerfectEnabled,
+      ),
+      builder: (context, snapshot) {
+        final info = snapshot.data ?? AudioOutputInfo.speaker();
+        final isBluetooth = info.outputType == AudioOutputType.bluetooth;
+        final isUsb = info.outputType == AudioOutputType.usbDac;
+
+        Color badgeColor = const Color(0xFF007AFF);
+        if (info.isBitPerfect) {
+          badgeColor = const Color(0xFF34C759);
+        } else if (isBluetooth) {
+          badgeColor = const Color(0xFFAF52DE);
+        }
+
+        final codecStr = widget.qualityDetails['codec'] as String? ?? 'FLAC';
+        final sampleRateStr = widget.qualityDetails['sampleRate'] as String? ?? '44.1 kHz';
+        final bitDepthStr = widget.qualityDetails['bitDepth'] as String? ?? '16-bit';
+        final bitrateStr = widget.qualityDetails['bitrate'] as String? ?? '962 kbps';
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E22),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      isBluetooth ? Icons.bluetooth_audio_rounded : (isUsb ? Icons.usb_rounded : Icons.graphic_eq_rounded),
+                      color: badgeColor,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Audio Signal Path',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      info.isBitPerfect
+                          ? 'BIT-PERFECT DIRECT'
+                          : (isBluetooth ? 'BLUETOOTH A2DP' : 'AUDIOFLINGER PCM'),
+                      style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Stage 1: Track Source
+              _buildSignalStage(
+                stageNum: '1',
+                title: 'Track Source',
+                subtitle: widget.sourceProvider.toUpperCase(),
+                details: '$codecStr • $bitDepthStr / $sampleRateStr ($bitrateStr)',
+                icon: Icons.music_note_rounded,
+                color: Colors.white70,
+              ),
+              const SizedBox(height: 12),
+
+              // Stage 2: Audio Engine / Mixer
+              _buildSignalStage(
+                stageNum: '2',
+                title: 'Audio Engine Processing',
+                subtitle: info.isBitPerfect ? 'Android 14 Direct Output' : 'Android System Mixer',
+                details: info.isBitPerfect
+                    ? 'AudioFlinger Resampler Bypassed (Native Hardware Format)'
+                    : 'AudioFlinger Software Mixer (Resampled System Output)',
+                icon: info.isBitPerfect ? Icons.verified_rounded : Icons.tune_rounded,
+                color: info.isBitPerfect ? const Color(0xFF34C759) : Colors.orangeAccent,
+              ),
+              const SizedBox(height: 12),
+
+              // Stage 3: Output Receiver / Codec
+              _buildSignalStage(
+                stageNum: '3',
+                title: 'Output Receiver Hardware',
+                subtitle: info.deviceName,
+                details: '${info.codecName} • ${info.transmissionDetails}',
+                icon: isBluetooth ? Icons.headphones_rounded : (isUsb ? Icons.speaker_group_rounded : Icons.speaker_rounded),
+                color: badgeColor,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSignalStage({
+    required String stageNum,
+    required String title,
+    required String subtitle,
+    required String details,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              stageNum,
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(icon, size: 14, color: color),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                details,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

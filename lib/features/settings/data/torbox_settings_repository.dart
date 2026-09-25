@@ -66,6 +66,9 @@ abstract class TorBoxSettingsRepository {
   Future<void> setPlayerSpotifyCanvasEnabled(bool enabled);
   bool get playerSpotifyCanvasEnabled;
 
+  Future<void> setBitPerfectUsbOutputEnabled(bool enabled);
+  bool get bitPerfectUsbOutputEnabled;
+
   // ── Visualizer Settings ──────────────────────────────────────────────────
   Future<void> setVisualizerEnabled(bool enabled);
   bool get visualizerEnabled;
@@ -277,6 +280,12 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
 
   @override
   bool get playerMinimalistShowSource => _prefs.getBool('player_minimalist_show_source') ?? false;
+
+  @override
+  bool get bitPerfectUsbOutputEnabled => _prefs.getBool('bit_perfect_usb_output_enabled') ?? true;
+
+  @override
+  Future<void> setBitPerfectUsbOutputEnabled(bool enabled) => _prefs.setBool('bit_perfect_usb_output_enabled', enabled);
 
   @override
   Future<void> setPlayerMinimalistShowSource(bool show) => _prefs.setBool('player_minimalist_show_source', show);

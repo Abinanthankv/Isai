@@ -127,6 +127,7 @@ class SettingsState {
   final List<String> disabledDiscoverSections;
   final bool hapticsEnabled;
   final String hapticIntensity;
+  final bool bitPerfectUsbOutputEnabled;
 
   bool get hardcoverHasKey => hardcoverApiKey.isNotEmpty;
 
@@ -202,6 +203,7 @@ class SettingsState {
     this.disabledDiscoverSections = const [],
     this.hapticsEnabled = true,
     this.hapticIntensity = 'medium',
+    this.bitPerfectUsbOutputEnabled = true,
   });
 
   SettingsState copyWith({
@@ -276,6 +278,7 @@ class SettingsState {
     List<String>? disabledDiscoverSections,
     bool? hapticsEnabled,
     String? hapticIntensity,
+    bool? bitPerfectUsbOutputEnabled,
   }) {
     return SettingsState(
       apiKey: apiKey ?? this.apiKey,
@@ -349,6 +352,7 @@ class SettingsState {
       disabledDiscoverSections: disabledDiscoverSections ?? this.disabledDiscoverSections,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       hapticIntensity: hapticIntensity ?? this.hapticIntensity,
+      bitPerfectUsbOutputEnabled: bitPerfectUsbOutputEnabled ?? this.bitPerfectUsbOutputEnabled,
     );
   }
 }
@@ -433,12 +437,18 @@ class SettingsNotifier extends Notifier<SettingsState> {
       disabledDiscoverSections: _settings.disabledDiscoverSections,
       hapticsEnabled: _settings.hapticsEnabled,
       hapticIntensity: _settings.hapticIntensity,
+      bitPerfectUsbOutputEnabled: _settings.bitPerfectUsbOutputEnabled,
     );
   }
 
   Future<void> setMaxSongCacheSize(int sizeInMb) async {
     await _settings.setMaxSongCacheSize(sizeInMb);
     state = state.copyWith(maxSongCacheSize: sizeInMb);
+  }
+
+  Future<void> setBitPerfectUsbOutputEnabled(bool enabled) async {
+    await _settings.setBitPerfectUsbOutputEnabled(enabled);
+    state = state.copyWith(bitPerfectUsbOutputEnabled: enabled);
   }
 
   Future<void> setMaxImageCacheSize(int sizeInMb) async {
