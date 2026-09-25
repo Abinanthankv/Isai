@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audio_service/audio_service.dart';
@@ -46,6 +45,7 @@ class AudioQualityAnalysisSheet extends StatefulWidget {
 }
 
 class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
+  int _selectedTabIndex = 0; // 0: Metadata, 1: Signal Path, 2: Quality Analysis
   bool _isAnalyzing = false;
   RealAudioAnalysisResult? _realResult;
   TrackMeta? _enrichedMeta;
@@ -173,6 +173,11 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     final audioQualityBadge = '$bitDepthStr/$sampleRateStr';
     final coverResStr = _enrichedMeta?.artworkUrlHigh != null ? '1400 × 1400 px' : '1000 × 1000 px';
 
+    // Dynamic Sheet Header Title
+    final String sheetTitle = _selectedTabIndex == 0
+        ? 'Track Metadata'
+        : (_selectedTabIndex == 1 ? 'Audio Signal Path' : 'Audio Quality Analysis');
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: media.size.height * 0.90,
@@ -215,11 +220,11 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
-                    'Metadata',
+                    sheetTitle,
                     style: theme.textTheme.titleLarge?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 20,
+                      fontSize: 18,
                     ),
                   ),
                 ),
@@ -234,241 +239,259 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
                             color: Colors.white70,
                           ),
                         )
-                      : const Icon(Icons.more_horiz_rounded, color: Colors.white70),
+                      : const Icon(Icons.refresh_rounded, color: Colors.white70),
                 ),
               ],
             ),
           ),
 
-          // Scrollable Content
+          // Segmented 3-Pill Navigation Bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E22),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: Row(
+                children: [
+                  _buildTabPill(index: 0, label: 'Metadata', icon: Icons.info_outline_rounded),
+                  _buildTabPill(index: 1, label: 'Signal Path', icon: Icons.alt_route_rounded),
+                  _buildTabPill(index: 2, label: 'Quality', icon: Icons.insights_rounded),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Scrollable Content depending on selected tab index
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. SpotiFLAC-styled Song Track Metadata Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E22),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.06)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.info_outline_rounded, color: Colors.white70, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Metadata',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _buildMetaRow('Track name', trackName),
-                        _buildMetaRow('Artist', artistName),
-                        _buildMetaRow('Album', albumName),
-                        _buildMetaRow('Track number', '$trackNum'),
-                        _buildMetaRow('Track Total', '$trackTotal'),
-                        _buildMetaRow('Disc number', '$discNum'),
-                        _buildMetaRow('Disc Total', '$discTotal'),
-                        _buildMetaRow('Duration', durationFormatted),
-                        _buildMetaRow('Audio quality', audioQualityBadge),
-                        _buildMetaRow('Cover resolution', coverResStr),
-                        _buildMetaRow('Release date', releaseDateStr),
-                        _buildMetaRow('Genre', genreStr),
-                        _buildMetaRow('Label', labelStr),
-                        _buildMetaRow('Copyright', copyrightStr),
-                        _buildMetaRow('Composer', composerStr),
-                        _buildMetaRow('Release Type', albumTypeStr),
-                        _buildMetaRow('Comment', commentUrl, isUrl: true),
-                        _buildMetaRowWithCopy(context, 'ISRC', isrcStr),
-                        _buildMetaRowWithCopy(context, 'Deezer ID', deezerIdStr),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 2. Audio Signal Path Card (Source -> Engine -> Active Bluetooth / USB Output Device)
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final settings = ref.watch(settingsProvider);
-                      return _buildAudioSignalPathCard(context, settings.bitPerfectUsbOutputEnabled);
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 3. Audio Quality Analysis Main Container Box
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E22),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.06)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Card Header
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF2D55).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.assessment_rounded,
-                                color: Color(0xFFFF2D55),
-                                size: 18,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Audio Quality Analysis',
+                  if (_selectedTabIndex == 0) ...[
+                    // TAB 0: Track Metadata
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E22),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.art_track_rounded, color: Colors.white70, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Track Details',
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              onPressed: () => _runRealAnalysis(forceRefresh: true),
-                              icon: _isAnalyzing
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white54,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.refresh_rounded,
-                                      color: Colors.white54,
-                                      size: 20,
-                                    ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Grid Specs (2 Columns)
-                        _buildGridSpecRow(
-                          icon1: Icons.disc_full_rounded,
-                          label1: 'Codec:',
-                          value1: codec,
-                          icon2: Icons.graphic_eq_rounded,
-                          label2: 'Sample Rate:',
-                          value2: sampleRateStr,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.description_rounded,
-                          label1: 'Bit Depth:',
-                          value1: bitDepthStr,
-                          icon2: Icons.code_rounded,
-                          label2: 'Decoded Format:',
-                          value2: decodedFormat,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.speed_rounded,
-                          label1: 'Bitrate:',
-                          value1: bitrateStr,
-                          icon2: Icons.grid_view_rounded,
-                          label2: 'Channels:',
-                          value2: channelsStr,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.timer_outlined,
-                          label1: 'Duration:',
-                          value1: durationFormatted,
-                          icon2: Icons.show_chart_rounded,
-                          label2: 'Nyquist:',
-                          value2: nyquistStr,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.sd_storage_rounded,
-                          label1: 'Size:',
-                          value1: sizeMb,
-                          icon2: Icons.query_stats_rounded,
-                          label2: 'Dynamic Range:',
-                          value2: dynamicRangeDb,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.insights_rounded,
-                          label1: 'Peak:',
-                          value1: peakDb,
-                          icon2: Icons.equalizer_rounded,
-                          label2: 'RMS:',
-                          value2: rmsDb,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.volume_up_rounded,
-                          label1: 'LUFS:',
-                          value1: lufsStr,
-                          icon2: Icons.warning_amber_rounded,
-                          label2: 'True Peak:',
-                          value2: truePeakStr,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildGridSpecRow(
-                          icon1: Icons.check_circle_outline_rounded,
-                          label1: 'Clipping:',
-                          value1: clippingStr,
-                          icon2: Icons.filter_alt_rounded,
-                          label2: 'Spectral Cutoff:',
-                          value2: cutoffStr,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildSingleSpecRow(
-                          icon: Icons.numbers_rounded,
-                          label: 'Samples:',
-                          value: samplesFormatted,
-                        ),
-
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                          child: Divider(color: Colors.white12, height: 1),
-                        ),
-
-                        // Per-channel Stats
-                        Text(
-                          'Per-channel Stats',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w600,
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildChannelStatLine('Ch 1:', ch1Text),
-                        const SizedBox(height: 4),
-                        _buildChannelStatLine('Ch 2:', ch2Text),
-                      ],
+                          const SizedBox(height: 16),
+                          _buildMetaRow(context, 'Track name', trackName),
+                          _buildMetaRow(context, 'Artist', artistName),
+                          _buildMetaRow(context, 'Album', albumName),
+                          _buildMetaRow(context, 'Track number', '$trackNum of $trackTotal'),
+                          _buildMetaRow(context, 'Disc number', '$discNum of $discTotal'),
+                          _buildMetaRow(context, 'Duration', durationFormatted),
+                          _buildMetaRow(context, 'Audio quality', audioQualityBadge),
+                          _buildMetaRow(context, 'Cover resolution', coverResStr),
+                          _buildMetaRow(context, 'Release date', releaseDateStr),
+                          _buildMetaRow(context, 'Genre', genreStr),
+                          _buildMetaRow(context, 'Label', labelStr),
+                          _buildMetaRow(context, 'Copyright', copyrightStr),
+                          _buildMetaRow(context, 'Composer', composerStr),
+                          _buildMetaRow(context, 'Release Type', albumTypeStr),
+                          _buildMetaRow(context, 'Comment', commentUrl, isUrl: true),
+                          _buildMetaRow(context, 'ISRC', isrcStr),
+                          _buildMetaRow(context, 'Deezer ID', deezerIdStr),
+                        ],
+                      ),
                     ),
-                  ),
+                  ] else if (_selectedTabIndex == 1) ...[
+                    // TAB 1: Audio Signal Path (Minimal Poweramp-styled node pipeline)
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final settings = ref.watch(settingsProvider);
+                        return _buildPowerampSignalPathView(
+                          context,
+                          settings.bitPerfectUsbOutputEnabled,
+                          codec: codec,
+                          sampleRateStr: sampleRateStr,
+                          bitDepthStr: bitDepthStr,
+                          bitrateStr: bitrateStr,
+                          decodedFormat: decodedFormat,
+                        );
+                      },
+                    ),
+                  ] else ...[
+                    // TAB 2: Audio Quality Analysis
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E22),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Card Header
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.assessment_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Audio Quality Metrics',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                              if (_isAnalyzing)
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
 
-                  const SizedBox(height: 16),
+                          // Grid Specs (2 Columns)
+                          _buildGridSpecRow(
+                            icon1: Icons.disc_full_rounded,
+                            label1: 'Codec:',
+                            value1: codec,
+                            icon2: Icons.graphic_eq_rounded,
+                            label2: 'Sample Rate:',
+                            value2: sampleRateStr,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.description_rounded,
+                            label1: 'Bit Depth:',
+                            value1: bitDepthStr,
+                            icon2: Icons.code_rounded,
+                            label2: 'Decoded Format:',
+                            value2: decodedFormat,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.speed_rounded,
+                            label1: 'Bitrate:',
+                            value1: bitrateStr,
+                            icon2: Icons.grid_view_rounded,
+                            label2: 'Channels:',
+                            value2: channelsStr,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.timer_outlined,
+                            label1: 'Duration:',
+                            value1: durationFormatted,
+                            icon2: Icons.show_chart_rounded,
+                            label2: 'Nyquist:',
+                            value2: nyquistStr,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.sd_storage_rounded,
+                            label1: 'Size:',
+                            value1: sizeMb,
+                            icon2: Icons.query_stats_rounded,
+                            label2: 'Dynamic Range:',
+                            value2: dynamicRangeDb,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.insights_rounded,
+                            label1: 'Peak:',
+                            value1: peakDb,
+                            icon2: Icons.equalizer_rounded,
+                            label2: 'RMS:',
+                            value2: rmsDb,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.volume_up_rounded,
+                            label1: 'LUFS:',
+                            value1: lufsStr,
+                            icon2: Icons.warning_amber_rounded,
+                            label2: 'True Peak:',
+                            value2: truePeakStr,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildGridSpecRow(
+                            icon1: Icons.check_circle_outline_rounded,
+                            label1: 'Clipping:',
+                            value1: clippingStr,
+                            icon2: Icons.filter_alt_rounded,
+                            label2: 'Spectral Cutoff:',
+                            value2: cutoffStr,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildSingleSpecRow(
+                            icon: Icons.numbers_rounded,
+                            label: 'Samples:',
+                            value: samplesFormatted,
+                          ),
+
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Divider(color: Colors.white12, height: 1),
+                          ),
+
+                          // Per-channel Stats
+                          Text(
+                            'Per-channel Stats',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildChannelStatLine('Ch 1:', ch1Text),
+                          const SizedBox(height: 4),
+                          _buildChannelStatLine('Ch 2:', ch2Text),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -478,76 +501,100 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     );
   }
 
-  Widget _buildMetaRow(String label, String value, {bool isUrl = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
+  Widget _buildTabPill({required int index, required String label, required IconData icon}) {
+    final isSelected = _selectedTabIndex == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _selectedTabIndex = index;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2C2C34) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: isUrl ? const Color(0xFF64D2FF) : Colors.white,
-                fontWeight: FontWeight.w500,
-                fontSize: 13,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isSelected ? Colors.white : Colors.white54,
               ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white54,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildMetaRowWithCopy(BuildContext context, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+  void _copyToClipboard(BuildContext context, String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Copied $label to clipboard'),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildMetaRow(BuildContext context, String label, String value, {bool isUrl = false}) {
+    return InkWell(
+      onTap: () => _copyToClipboard(context, label, value),
+      onLongPress: () => _copyToClipboard(context, label, value),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          GestureDetector(
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: value));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Copied $label to clipboard'),
-                  duration: const Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
+            Expanded(
+              child: Text(
+                value,
+                style: TextStyle(
+                  color: isUrl ? const Color(0xFF64D2FF) : Colors.white,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
                 ),
-              );
-            },
-            child: const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Icon(Icons.copy_rounded, color: Colors.white38, size: 16),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            const Icon(Icons.copy_rounded, color: Colors.white24, size: 14),
+          ],
+        ),
       ),
     );
   }
@@ -644,7 +691,7 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
   Widget _buildChannelStatLine(String chLabel, String statsText) {
     return Row(
       children: [
-        Icon(Icons.subtitles_outlined, size: 14, color: Colors.white38),
+        const Icon(Icons.subtitles_outlined, size: 14, color: Colors.white38),
         const SizedBox(width: 6),
         Text(
           chLabel,
@@ -676,7 +723,16 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     return '$minutes:$seconds';
   }
 
-  Widget _buildAudioSignalPathCard(BuildContext context, bool isBitPerfectEnabled) {
+  // Minimal Poweramp-styled Audio Signal Path View (Monochrome, sleek)
+  Widget _buildPowerampSignalPathView(
+    BuildContext context,
+    bool isBitPerfectEnabled, {
+    required String codec,
+    required String sampleRateStr,
+    required String bitDepthStr,
+    required String bitrateStr,
+    required String decodedFormat,
+  }) {
     return FutureBuilder<AudioOutputInfo>(
       future: AudioDeviceService.getCurrentOutputInfo(
         isBitPerfectSettingEnabled: isBitPerfectEnabled,
@@ -686,103 +742,121 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
         final isBluetooth = info.outputType == AudioOutputType.bluetooth;
         final isUsb = info.outputType == AudioOutputType.usbDac;
 
-        Color badgeColor = const Color(0xFF007AFF);
-        if (info.isBitPerfect) {
-          badgeColor = const Color(0xFF34C759);
-        } else if (isBluetooth) {
-          badgeColor = const Color(0xFFAF52DE);
-        }
-
-        final codecStr = widget.qualityDetails['codec'] as String? ?? 'FLAC';
-        final sampleRateStr = widget.qualityDetails['sampleRate'] as String? ?? '44.1 kHz';
-        final bitDepthStr = widget.qualityDetails['bitDepth'] as String? ?? '16-bit';
-        final bitrateStr = widget.qualityDetails['bitrate'] as String? ?? '962 kbps';
+        final dotColor = info.isBitPerfect
+            ? const Color(0xFF30D158)
+            : (isBluetooth ? const Color(0xFF64D2FF) : Colors.white70);
 
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E22),
+            color: const Color(0xFF161618),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Minimal Poweramp Header
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(6),
+                    width: 8,
+                    height: 8,
                     decoration: BoxDecoration(
-                      color: badgeColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      isBluetooth ? Icons.bluetooth_audio_rounded : (isUsb ? Icons.usb_rounded : Icons.graphic_eq_rounded),
-                      color: badgeColor,
-                      size: 18,
+                      color: dotColor,
+                      shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Audio Signal Path',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                      'AUDIO SIGNAL PATH',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
+                        fontSize: 12,
                       ),
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: badgeColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
+                      color: Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: Text(
                       info.isBitPerfect
-                          ? 'BIT-PERFECT DIRECT'
+                          ? 'BIT-PERFECT'
                           : (isBluetooth ? 'BLUETOOTH A2DP' : 'AUDIOFLINGER PCM'),
-                      style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-              // Stage 1: Track Source
-              _buildSignalStage(
-                stageNum: '1',
+              // Node 1: Track Source
+              _buildPipelineNode(
+                nodeNum: '1',
                 title: 'Track Source',
                 subtitle: widget.sourceProvider.toUpperCase(),
-                details: '$codecStr • $bitDepthStr / $sampleRateStr ($bitrateStr)',
-                icon: Icons.music_note_rounded,
-                color: Colors.white70,
+                details: '$codec • $bitDepthStr / $sampleRateStr ($bitrateStr)',
+                icon: Icons.music_note_outlined,
               ),
-              const SizedBox(height: 12),
+              _buildVerticalConnector(),
 
-              // Stage 2: Audio Engine / Mixer
-              _buildSignalStage(
-                stageNum: '2',
-                title: 'Audio Engine Processing',
-                subtitle: info.isBitPerfect ? 'Android 14 Direct Output' : 'Android System Mixer',
+              // Node 2: Audio Decoder
+              _buildPipelineNode(
+                nodeNum: '2',
+                title: 'Audio Decoder',
+                subtitle: '$codec Native Decoder',
+                details: 'Format: $decodedFormat • Interleaved Stereo PCM',
+                icon: Icons.code_rounded,
+              ),
+              _buildVerticalConnector(),
+
+              // Node 3: Resampler & DSP Engine
+              _buildPipelineNode(
+                nodeNum: '3',
+                title: 'Resampler & DSP Engine',
+                subtitle: info.isBitPerfect ? 'Bypassed (Bit-Perfect Direct)' : 'AudioFlinger Resampler',
                 details: info.isBitPerfect
-                    ? 'AudioFlinger Resampler Bypassed (Native Hardware Format)'
-                    : 'AudioFlinger Software Mixer (Resampled System Output)',
-                icon: info.isBitPerfect ? Icons.verified_rounded : Icons.tune_rounded,
-                color: info.isBitPerfect ? const Color(0xFF34C759) : Colors.orangeAccent,
+                    ? 'Original sample rate preserved 1:1 without conversion'
+                    : 'System Resampler -> 48.0 kHz Output Buffer',
+                icon: info.isBitPerfect ? Icons.verified_outlined : Icons.tune_rounded,
               ),
-              const SizedBox(height: 12),
+              _buildVerticalConnector(),
 
-              // Stage 3: Output Receiver / Codec
-              _buildSignalStage(
-                stageNum: '3',
-                title: 'Output Receiver Hardware',
+              // Node 4: Android Output Engine
+              _buildPipelineNode(
+                nodeNum: '4',
+                title: 'Android Output Engine',
+                subtitle: info.isBitPerfect
+                    ? 'Android 14 USB Direct Track'
+                    : (isBluetooth ? 'Android A2DP AudioTrack' : 'AudioFlinger High-Res Track'),
+                details: info.isBitPerfect
+                    ? 'Direct Hardware Buffer (No Android Mixer latency)'
+                    : 'AudioTrack PCM Buffer (Latency: ~40ms)',
+                icon: Icons.settings_input_component_outlined,
+              ),
+              _buildVerticalConnector(),
+
+              // Node 5: Active Output Device Hardware
+              _buildPipelineNode(
+                nodeNum: '5',
+                title: 'Output Device Hardware',
                 subtitle: info.deviceName,
                 details: '${info.codecName} • ${info.transmissionDetails}',
-                icon: isBluetooth ? Icons.headphones_rounded : (isUsb ? Icons.speaker_group_rounded : Icons.speaker_rounded),
-                color: badgeColor,
+                icon: isBluetooth ? Icons.headphones_outlined : (isUsb ? Icons.usb_outlined : Icons.speaker_outlined),
+                isLast: true,
               ),
             ],
           ),
@@ -791,32 +865,33 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     );
   }
 
-  Widget _buildSignalStage({
-    required String stageNum,
+  Widget _buildPipelineNode({
+    required String nodeNum,
     required String title,
     required String subtitle,
     required String details,
     required IconData icon,
-    required Color color,
+    bool isLast = false,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 22,
-          height: 22,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.15),
+            color: Colors.white.withOpacity(0.06),
             shape: BoxShape.circle,
+            border: Border.all(color: Colors.white24, width: 1),
           ),
           child: Center(
             child: Text(
-              stageNum,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+              nodeNum,
+              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -828,15 +903,15 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
                     style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(width: 6),
-                  Icon(icon, size: 14, color: color),
+                  Icon(icon, size: 14, color: Colors.white54),
                 ],
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+                style: const TextStyle(color: Color(0xE6FFFFFF), fontSize: 12, fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 details,
                 style: const TextStyle(color: Colors.white54, fontSize: 11),
@@ -845,6 +920,17 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildVerticalConnector() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 11, top: 4, bottom: 4),
+      child: Container(
+        width: 2,
+        height: 18,
+        color: Colors.white12,
+      ),
     );
   }
 }

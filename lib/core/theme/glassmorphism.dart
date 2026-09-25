@@ -85,6 +85,7 @@ class GlassCard extends ConsumerWidget {
   final List<Color>? gradientColors;
   final double? width;
   final double? height;
+  final bool useBlur;
 
   const GlassCard({
     super.key,
@@ -98,66 +99,73 @@ class GlassCard extends ConsumerWidget {
     this.gradientColors,
     this.width,
     this.height,
+    this.useBlur = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
+    Widget content = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap != null
+            ? () {
+                AppHaptics.trigger(ref, type: HapticFeedbackType.light);
+                onTap!();
+              }
+            : null,
+        onLongPress: onLongPress != null
+            ? () {
+                AppHaptics.trigger(ref, type: HapticFeedbackType.medium);
+                onLongPress!();
+              }
+            : null,
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Container(
+          padding: padding ?? const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: gradient ?? LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [
+                      const Color(0xFF1E1E24),
+                      const Color(0xFF16161A),
+                    ]
+                  : [
+                      Colors.white.withOpacity(0.92),
+                      Colors.white.withOpacity(0.85),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(
+              color: isDark 
+                  ? Colors.white.withOpacity(0.08)
+                  : Colors.black.withOpacity(0.06),
+              width: 1,
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+
+    if (useBlur) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+          child: content,
+        ),
+      );
+    }
+
     return Container(
       width: width,
       height: height,
       margin: margin,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap != null
-                  ? () {
-                      AppHaptics.trigger(ref, type: HapticFeedbackType.light);
-                      onTap!();
-                    }
-                  : null,
-              onLongPress: onLongPress != null
-                  ? () {
-                      AppHaptics.trigger(ref, type: HapticFeedbackType.medium);
-                      onLongPress!();
-                    }
-                  : null,
-              borderRadius: BorderRadius.circular(borderRadius),
-              child: Container(
-                padding: padding ?? const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: gradient ?? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDark
-                        ? [
-                            Colors.white.withOpacity(0.08),
-                            Colors.white.withOpacity(0.04),
-                          ]
-                        : [
-                            Colors.black.withOpacity(0.05),
-                            Colors.black.withOpacity(0.02),
-                          ],
-                  ),
-                  borderRadius: BorderRadius.circular(borderRadius),
-                  border: Border.all(
-                    color: isDark 
-                        ? Colors.white.withOpacity(0.12)
-                        : Colors.black.withOpacity(0.1),
-                    width: 1,
-                  ),
-                ),
-                child: child,
-              ),
-            ),
-          ),
-        ),
-      ),
+      child: content,
     );
   }
 }
