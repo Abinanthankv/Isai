@@ -17,7 +17,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:isai/main.dart';
-import 'visualizer_settings_sheet.dart';
 import 'spotify_canvas_provider.dart';
 import 'music_providers.dart';
 import '../../../core/utils/app_haptics.dart';
@@ -50,7 +49,6 @@ import 'playlist_providers.dart';
 import '../../player/data/audio_handler.dart';
 import 'audio_quality_analysis_sheet.dart';
 import '../data/real_audio_analyzer.dart';
-import 'visualizer_layer.dart';
 import 'package:isai/core/theme/material3_theme.dart';
 import 'package:isai/core/theme/dynamic_color_provider.dart';
 import 'spotify_canvas_provider.dart';
@@ -730,11 +728,6 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     ),
                   ),
               ],
-
-              // ── Visualizer Overlay ───────────────────────────────────────
-              VisualizerOverlay(
-                albumArtColor: hasArtwork ? Theme.of(context).colorScheme.primary : null,
-              ),
 
               // ── Main content ────────────────────────────────────────────
               SafeArea(
@@ -1553,21 +1546,6 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                             onCloseLyrics: () {
                               if (_showLyrics) setState(() => _showLyrics = false);
                             },
-                          ),
-                        );
-                      },
-                    ),
-
-                    // 11. Visualizer
-                    ListTile(
-                      leading: const Icon(Icons.equalizer_rounded, color: Colors.white),
-                      title: Text('Visualizer', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const VisualizerSettingsSheet(),
                           ),
                         );
                       },

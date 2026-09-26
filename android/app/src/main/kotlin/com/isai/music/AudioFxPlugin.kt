@@ -134,21 +134,21 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
         }
         if (equalizer == null && dynamics == null) {
             try {
-                equalizer = Equalizer(0, id).apply { enabled = true }
+                equalizer = Equalizer(0, id).apply { enabled = false }
             } catch (_: Exception) {
                 equalizer = null
             }
         }
         if (bassBoost == null) {
             try {
-                bassBoost = BassBoost(0, id).apply { enabled = true }
+                bassBoost = BassBoost(0, id).apply { enabled = false }
             } catch (_: Exception) {
                 bassBoost = null
             }
         }
         if (loudnessEnhancer == null) {
             try {
-                loudnessEnhancer = LoudnessEnhancer(id).apply { enabled = true }
+                loudnessEnhancer = LoudnessEnhancer(id).apply { enabled = false }
             } catch (_: Exception) {
                 loudnessEnhancer = null
             }
@@ -157,7 +157,7 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
             try {
                 reverb = PresetReverb(0, id).apply {
                     setPreset(PresetReverb.PRESET_NONE)
-                    enabled = true
+                    enabled = false
                 }
             } catch (_: Exception) {
                 reverb = null
@@ -219,12 +219,20 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
     }
 
     private fun setBassStrength(strength: Int) {
-        bassBoost?.setStrength(strength.coerceIn(0, 1000).toShort())
+        val s = strength.coerceIn(0, 1000).toShort()
+        bassBoost?.let {
+            it.enabled = s > 0
+            it.setStrength(s)
+        }
     }
 
     private fun setLoudnessTargetGain(gainDb: Double) {
         // LoudnessEnhancer takes gain in millibels.
-        loudnessEnhancer?.setTargetGain((gainDb * 100.0).toInt())
+        val gainMb = (gainDb * 100.0).toInt()
+        loudnessEnhancer?.let {
+            it.enabled = gainMb > 0
+            it.setTargetGain(gainMb)
+        }
     }
 
     /**
@@ -240,7 +248,7 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
             preEq.setBand(i, DynamicsProcessing.EqBand(true, ISO_EQ_FREQS[i], 0f))
         }
         val limiter = DynamicsProcessing.Limiter(
-            true,  // enable
+            false, // enable (disabled by default)
             false, // linkGroup
             5,     // attackTime (ms)
             50f,   // releaseTime (ms)
@@ -260,12 +268,18 @@ class AudioFxPlugin(flutterEngine: FlutterEngine) {
             0,     // postEqBandCount
             true   // limiterInUse
         ).setPreEqAllChannelsTo(preEq).setLimiterAllChannelsTo(limiter).build()
-        return DynamicsProcessing(0, sessionId, config).apply { enabled = true }
+        val dp = DynamicsProcessing(0, sessionId, config).apply { enabled = false }
+        for (ch in 0 until dynamicsChannelCount) {
+            dp.getPreEqByChannelIndex(ch).setEnabled(false)
+            dp.getLimiterByChannelIndex(ch).setEnabled(false)
+        }
+        return dp
     }
 
     private fun setReverbPreset(preset: Int) {
         val reverbFx = reverb ?: return
         val index = preset.coerceIn(0, REVERB_PRESETS.size - 1)
+        reverbFx.enabled = index > 0
         reverbFx.setPreset(REVERB_PRESETS[index])
     }
 

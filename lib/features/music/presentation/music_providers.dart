@@ -77,20 +77,7 @@ class SettingsState {
   final bool playerMinimalistShowLyrics;
   final bool playerMinimalistShowSleep;
   final bool playerMinimalistShowQueue;
-  // Visualizer
-  final bool visualizerEnabled;
-  final bool visualizerShowNowPlaying;
-  final bool visualizerShowMiniPlayer;
-  final String visualizerStyle;
-  final int visualizerPoints;
-  final double visualizerSensitivity;
-  final String visualizerColorMode;
-  final double visualizerAlpha;
-  final double visualizerHeightPct;
-  final double visualizerAmplitude;
-  final double visualizerBaseLift;
-  final double visualizerBarSpacing;
-  final double visualizerCornerRadius;
+
   final int maxSongCacheSize;
   final int maxImageCacheSize;
   final List<String> addonPriority;
@@ -155,19 +142,7 @@ class SettingsState {
     this.playerMinimalistShowLyrics = false,
     this.playerMinimalistShowSleep = false,
     this.playerMinimalistShowQueue = false,
-    this.visualizerEnabled = false,
-    this.visualizerShowNowPlaying = true,
-    this.visualizerShowMiniPlayer = true,
-    this.visualizerStyle = 'bar',
-    this.visualizerPoints = 24,
-    this.visualizerSensitivity = 0.1,
-    this.visualizerColorMode = 'albumArt',
-    this.visualizerAlpha = 0.6,
-    this.visualizerHeightPct = 0.8,
-    this.visualizerAmplitude = 0.1,
-    this.visualizerBaseLift = 105.0,
-    this.visualizerBarSpacing = 0.0,
-    this.visualizerCornerRadius = 0.0,
+
     this.maxSongCacheSize = 1024,
     this.maxImageCacheSize = 512,
     this.addonPriority = const [],
@@ -230,19 +205,7 @@ class SettingsState {
     bool? playerMinimalistShowLyrics,
     bool? playerMinimalistShowSleep,
     bool? playerMinimalistShowQueue,
-    bool? visualizerEnabled,
-    bool? visualizerShowNowPlaying,
-    bool? visualizerShowMiniPlayer,
-    String? visualizerStyle,
-    int? visualizerPoints,
-    double? visualizerSensitivity,
-    String? visualizerColorMode,
-    double? visualizerAlpha,
-    double? visualizerHeightPct,
-    double? visualizerAmplitude,
-    double? visualizerBaseLift,
-    double? visualizerBarSpacing,
-    double? visualizerCornerRadius,
+
     int? maxSongCacheSize,
     int? maxImageCacheSize,
     List<String>? addonPriority,
@@ -304,19 +267,7 @@ class SettingsState {
       playerMinimalistShowLyrics: playerMinimalistShowLyrics ?? this.playerMinimalistShowLyrics,
       playerMinimalistShowSleep: playerMinimalistShowSleep ?? this.playerMinimalistShowSleep,
       playerMinimalistShowQueue: playerMinimalistShowQueue ?? this.playerMinimalistShowQueue,
-      visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
-      visualizerShowNowPlaying: visualizerShowNowPlaying ?? this.visualizerShowNowPlaying,
-      visualizerShowMiniPlayer: visualizerShowMiniPlayer ?? this.visualizerShowMiniPlayer,
-      visualizerStyle: visualizerStyle ?? this.visualizerStyle,
-      visualizerPoints: visualizerPoints ?? this.visualizerPoints,
-      visualizerSensitivity: visualizerSensitivity ?? this.visualizerSensitivity,
-      visualizerColorMode: visualizerColorMode ?? this.visualizerColorMode,
-      visualizerAlpha: visualizerAlpha ?? this.visualizerAlpha,
-      visualizerHeightPct: visualizerHeightPct ?? this.visualizerHeightPct,
-      visualizerAmplitude: visualizerAmplitude ?? this.visualizerAmplitude,
-      visualizerBaseLift: visualizerBaseLift ?? this.visualizerBaseLift,
-      visualizerBarSpacing: visualizerBarSpacing ?? this.visualizerBarSpacing,
-      visualizerCornerRadius: visualizerCornerRadius ?? this.visualizerCornerRadius,
+
       maxSongCacheSize: maxSongCacheSize ?? this.maxSongCacheSize,
       maxImageCacheSize: maxImageCacheSize ?? this.maxImageCacheSize,
       addonPriority: addonPriority ?? this.addonPriority,
@@ -391,19 +342,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       playerMinimalistShowLyrics: _settings.playerMinimalistShowLyrics,
       playerMinimalistShowSleep: _settings.playerMinimalistShowSleep,
       playerMinimalistShowQueue: _settings.playerMinimalistShowQueue,
-      visualizerEnabled: _settings.visualizerEnabled,
-      visualizerShowNowPlaying: _settings.visualizerShowNowPlaying,
-      visualizerShowMiniPlayer: _settings.visualizerShowMiniPlayer,
-      visualizerStyle: _settings.visualizerStyle,
-      visualizerPoints: _settings.visualizerPoints,
-      visualizerSensitivity: _settings.visualizerSensitivity,
-      visualizerColorMode: _settings.visualizerColorMode,
-      visualizerAlpha: _settings.visualizerAlpha,
-      visualizerHeightPct: _settings.visualizerHeightPct,
-      visualizerAmplitude: _settings.visualizerAmplitude,
-      visualizerBaseLift: _settings.visualizerBaseLift,
-      visualizerBarSpacing: _settings.visualizerBarSpacing,
-      visualizerCornerRadius: _settings.visualizerCornerRadius,
+
       maxSongCacheSize: _settings.maxSongCacheSize,
       maxImageCacheSize: _settings.maxImageCacheSize,
       addonPriority: _settings.addonPriority,
@@ -763,71 +702,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(playerNextUpStyle: style);
   }
 
-  // ── Visualizer Setters ──────────────────────────────────────────────────
-  Future<void> setVisualizerEnabled(bool enabled) async {
-    await _settings.setVisualizerEnabled(enabled);
-    state = state.copyWith(visualizerEnabled: enabled);
-  }
 
-  Future<void> setVisualizerShowNowPlaying(bool show) async {
-    await _settings.setVisualizerShowNowPlaying(show);
-    state = state.copyWith(visualizerShowNowPlaying: show);
-  }
-
-  Future<void> setVisualizerShowMiniPlayer(bool show) async {
-    await _settings.setVisualizerShowMiniPlayer(show);
-    state = state.copyWith(visualizerShowMiniPlayer: show);
-  }
-
-  Future<void> setVisualizerStyle(String style) async {
-    await _settings.setVisualizerStyle(style);
-    state = state.copyWith(visualizerStyle: style);
-  }
-
-  Future<void> setVisualizerPoints(int points) async {
-    await _settings.setVisualizerPoints(points);
-    state = state.copyWith(visualizerPoints: points);
-  }
-
-  Future<void> setVisualizerSensitivity(double sensitivity) async {
-    await _settings.setVisualizerSensitivity(sensitivity);
-    state = state.copyWith(visualizerSensitivity: sensitivity);
-  }
-
-  Future<void> setVisualizerColorMode(String mode) async {
-    await _settings.setVisualizerColorMode(mode);
-    state = state.copyWith(visualizerColorMode: mode);
-  }
-
-  Future<void> setVisualizerAlpha(double alpha) async {
-    await _settings.setVisualizerAlpha(alpha);
-    state = state.copyWith(visualizerAlpha: alpha);
-  }
-
-  Future<void> setVisualizerHeightPct(double pct) async {
-    await _settings.setVisualizerHeightPct(pct);
-    state = state.copyWith(visualizerHeightPct: pct);
-  }
-
-  Future<void> setVisualizerAmplitude(double amplitude) async {
-    await _settings.setVisualizerAmplitude(amplitude);
-    state = state.copyWith(visualizerAmplitude: amplitude);
-  }
-
-  Future<void> setVisualizerBaseLift(double lift) async {
-    await _settings.setVisualizerBaseLift(lift);
-    state = state.copyWith(visualizerBaseLift: lift);
-  }
-
-  Future<void> setVisualizerBarSpacing(double spacing) async {
-    await _settings.setVisualizerBarSpacing(spacing);
-    state = state.copyWith(visualizerBarSpacing: spacing);
-  }
-
-  Future<void> setVisualizerCornerRadius(double radius) async {
-    await _settings.setVisualizerCornerRadius(radius);
-    state = state.copyWith(visualizerCornerRadius: radius);
-  }
 
   Future<void> setMiniPlayerSwipeEnabled(bool enabled) async {
     await _settings.setMiniPlayerSwipeEnabled(enabled);
@@ -866,19 +741,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       playerLyricsAlignment: state.playerLyricsAlignment,
       playerLyricsFontWeight: state.playerLyricsFontWeight,
       playerControlLayout: state.playerControlLayout,
-      visualizerEnabled: state.visualizerEnabled,
-      visualizerShowNowPlaying: state.visualizerShowNowPlaying,
-      visualizerShowMiniPlayer: state.visualizerShowMiniPlayer,
-      visualizerStyle: state.visualizerStyle,
-      visualizerPoints: state.visualizerPoints,
-      visualizerSensitivity: state.visualizerSensitivity,
-      visualizerColorMode: state.visualizerColorMode,
-      visualizerAlpha: state.visualizerAlpha,
-      visualizerHeightPct: state.visualizerHeightPct,
-      visualizerAmplitude: state.visualizerAmplitude,
-      visualizerBaseLift: state.visualizerBaseLift,
-      visualizerBarSpacing: state.visualizerBarSpacing,
-      visualizerCornerRadius: state.visualizerCornerRadius,
+
       maxSongCacheSize: state.maxSongCacheSize,
       maxImageCacheSize: state.maxImageCacheSize,
       addonPriority: state.addonPriority,

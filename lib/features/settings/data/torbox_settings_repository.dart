@@ -69,45 +69,7 @@ abstract class TorBoxSettingsRepository {
   Future<void> setBitPerfectUsbOutputEnabled(bool enabled);
   bool get bitPerfectUsbOutputEnabled;
 
-  // ── Visualizer Settings ──────────────────────────────────────────────────
-  Future<void> setVisualizerEnabled(bool enabled);
-  bool get visualizerEnabled;
 
-  Future<void> setVisualizerShowNowPlaying(bool show);
-  bool get visualizerShowNowPlaying;
-
-  Future<void> setVisualizerShowMiniPlayer(bool show);
-  bool get visualizerShowMiniPlayer;
-
-  Future<void> setVisualizerStyle(String style);
-  String get visualizerStyle;
-
-  Future<void> setVisualizerPoints(int points);
-  int get visualizerPoints;
-
-  Future<void> setVisualizerSensitivity(double sensitivity);
-  double get visualizerSensitivity;
-
-  Future<void> setVisualizerColorMode(String mode);
-  String get visualizerColorMode;
-
-  Future<void> setVisualizerAlpha(double alpha);
-  double get visualizerAlpha;
-
-  Future<void> setVisualizerHeightPct(double pct);
-  double get visualizerHeightPct;
-
-  Future<void> setVisualizerAmplitude(double amplitude);
-  double get visualizerAmplitude;
-
-  Future<void> setVisualizerBaseLift(double lift);
-  double get visualizerBaseLift;
-
-  Future<void> setVisualizerBarSpacing(double spacing);
-  double get visualizerBarSpacing;
-
-  Future<void> setVisualizerCornerRadius(double radius);
-  double get visualizerCornerRadius;
 
   Future<void> setMaxSongCacheSize(int sizeInMb);
   int get maxSongCacheSize;
@@ -314,84 +276,7 @@ class TorBoxSettingsRepositoryImpl implements TorBoxSettingsRepository {
   @override
   Future<void> setPlayerSpotifyCanvasEnabled(bool enabled) => _prefs.setBool('player_spotify_canvas_enabled', enabled);
 
-  // ── Visualizer Settings Implementation ─────────────────────────────────
-  @override
-  bool get visualizerEnabled => _prefs.getBool('visualizer_enabled') ?? false;
 
-  @override
-  Future<void> setVisualizerEnabled(bool enabled) => _prefs.setBool('visualizer_enabled', enabled);
-
-  @override
-  bool get visualizerShowNowPlaying => _prefs.getBool('visualizer_show_now_playing') ?? true;
-
-  @override
-  Future<void> setVisualizerShowNowPlaying(bool show) => _prefs.setBool('visualizer_show_now_playing', show);
-
-  @override
-  bool get visualizerShowMiniPlayer => _prefs.getBool('visualizer_show_mini_player') ?? true;
-
-  @override
-  Future<void> setVisualizerShowMiniPlayer(bool show) => _prefs.setBool('visualizer_show_mini_player', show);
-
-  @override
-  String get visualizerStyle => _prefs.getString('visualizer_style') ?? 'bar';
-
-  @override
-  Future<void> setVisualizerStyle(String style) => _prefs.setString('visualizer_style', style);
-
-  @override
-  int get visualizerPoints => _prefs.getInt('visualizer_points') ?? 24;
-
-  @override
-  Future<void> setVisualizerPoints(int points) => _prefs.setInt('visualizer_points', points);
-
-  @override
-  double get visualizerSensitivity => _prefs.getDouble('visualizer_sensitivity') ?? 0.1;
-
-  @override
-  Future<void> setVisualizerSensitivity(double sensitivity) => _prefs.setDouble('visualizer_sensitivity', sensitivity);
-
-  @override
-  String get visualizerColorMode => _prefs.getString('visualizer_color_mode') ?? 'albumArt';
-
-  @override
-  Future<void> setVisualizerColorMode(String mode) => _prefs.setString('visualizer_color_mode', mode);
-
-  @override
-  double get visualizerAlpha => _prefs.getDouble('visualizer_alpha') ?? 0.6;
-
-  @override
-  Future<void> setVisualizerAlpha(double alpha) => _prefs.setDouble('visualizer_alpha', alpha);
-
-  @override
-  double get visualizerHeightPct => _prefs.getDouble('visualizer_height_pct') ?? 0.8;
-
-  @override
-  Future<void> setVisualizerHeightPct(double pct) => _prefs.setDouble('visualizer_height_pct', pct);
-
-  @override
-  double get visualizerAmplitude => _prefs.getDouble('visualizer_amplitude') ?? 0.1;
-
-  @override
-  Future<void> setVisualizerAmplitude(double amplitude) => _prefs.setDouble('visualizer_amplitude', amplitude);
-
-  @override
-  double get visualizerBaseLift => _prefs.getDouble('visualizer_base_lift') ?? 105.0;
-
-  @override
-  Future<void> setVisualizerBaseLift(double lift) => _prefs.setDouble('visualizer_base_lift', lift);
-
-  @override
-  double get visualizerBarSpacing => _prefs.getDouble('visualizer_bar_spacing') ?? 0.0;
-
-  @override
-  Future<void> setVisualizerBarSpacing(double spacing) => _prefs.setDouble('visualizer_bar_spacing', spacing);
-
-  @override
-  double get visualizerCornerRadius => _prefs.getDouble('visualizer_corner_radius') ?? 0.0;
-
-  @override
-  Future<void> setVisualizerCornerRadius(double radius) => _prefs.setDouble('visualizer_corner_radius', radius);
 
   @override
   int get maxSongCacheSize => _prefs.getInt('max_song_cache_size') ?? 1024;

@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
-    <!-- Required by Android's Visualizer API to read audio output for real-time visualization -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- Required by Google Cast framework for device discovery (Android 13+) -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"

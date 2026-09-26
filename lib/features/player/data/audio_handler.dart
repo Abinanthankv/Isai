@@ -34,9 +34,6 @@ import '../../audiobooks/data/audiobook_models.dart';
 class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
   
-  /// Expose the Android audio session ID for the native Visualizer API.
-  /// Returns null on non-Android platforms.
-  int? get androidAudioSessionIdSync => _player.androidAudioSessionId;
   double get volume => _player.volume;
   Stream<double> get volumeStream => _player.volumeStream;
   final _playlist = ConcatenatingAudioSource(children: []);
@@ -87,7 +84,35 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     if (!io.Platform.isWindows) {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
+      await session.setActive(true);
+      session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _player.setVolume(0.5);
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              pause();
+              break;
+          }
+        } else {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _player.setVolume(1.0);
+              break;
+            case AudioInterruptionType.pause:
+              play();
+              break;
+            case AudioInterruptionType.unknown:
+              break;
+          }
+        }
+      });
+      session.becomingNoisyEventStream.listen((_) => pause());
     }
+
+    await _player.setVolume(1.0);
 
     // Initialize cache path
     final cacheDir = await getTemporaryDirectory();
@@ -1671,6 +1696,10 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await cast.play();
       _emitCastState();
       return;
+    }
+    if (!io.Platform.isWindows) {
+      final session = await AudioSession.instance;
+      await session.setActive(true);
     }
     await _player.play();
   }
