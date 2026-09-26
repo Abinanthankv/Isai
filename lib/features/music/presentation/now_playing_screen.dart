@@ -2952,12 +2952,20 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   ),
                 ),
 
-                // Right: Action controls (Shuffle, Repeat, Lyrics toggle)
+                // Right: Action controls (Source selection, Shuffle, Repeat, Lyrics toggle)
                 SizedBox(
-                  width: 240,
+                  width: 260,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.alt_route_rounded, color: Colors.white60, size: 20),
+                        tooltip: 'Choose Source',
+                        onPressed: () {
+                          AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                          _showSourceSelection();
+                        },
+                      ),
                       StreamBuilder<PlaybackState>(
                         stream: audioHandler.playbackState,
                         builder: (context, snapshot) {
