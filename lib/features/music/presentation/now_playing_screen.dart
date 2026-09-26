@@ -2568,7 +2568,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     );
   }
 
-  Widget _buildSeekBar({bool isLyricsMode = false}) {
+  Widget _buildSeekBar({bool isLyricsMode = false, bool isCompact = false}) {
     return RepaintBoundary(
       child: StreamBuilder<MediaItem?>(
         stream: audioHandler.mediaItem,
@@ -2589,8 +2589,8 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             }
 
             SliderThemeData sliderThemeData = SliderThemeData(
-              trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              trackHeight: isCompact ? 2 : 3,
+              thumbShape: isCompact ? const RoundSliderThumbShape(enabledThumbRadius: 4) : const RoundSliderThumbShape(enabledThumbRadius: 6),
               activeTrackColor: isM3 ? colorScheme.primary : Colors.white,
               inactiveTrackColor: isM3 ? colorScheme.secondaryContainer : Colors.white24,
               thumbColor: isM3 ? colorScheme.primary : Colors.white,
@@ -2649,25 +2649,26 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     },
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(_formatDuration(position),
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,)),
-                      Text(
-                        totalDuration == Duration.zero
-                            ? '--:--'
-                            : (isLyricsMode
-                                ? '-${_formatDuration(totalDuration - position)}'
-                                : _formatDuration(totalDuration)),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,),
-                      ),
-                    ],
+                if (!isCompact)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_formatDuration(position),
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,)),
+                        Text(
+                          totalDuration == Duration.zero
+                              ? '--:--'
+                              : (isLyricsMode
+                                  ? '-${_formatDuration(totalDuration - position)}'
+                                  : _formatDuration(totalDuration)),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: timeColor,),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                if (!isLyricsMode) ...[
+                if (!isLyricsMode && !isCompact) ...[
                   const SizedBox(height: 10),
                   Center(
                     child: _buildQualityBadge(mediaSnap.data),
@@ -2847,7 +2848,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
+        color: Colors.black.withValues(alpha: 0.55),
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
       ),
       child: Column(
@@ -2855,13 +2856,13 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
         children: [
           // Seekbar across top edge
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _buildSeekBar(),
+            padding: EdgeInsets.symmetric(horizontal: _wideBottomBarExpanded ? 16 : 0),
+            child: _buildSeekBar(isCompact: !_wideBottomBarExpanded),
           ),
           
-          // Main Bar (Minimalist View)
+          // Main Bar Row
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+            padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
             child: Row(
               children: [
                 // Left: Thumbnail + Track Title & Artist
@@ -2874,16 +2875,16 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                         child: hasArtwork
                             ? CachedNetworkImage(
                                 imageUrl: displayArtwork,
-                                width: 44,
-                                height: 44,
+                                width: 38,
+                                height: 38,
                                 fit: BoxFit.cover,
                                 memCacheWidth: 100,
                                 memCacheHeight: 100,
-                                errorWidget: (_, __, ___) => Container(width: 44, height: 44, color: Colors.white10, child: const Icon(Icons.music_note, color: Colors.white38)),
+                                errorWidget: (_, __, ___) => Container(width: 38, height: 38, color: Colors.white10, child: const Icon(Icons.music_note, color: Colors.white38)),
                               )
-                            : Container(width: 44, height: 44, color: Colors.white10, child: const Icon(Icons.music_note, color: Colors.white38)),
+                            : Container(width: 38, height: 38, color: Colors.white10, child: const Icon(Icons.music_note, color: Colors.white38)),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2891,14 +2892,14 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           children: [
                             Text(
                               displayTitle,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
                             Text(
                               displayArtist,
-                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                              style: const TextStyle(color: Colors.white60, fontSize: 11),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -2909,14 +2910,62 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   ),
                 ),
 
-                // Center: Animated Material Transport Controls (InteractiveControls with spring bounce animation)
+                // Center: Minimal clean icons when shrinked (matching reference), or full InteractiveControls when expanded
                 Expanded(
                   child: Center(
-                    child: _buildTransportControls(),
+                    child: _wideBottomBarExpanded
+                        ? _buildTransportControls()
+                        : StreamBuilder<PlaybackState>(
+                            stream: audioHandler.playbackState,
+                            builder: (context, snapshot) {
+                              final playing = snapshot.data?.playing ?? false;
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                                    iconSize: 24,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    onPressed: () {
+                                      AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                                      audioHandler.skipToPrevious();
+                                    },
+                                  ),
+                                  const SizedBox(width: 20),
+                                  IconButton(
+                                    icon: Icon(
+                                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                    ),
+                                    iconSize: 28,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    onPressed: () {
+                                      AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                                      if (playing) audioHandler.pause();
+                                      else audioHandler.play();
+                                    },
+                                  ),
+                                  const SizedBox(width: 20),
+                                  IconButton(
+                                    icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                                    iconSize: 24,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                    onPressed: () {
+                                      AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                                      audioHandler.skipToNext();
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                   ),
                 ),
 
-                // Right: Expand Options Button (Up arrow)
+                // Right: Expand/Collapse options icon
                 SizedBox(
                   width: 240,
                   child: Row(
@@ -2924,9 +2973,9 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                     children: [
                       IconButton(
                         icon: Icon(
-                          _wideBottomBarExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                          _wideBottomBarExpanded ? Icons.keyboard_arrow_down_rounded : Icons.open_in_full_rounded,
                           color: _wideBottomBarExpanded ? colorScheme.primary : Colors.white70,
-                          size: 28,
+                          size: 20,
                         ),
                         tooltip: _wideBottomBarExpanded ? 'Collapse Options' : 'Expand Options',
                         onPressed: () {
