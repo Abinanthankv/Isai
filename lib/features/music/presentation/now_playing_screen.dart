@@ -5113,129 +5113,147 @@ class _SleepTimerSheetState extends State<_SleepTimerSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              Center(
+                child: Container(
+                  width: 36, height: 4,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            
-            // Header: Circular icon + text (SLEEP TIMER / Pick a duration)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF2C221E),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.bedtime, color: Color(0xFFE58043), size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'SLEEP TIMER',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold,
-                            color: Colors.orange[300],
-                            letterSpacing: 1.2,),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Pick a duration',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold,
-                            color: Colors.white,),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: Colors.white10, height: 1),
-            const SizedBox(height: 8),
-
-            // Active remaining time display if a timed sleep timer is running
-            if (widget.isActive && widget.remainingEnd != null) ...[
-              StreamBuilder<DateTime>(
-                stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
-                builder: (_, __) {
-                  final remaining = widget.remainingEnd!.difference(DateTime.now());
-                  if (remaining.isNegative) return const SizedBox.shrink();
-                  final h = remaining.inHours;
-                  final m = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
-                  final s = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    child: Text(
-                      'Remaining time: ${h > 0 ? "${h}h " : ""}$m:$s',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
-                    ),
-                  );
-                },
-              ),
-            ] else if (widget.isEndOfTrackActive) ...[
+              const SizedBox(height: 14),
+              
+              // Header: Circular icon + text
               Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text(
-                  'Active: Stops at end of current track',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w500),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF2C221E),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.bedtime, color: Color(0xFFE58043), size: 18),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SLEEP TIMER',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange[300],
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Pick a duration',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-
-            // Presets
-            ..._presetDurations.map((preset) => ListTile(
-              leading: const Icon(Icons.access_time_rounded, color: Colors.white54),
-              title: Text(
-                preset.label,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
-              ),
-              onTap: () => widget.onSet(preset.duration),
-            )),
-
-            // End of current track
-            ListTile(
-              leading: const Icon(Icons.music_note_rounded, color: Colors.white54),
-              title: Text(
-                'End of current track',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
-              ),
-              subtitle: Text(
-                'Pauses the moment this song finishes',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38,),
-              ),
-              onTap: () => widget.onSet(Duration.zero),
-            ),
-
-            // Turn off timer button if any timer is active
-            if (widget.isActive || widget.isEndOfTrackActive) ...[
+              const SizedBox(height: 12),
               const Divider(color: Colors.white10, height: 1),
-              ListTile(
-                leading: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
-                title: Text(
-                  'Turn off timer',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.redAccent, fontWeight: FontWeight.w500),
+              const SizedBox(height: 4),
+
+              // Active remaining time display if a timed sleep timer is running
+              if (widget.isActive && widget.remainingEnd != null) ...[
+                StreamBuilder<DateTime>(
+                  stream: Stream.periodic(const Duration(seconds: 1), (_) => DateTime.now()),
+                  builder: (_, __) {
+                    final remaining = widget.remainingEnd!.difference(DateTime.now());
+                    if (remaining.isNegative) return const SizedBox.shrink();
+                    final h = remaining.inHours;
+                    final m = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+                    final s = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                      child: Text(
+                        'Remaining time: ${h > 0 ? "${h}h " : ""}$m:$s',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                onTap: widget.onCancel,
+              ] else if (widget.isEndOfTrackActive) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                  child: Text(
+                    'Active: Stops at end of current track',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+
+              // Presets
+              ..._presetDurations.map((preset) => ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.access_time_rounded, color: Colors.white54, size: 20),
+                title: Text(
+                  preset.label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
+                ),
+                onTap: () => widget.onSet(preset.duration),
+              )),
+
+              // End of current track
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.music_note_rounded, color: Colors.white54, size: 20),
+                title: Text(
+                  'End of current track',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w400),
+                ),
+                subtitle: Text(
+                  'Pauses the moment this song finishes',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.white38),
+                ),
+                onTap: () => widget.onSet(Duration.zero),
               ),
+
+              // Turn off timer button if any timer is active
+              if (widget.isActive || widget.isEndOfTrackActive) ...[
+                const Divider(color: Colors.white10, height: 1),
+                ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  leading: const Icon(Icons.cancel_outlined, color: Colors.redAccent, size: 20),
+                  title: Text(
+                    'Turn off timer',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.redAccent, fontWeight: FontWeight.w500),
+                  ),
+                  onTap: widget.onCancel,
+                ),
+              ],
+              const SizedBox(height: 12),
             ],
-            const SizedBox(height: 16),
-          ],
+          ),
         ),
       ),
     );
