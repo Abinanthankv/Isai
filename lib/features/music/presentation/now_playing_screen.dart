@@ -2788,15 +2788,29 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              IconButton(
-                                icon: Icon(
-                                  _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                  color: _isLiked ? Colors.redAccent : Colors.white38,
-                                  size: 18,
-                                ),
-                                onPressed: () {
-                                  AppHaptics.trigger(context, type: HapticFeedbackType.light);
-                                  setState(() => _isLiked = !_isLiked);
+                              Consumer(
+                                builder: (context, ref, child) {
+                                  final itemTorrentId = (item.extras?['torrentId'] as num?)?.toInt() ?? widget.file.torrentId;
+                                  final itemFileId = (item.extras?['fileId'] as num?)?.toInt() ?? widget.file.id;
+                                  final isLiked = ref.watch(isTrackLikedProvider((torrentId: itemTorrentId, fileId: itemFileId)));
+
+                                  return IconButton(
+                                    icon: Icon(
+                                      isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                      color: isLiked ? Colors.redAccent : Colors.white38,
+                                      size: 18,
+                                    ),
+                                    onPressed: () {
+                                      AppHaptics.trigger(context, type: HapticFeedbackType.light);
+                                      ref.read(likedSongsProvider.notifier).toggleLike(
+                                        itemTorrentId,
+                                        itemFileId,
+                                        isLiked,
+                                        title: item.title,
+                                        artist: item.artist ?? '',
+                                      );
+                                    },
+                                  );
                                 },
                               ),
                               IconButton(
