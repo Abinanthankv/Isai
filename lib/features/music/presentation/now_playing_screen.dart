@@ -116,6 +116,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
   double _volume = 1.0;
   ProviderSubscription? _metadataSubscription;
   bool _showLyrics = false;
+  bool _wideBottomBarExpanded = false;
   final ScrollController _lyricsScrollController = ScrollController();
   int _lastLyricIndex = -1;
   StreamSubscription<MediaItem?>? _mediaSubscription;
@@ -2845,24 +2846,25 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.only(bottom: 12, top: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
+        color: Colors.black.withValues(alpha: 0.45),
         border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Seekbar across top edge
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _buildSeekBar(),
           ),
-          const SizedBox(height: 4),
+          
+          // Main Bar (Minimalist View)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
             child: Row(
               children: [
-                // Left: Mini Thumbnail + Track Info
+                // Left: Thumbnail + Track Title & Artist
                 SizedBox(
                   width: 240,
                   child: Row(
@@ -2907,115 +2909,29 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                   ),
                 ),
 
-                // Center: Transport Controls
+                // Center: Animated Material Transport Controls (InteractiveControls with spring bounce animation)
                 Expanded(
-                  child: StreamBuilder<PlaybackState>(
-                    stream: audioHandler.playbackState,
-                    builder: (context, snapshot) {
-                      final playing = snapshot.data?.playing ?? false;
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
-                            iconSize: 32,
-                            onPressed: () {
-                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                              audioHandler.skipToPrevious();
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          IconButton(
-                            icon: Icon(
-                              playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                              color: Colors.white,
-                            ),
-                            iconSize: 48,
-                            onPressed: () {
-                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                              if (playing) audioHandler.pause();
-                              else audioHandler.play();
-                            },
-                          ),
-                          const SizedBox(width: 16),
-                          IconButton(
-                            icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
-                            iconSize: 32,
-                            onPressed: () {
-                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                              audioHandler.skipToNext();
-                            },
-                          ),
-                        ],
-                      );
-                    },
+                  child: Center(
+                    child: _buildTransportControls(),
                   ),
                 ),
 
-                // Right: Action controls (Source selection, Shuffle, Repeat, Lyrics toggle)
+                // Right: Expand Options Button (Up arrow)
                 SizedBox(
-                  width: 260,
+                  width: 240,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.alt_route_rounded, color: Colors.white60, size: 20),
-                        tooltip: 'Choose Source',
-                        onPressed: () {
-                          AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                          _showSourceSelection();
-                        },
-                      ),
-                      StreamBuilder<PlaybackState>(
-                        stream: audioHandler.playbackState,
-                        builder: (context, snapshot) {
-                          final isShuffled = snapshot.data?.shuffleMode != AudioServiceShuffleMode.none;
-                          return IconButton(
-                            icon: Icon(
-                              Icons.shuffle_rounded,
-                              color: isShuffled ? colorScheme.primary : Colors.white60,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                              audioHandler.customAction('shuffle');
-                            },
-                          );
-                        },
-                      ),
-                      StreamBuilder<PlaybackState>(
-                        stream: audioHandler.playbackState,
-                        builder: (context, snapshot) {
-                          final repeatMode = snapshot.data?.repeatMode ?? AudioServiceRepeatMode.none;
-                          final isRepeatOne = repeatMode == AudioServiceRepeatMode.one;
-                          final isRepeatAll = repeatMode == AudioServiceRepeatMode.all;
-                          return IconButton(
-                            icon: Icon(
-                              isRepeatOne ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-                              color: (isRepeatOne || isRepeatAll) ? colorScheme.primary : Colors.white60,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                              final nextMode = repeatMode == AudioServiceRepeatMode.none
-                                  ? 'all'
-                                  : repeatMode == AudioServiceRepeatMode.all
-                                      ? 'one'
-                                      : 'none';
-                              audioHandler.customAction('repeat', {'mode': nextMode});
-                            },
-                          );
-                        },
-                      ),
-                      IconButton(
                         icon: Icon(
-                          _showLyrics ? Icons.lyrics_rounded : Icons.lyrics_outlined,
-                          color: _showLyrics ? colorScheme.primary : Colors.white60,
-                          size: 22,
+                          _wideBottomBarExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                          color: _wideBottomBarExpanded ? colorScheme.primary : Colors.white70,
+                          size: 28,
                         ),
+                        tooltip: _wideBottomBarExpanded ? 'Collapse Options' : 'Expand Options',
                         onPressed: () {
-                          AppHaptics.trigger(context, type: HapticFeedbackType.medium);
-                          setState(() => _showLyrics = !_showLyrics);
+                          AppHaptics.trigger(context, type: HapticFeedbackType.light);
+                          setState(() => _wideBottomBarExpanded = !_wideBottomBarExpanded);
                         },
                       ),
                     ],
@@ -3023,6 +2939,122 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                 ),
               ],
             ),
+          ),
+
+          // Smoothly Animated Expanded Options Bar
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.fastOutSlowIn,
+            child: _wideBottomBarExpanded
+                ? Container(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.04),
+                      border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+                    ),
+                    child: Row(
+                      children: [
+                        // Source selection, Shuffle, Repeat, Lyrics toggle, Sleep timer, Equalizer
+                        IconButton(
+                          icon: const Icon(Icons.alt_route_rounded, color: Colors.white70, size: 20),
+                          tooltip: 'Choose Source',
+                          onPressed: () {
+                            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                            _showSourceSelection();
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        StreamBuilder<PlaybackState>(
+                          stream: audioHandler.playbackState,
+                          builder: (context, snapshot) {
+                            final isShuffled = snapshot.data?.shuffleMode != AudioServiceShuffleMode.none;
+                            return IconButton(
+                              icon: Icon(
+                                Icons.shuffle_rounded,
+                                color: isShuffled ? colorScheme.primary : Colors.white60,
+                                size: 20,
+                              ),
+                              tooltip: 'Shuffle',
+                              onPressed: () {
+                                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                                audioHandler.customAction('shuffle');
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        StreamBuilder<PlaybackState>(
+                          stream: audioHandler.playbackState,
+                          builder: (context, snapshot) {
+                            final repeatMode = snapshot.data?.repeatMode ?? AudioServiceRepeatMode.none;
+                            final isRepeatOne = repeatMode == AudioServiceRepeatMode.one;
+                            final isRepeatAll = repeatMode == AudioServiceRepeatMode.all;
+                            return IconButton(
+                              icon: Icon(
+                                isRepeatOne ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                                color: (isRepeatOne || isRepeatAll) ? colorScheme.primary : Colors.white60,
+                                size: 20,
+                              ),
+                              tooltip: 'Repeat',
+                              onPressed: () {
+                                AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                                final nextMode = repeatMode == AudioServiceRepeatMode.none
+                                    ? 'all'
+                                    : repeatMode == AudioServiceRepeatMode.all
+                                        ? 'one'
+                                        : 'none';
+                                audioHandler.customAction('repeat', {'mode': nextMode});
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(
+                            _showLyrics ? Icons.lyrics_rounded : Icons.lyrics_outlined,
+                            color: _showLyrics ? colorScheme.primary : Colors.white60,
+                            size: 22,
+                          ),
+                          tooltip: 'Toggle Lyrics',
+                          onPressed: () {
+                            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                            setState(() => _showLyrics = !_showLyrics);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(
+                            (_sleepTimer != null || _sleepAtEndOfTrack) ? Icons.bedtime : Icons.bedtime_outlined,
+                            color: (_sleepTimer != null || _sleepAtEndOfTrack) ? colorScheme.primary : Colors.white60,
+                            size: 20,
+                          ),
+                          tooltip: 'Sleep Timer',
+                          onPressed: () {
+                            AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                            _showSleepTimerSheet();
+                          },
+                        ),
+                        if (io.Platform.isAndroid) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.graphic_eq_rounded, color: Colors.white60, size: 20),
+                            tooltip: 'Equalizer / Audio FX',
+                            onPressed: () {
+                              AppHaptics.trigger(context, type: HapticFeedbackType.medium);
+                              _showAudioFxSheet();
+                            },
+                          ),
+                        ],
+                        const Spacer(),
+                        // Volume Slider Control
+                        SizedBox(
+                          width: 220,
+                          child: _buildVolumeBar(),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
