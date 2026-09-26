@@ -29,6 +29,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBindingObserver {
+  int _selectedCategoryIndex = 0;
   late TextEditingController _apiKeyController;
   late TextEditingController _searchController;
   String _searchQuery = '';
@@ -81,7 +82,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
 
     final cardBgColor = isDark ? const Color(0xFF18181A) : Colors.white;
     final cardBorder = Border.all(
-      color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.08),
+      color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
       width: 1,
     );
 
@@ -116,6 +117,569 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
     final showChangelog = _matchesSearch('Changelog', 'View release notes');
     final showAboutSection = showVersion || showChangelog;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWide = screenWidth >= 720;
+
+    if (isWide) {
+      return _buildWideLayout(
+        context: context,
+        isDark: isDark,
+        cardBgColor: cardBgColor,
+        cardBorder: cardBorder,
+        settings: settings,
+        themeMode: themeMode,
+        showAppearanceSection: showAppearanceSection,
+        showAccountSection: showAccountSection,
+        showHaptics: showHaptics,
+        showDataStorageSection: showDataStorageSection,
+        showAudiobooksSection: showAudiobooksSection,
+        showToolsSection: showToolsSection,
+        showAboutSection: showAboutSection,
+        showTheme: showTheme,
+        showThemeStyle: showThemeStyle,
+        showFontStyle: showFontStyle,
+        showCustomPlayer: showCustomPlayer,
+        showCustomDiscover: showCustomDiscover,
+        showAccountTorBox: showAccountTorBox,
+        showAccountLastfm: showAccountLastfm,
+        showAccountEclipse: showAccountEclipse,
+        showStorage: showStorage,
+        showDownloadFolders: showDownloadFolders,
+        showAudiobooksFolder: showAudiobooksFolder,
+        showHardcover: showHardcover,
+        showStats: showStats,
+        showAddonManager: showAddonManager,
+        showVersion: showVersion,
+        showChangelog: showChangelog,
+      );
+    } else {
+      return _buildMobileLayout(
+        context: context,
+        isDark: isDark,
+        cardBgColor: cardBgColor,
+        cardBorder: cardBorder,
+        settings: settings,
+        themeMode: themeMode,
+        showAppearanceSection: showAppearanceSection,
+        showAccountSection: showAccountSection,
+        showHaptics: showHaptics,
+        showDataStorageSection: showDataStorageSection,
+        showAudiobooksSection: showAudiobooksSection,
+        showToolsSection: showToolsSection,
+        showAboutSection: showAboutSection,
+        showTheme: showTheme,
+        showThemeStyle: showThemeStyle,
+        showFontStyle: showFontStyle,
+        showCustomPlayer: showCustomPlayer,
+        showCustomDiscover: showCustomDiscover,
+        showAccountTorBox: showAccountTorBox,
+        showAccountLastfm: showAccountLastfm,
+        showAccountEclipse: showAccountEclipse,
+        showStorage: showStorage,
+        showDownloadFolders: showDownloadFolders,
+        showAudiobooksFolder: showAudiobooksFolder,
+        showHardcover: showHardcover,
+        showStats: showStats,
+        showAddonManager: showAddonManager,
+        showVersion: showVersion,
+        showChangelog: showChangelog,
+      );
+    }
+  }
+
+  Widget _buildWideLayout({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required dynamic themeMode,
+    required bool showAppearanceSection,
+    required bool showAccountSection,
+    required bool showHaptics,
+    required bool showDataStorageSection,
+    required bool showAudiobooksSection,
+    required bool showToolsSection,
+    required bool showAboutSection,
+    required bool showTheme,
+    required bool showThemeStyle,
+    required bool showFontStyle,
+    required bool showCustomPlayer,
+    required bool showCustomDiscover,
+    required bool showAccountTorBox,
+    required bool showAccountLastfm,
+    required bool showAccountEclipse,
+    required bool showStorage,
+    required bool showDownloadFolders,
+    required bool showAudiobooksFolder,
+    required bool showHardcover,
+    required bool showStats,
+    required bool showAddonManager,
+    required bool showVersion,
+    required bool showChangelog,
+  }) {
+    final categories = [
+      _SidebarCategory(
+        index: 0,
+        title: 'Appearance',
+        subtitle: _getThemeLabel(themeMode),
+        icon: Icons.palette_rounded,
+        color: const Color(0xFF5E5CE6),
+        visible: showAppearanceSection,
+      ),
+      _SidebarCategory(
+        index: 1,
+        title: 'Account & Integrations',
+        subtitle: settings.apiKey.isNotEmpty ? 'TorBox Connected' : 'TorBox, Last.fm, Eclipse',
+        icon: Icons.key_rounded,
+        color: const Color(0xFFFF9F0A),
+        visible: showAccountSection,
+      ),
+      _SidebarCategory(
+        index: 2,
+        title: 'Haptic Feedback',
+        subtitle: settings.hapticsEnabled ? 'Enabled (${settings.hapticIntensity})' : 'Disabled',
+        icon: Icons.vibration_rounded,
+        color: const Color(0xFFFF375F),
+        visible: showHaptics,
+      ),
+      _SidebarCategory(
+        index: 3,
+        title: 'Data & Storage',
+        subtitle: 'Storage & Downloads',
+        icon: Icons.sd_storage_rounded,
+        color: const Color(0xFF30D158),
+        visible: showDataStorageSection,
+      ),
+      _SidebarCategory(
+        index: 4,
+        title: 'Books & Audiobooks',
+        subtitle: settings.audiobookFolder != null && settings.audiobookFolder!.isNotEmpty ? 'Folder set' : 'Audiobooks & Hardcover',
+        icon: Icons.auto_stories_rounded,
+        color: const Color(0xFF64D2FF),
+        visible: showAudiobooksSection,
+      ),
+      _SidebarCategory(
+        index: 5,
+        title: 'Tools & Plugins',
+        subtitle: 'Stats & Addons',
+        icon: Icons.insights_rounded,
+        color: const Color(0xFFBF5AF2),
+        visible: showToolsSection,
+      ),
+      _SidebarCategory(
+        index: 6,
+        title: 'About & Updates',
+        subtitle: _updateAvailable ? 'Update Available!' : 'v$_currentLocalVersion',
+        icon: Icons.info_outline_rounded,
+        color: const Color(0xFF0A84FF),
+        visible: showAboutSection,
+      ),
+    ];
+
+    final isSearching = _searchQuery.trim().isNotEmpty;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Row(
+        children: [
+          // Left Sidebar Pane
+          SizedBox(
+            width: 320,
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF141416).withValues(alpha: 0.7)
+                    : const Color(0xFFF7F7FA).withValues(alpha: 0.8),
+                border: Border(
+                  right: BorderSide(
+                    color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Settings',
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 28,
+                                  letterSpacing: -0.5,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Search Input
+                          TextField(
+                            controller: _searchController,
+                            onChanged: (val) => setState(() => _searchQuery = val),
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
+                            decoration: InputDecoration(
+                              hintText: 'Search settings',
+                              hintStyle: TextStyle(
+                                color: isDark ? Colors.white38 : Colors.black38,
+                                fontSize: 14,
+                              ),
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                color: isDark ? Colors.white38 : Colors.black38,
+                                size: 20,
+                              ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? IconButton(
+                                      icon: Icon(
+                                        Icons.close_rounded,
+                                        color: isDark ? Colors.white54 : Colors.black54,
+                                        size: 18,
+                                      ),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        setState(() => _searchQuery = '');
+                                      },
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.04),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        itemCount: categories.length,
+                        itemBuilder: (context, index) {
+                          final item = categories[index];
+                          if (!item.visible) return const SizedBox.shrink();
+
+                          final isSelected = !isSearching && _selectedCategoryIndex == item.index;
+                          final accentColor = Theme.of(context).colorScheme.primary;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  setState(() => _selectedCategoryIndex = item.index);
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? accentColor.withValues(alpha: isDark ? 0.22 : 0.12)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isSelected
+                                        ? Border.all(
+                                            color: accentColor.withValues(alpha: 0.35),
+                                            width: 1,
+                                          )
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: item.color.withValues(alpha: isSelected ? 0.9 : 0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          item.icon,
+                                          size: 18,
+                                          color: isSelected ? Colors.white : item.color,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item.title,
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                                color: isSelected
+                                                    ? (isDark ? Colors.white : accentColor)
+                                                    : (isDark ? Colors.white.withValues(alpha: 0.9) : Colors.black87),
+                                              ),
+                                            ),
+                                            Text(
+                                              item.subtitle,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: isDark ? Colors.white38 : Colors.black45,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.chevron_right_rounded,
+                                          size: 18,
+                                          color: accentColor,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Right Detail Content Area
+          Expanded(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isSearching) ...[
+                            Text(
+                              categories[_selectedCategoryIndex.clamp(0, categories.length - 1)].title,
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 24,
+                                    color: isDark ? Colors.white : Colors.black,
+                                  ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          if (isSearching) ...[
+                            if (showAppearanceSection)
+                              _buildAppearanceCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                themeMode: themeMode,
+                                showTheme: showTheme,
+                                showThemeStyle: showThemeStyle,
+                                showFontStyle: showFontStyle,
+                                showCustomPlayer: showCustomPlayer,
+                                showCustomDiscover: showCustomDiscover,
+                              ),
+                            if (showAccountSection)
+                              _buildAccountCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showAccountTorBox: showAccountTorBox,
+                                showAccountLastfm: showAccountLastfm,
+                                showAccountEclipse: showAccountEclipse,
+                              ),
+                            if (showHaptics)
+                              _buildHapticsCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                              ),
+                            if (showDataStorageSection)
+                              _buildStorageCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showStorage: showStorage,
+                                showDownloadFolders: showDownloadFolders,
+                              ),
+                            if (showAudiobooksSection)
+                              _buildAudiobooksCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showAudiobooksFolder: showAudiobooksFolder,
+                                showHardcover: showHardcover,
+                              ),
+                            if (showToolsSection)
+                              _buildToolsCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                showStats: showStats,
+                                showAddonManager: showAddonManager,
+                              ),
+                            if (showAboutSection)
+                              _buildAboutCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                showVersion: showVersion,
+                                showChangelog: showChangelog,
+                              ),
+                          ] else ...[
+                            if (_selectedCategoryIndex == 0 && showAppearanceSection)
+                              _buildAppearanceCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                themeMode: themeMode,
+                                showTheme: showTheme,
+                                showThemeStyle: showThemeStyle,
+                                showFontStyle: showFontStyle,
+                                showCustomPlayer: showCustomPlayer,
+                                showCustomDiscover: showCustomDiscover,
+                              ),
+                            if (_selectedCategoryIndex == 1 && showAccountSection)
+                              _buildAccountCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showAccountTorBox: showAccountTorBox,
+                                showAccountLastfm: showAccountLastfm,
+                                showAccountEclipse: showAccountEclipse,
+                              ),
+                            if (_selectedCategoryIndex == 2 && showHaptics)
+                              _buildHapticsCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                              ),
+                            if (_selectedCategoryIndex == 3 && showDataStorageSection)
+                              _buildStorageCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showStorage: showStorage,
+                                showDownloadFolders: showDownloadFolders,
+                              ),
+                            if (_selectedCategoryIndex == 4 && showAudiobooksSection)
+                              _buildAudiobooksCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                settings: settings,
+                                showAudiobooksFolder: showAudiobooksFolder,
+                                showHardcover: showHardcover,
+                              ),
+                            if (_selectedCategoryIndex == 5 && showToolsSection)
+                              _buildToolsCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                showStats: showStats,
+                                showAddonManager: showAddonManager,
+                              ),
+                            if (_selectedCategoryIndex == 6 && showAboutSection)
+                              _buildAboutCard(
+                                context: context,
+                                isDark: isDark,
+                                cardBgColor: cardBgColor,
+                                cardBorder: cardBorder,
+                                showVersion: showVersion,
+                                showChangelog: showChangelog,
+                              ),
+                          ],
+                          const SizedBox(height: 80),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required dynamic themeMode,
+    required bool showAppearanceSection,
+    required bool showAccountSection,
+    required bool showHaptics,
+    required bool showDataStorageSection,
+    required bool showAudiobooksSection,
+    required bool showToolsSection,
+    required bool showAboutSection,
+    required bool showTheme,
+    required bool showThemeStyle,
+    required bool showFontStyle,
+    required bool showCustomPlayer,
+    required bool showCustomDiscover,
+    required bool showAccountTorBox,
+    required bool showAccountLastfm,
+    required bool showAccountEclipse,
+    required bool showStorage,
+    required bool showDownloadFolders,
+    required bool showAudiobooksFolder,
+    required bool showHardcover,
+    required bool showStats,
+    required bool showAddonManager,
+    required bool showVersion,
+    required bool showChangelog,
+  }) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: CustomScrollView(
@@ -170,7 +734,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                               )
                             : null,
                         filled: true,
-                        fillColor: isDark ? Colors.white.withOpacity(0.07) : Colors.black.withOpacity(0.04),
+                        fillColor: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.04),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
@@ -183,7 +747,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                           borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                             width: 1.5,
                           ),
                         ),
@@ -204,563 +768,691 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with WidgetsBin
                 children: [
                   const SizedBox(height: 8),
 
-                  // 1. APPEARANCE (FIRST AT TOP)
-                  if (showAppearanceSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'APPEARANCE'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showTheme)
-                                  _SettingsTile(
-                                    icon: Icons.brightness_6_outlined,
-                                    title: 'Theme',
-                                    subtitle: _getThemeLabel(themeMode),
-                                    onTap: () => _showThemePicker(context, ref, themeMode),
-                                  ),
-                                if (showThemeStyle) ...[
-                                  if (showTheme) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.style_outlined,
-                                    title: 'Theme Style',
-                                    subtitle: settings.appThemeStyle == 'apple' ? 'Apple Music' : 'Google Material 3',
-                                    onTap: () => _showThemeStylePicker(context, ref, settings),
-                                  ),
-                                ],
-                                if (showFontStyle) ...[
-                                  if (showTheme || showThemeStyle) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.font_download_outlined,
-                                    title: 'Font Style',
-                                    subtitle: settings.appFontFamily,
-                                    onTap: () => _showFontStylePicker(context, ref, settings),
-                                  ),
-                                ],
-                                if (showCustomPlayer) ...[
-                                  if (showTheme || showThemeStyle || showFontStyle) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.palette_outlined,
-                                    title: 'Customize Player',
-                                    subtitle: 'Artwork shape, background & glow',
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerCustomizationScreen())),
-                                  ),
-                                ],
-                                if (showCustomDiscover) ...[
-                                  if (showTheme || showThemeStyle || showFontStyle || showCustomPlayer) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.dashboard_customize_outlined,
-                                    title: 'Customize Discover Screen',
-                                    subtitle: 'Reorder & toggle Discover sections',
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscoverCustomizationScreen())),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showAppearanceSection)
+                    _buildAppearanceCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      settings: settings,
+                      themeMode: themeMode,
+                      showTheme: showTheme,
+                      showThemeStyle: showThemeStyle,
+                      showFontStyle: showFontStyle,
+                      showCustomPlayer: showCustomPlayer,
+                      showCustomDiscover: showCustomDiscover,
                     ),
-                  ],
 
-                  // 2. ACCOUNT & INTEGRATIONS
-                  if (showAccountSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'ACCOUNT & INTEGRATIONS'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showAccountTorBox) ...[
-                                  Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              width: 36,
-                                              height: 36,
-                                              decoration: BoxDecoration(
-                                                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: Icon(
-                                                Icons.key_rounded,
-                                                color: Theme.of(context).colorScheme.primary,
-                                                size: 18,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Text(
-                                              'TorBox API Key',
-                                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                                color: isDark ? Colors.white : Colors.black,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        TextField(
-                                          controller: _apiKeyController,
-                                          obscureText: true,
-                                          style: TextStyle(
-                                            color: isDark ? Colors.white : Colors.black,
-                                          ),
-                                          decoration: InputDecoration(
-                                            labelText: 'API Key',
-                                            labelStyle: TextStyle(
-                                              color: isDark ? Colors.white54 : Colors.black45,
-                                            ),
-                                            prefixIcon: Icon(
-                                              Icons.vpn_key_rounded,
-                                              color: isDark ? Colors.white54 : Colors.black45,
-                                              size: 20,
-                                            ),
-                                            suffixIcon: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                if (settings.isValid)
-                                                  const Padding(
-                                                    padding: EdgeInsets.only(right: 8),
-                                                    child: Icon(
-                                                      Icons.check_circle_rounded,
-                                                      color: Colors.greenAccent,
-                                                      size: 20,
-                                                    ),
-                                                  ),
-                                                IconButton(
-                                                  icon: Icon(
-                                                    Icons.open_in_new_rounded,
-                                                    color: isDark ? Colors.white54 : Colors.black45,
-                                                    size: 20,
-                                                  ),
-                                                  onPressed: () async {
-                                                    final url = Uri.parse('https://torbox.app/settings?section=account');
-                                                    if (await canLaunchUrl(url)) {
-                                                      await launchUrl(url, mode: LaunchMode.externalApplication);
-                                                    }
-                                                  },
-                                                  tooltip: 'Open TorBox Settings',
-                                                ),
-                                              ],
-                                            ),
-                                            filled: true,
-                                            fillColor: isDark
-                                                ? Colors.white.withOpacity(0.06)
-                                                : Colors.black.withOpacity(0.04),
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                              borderSide: BorderSide.none,
-                                            ),
-                                          ),
-                                        ),
-                                        if (settings.error != null) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            settings.error!,
-                                            style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                                          ),
-                                        ],
-                                        const SizedBox(height: 12),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: GlassButton(
-                                            onPressed: settings.isValidating
-                                                ? null
-                                                : () => ref
-                                                    .read(settingsProvider.notifier)
-                                                    .saveAndValidateApiKey(
-                                                        _apiKeyController.text.trim()),
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                Theme.of(context).colorScheme.primary,
-                                                AppleMusicTheme.primaryPurple,
-                                              ],
-                                            ),
-                                            child: settings.isValidating
-                                                ? const Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      SizedBox(
-                                                        height: 18,
-                                                        width: 18,
-                                                        child: CircularProgressIndicator(
-                                                          color: Colors.white,
-                                                          strokeWidth: 2,
-                                                        ),
-                                                      ),
-                                                      SizedBox(width: 12),
-                                                      Text(
-                                                        'Validating...',
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  )
-                                                : const Text(
-                                                    'Save & Validate',
-                                                    style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                          ),
-                                        ),
-                                        if (settings.apiKey.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          SizedBox(
-                                            width: double.infinity,
-                                            child: TextButton.icon(
-                                              onPressed: () {
-                                                _apiKeyController.clear();
-                                                ref.read(settingsProvider.notifier).clearApiKey();
-                                              },
-                                              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 18),
-                                              label: const Text(
-                                                'Clear API Key',
-                                                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                        const SizedBox(height: 4),
-                                        Center(
-                                          child: TextButton(
-                                            onPressed: () async {
-                                              final url = Uri.parse('https://torbox.app');
-                                              if (await canLaunchUrl(url)) {
-                                                await launchUrl(url, mode: LaunchMode.externalApplication);
-                                              }
-                                            },
-                                            child: Text(
-                                              'Don\'t have an account? Sign up',
-                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                color: Theme.of(context).colorScheme.primary,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  _SettingsTile(
-                                    icon: Icons.dashboard_outlined,
-                                    title: 'TorBox Dashboard',
-                                    subtitle: 'Manage your torrents and account',
-                                    onTap: () async {
-                                      final url = Uri.parse('https://torbox.app/dashboard');
-                                      if (await canLaunchUrl(url)) {
-                                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                                      }
-                                    },
-                                  ),
-                                ],
-                                if (showAccountLastfm) ...[
-                                  if (showAccountTorBox) _buildDivider(isDark),
-                                  _LastfmLoginSection(),
-                                ],
-                                if (showAccountEclipse) ...[
-                                  if (showAccountTorBox || showAccountLastfm) _buildDivider(isDark),
-                                  const _EclipseSettingsSection(),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showAccountSection)
+                    _buildAccountCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      settings: settings,
+                      showAccountTorBox: showAccountTorBox,
+                      showAccountLastfm: showAccountLastfm,
+                      showAccountEclipse: showAccountEclipse,
                     ),
-                  ],
 
-                  // 3. EXPERIENCE
-                  if (showHaptics) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'EXPERIENCE'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                _SettingsTile(
-                                  icon: Icons.vibration_outlined,
-                                  title: 'Haptic Feedback',
-                                  subtitle: settings.hapticsEnabled
-                                      ? 'Intensity: ${settings.hapticIntensity[0].toUpperCase()}${settings.hapticIntensity.substring(1)}'
-                                      : 'Disabled',
-                                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HapticsSettingsScreen())),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showHaptics)
+                    _buildHapticsCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      settings: settings,
                     ),
-                  ],
 
-                  // 4. DATA & STORAGE
-                  if (showDataStorageSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'DATA & STORAGE'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showStorage)
-                                  _SettingsTile(
-                                    icon: Icons.storage_rounded,
-                                    title: 'Storage',
-                                    subtitle: 'Manage downloaded songs and cache limits',
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StorageSettingsScreen())),
-                                  ),
-                                if (showDownloadFolders) ...[
-                                  if (showStorage) _buildDivider(isDark),
-                                  if (settings.downloadFolders.isEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.all(20),
-                                      child: Center(
-                                        child: Column(
-                                          children: [
-                                            Icon(Icons.folder_off_outlined, color: isDark ? Colors.white24 : Colors.black26, size: 40),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'No download folders added',
-                                              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 13),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    ...settings.downloadFolders.map((folder) {
-                                      final isSelected = settings.selectedDownloadFolder == folder;
-                                      return Column(
-                                        children: [
-                                          _SettingsFolderTile(
-                                            path: folder,
-                                            isSelected: isSelected,
-                                            onSelect: () {
-                                              ref.read(settingsProvider.notifier).setSelectedDownloadFolder(folder);
-                                            },
-                                            onRemove: () {
-                                              ref.read(settingsProvider.notifier).removeDownloadFolder(folder);
-                                            },
-                                          ),
-                                          if (folder != settings.downloadFolders.last)
-                                            _buildDivider(isDark, indent: 56),
-                                        ],
-                                      );
-                                    }),
-                                  _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.add_to_photos_outlined,
-                                    title: 'Add Download Folder',
-                                    subtitle: 'Select a directory to save songs',
-                                    onTap: () => _pickDownloadFolder(),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showDataStorageSection)
+                    _buildStorageCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      settings: settings,
+                      showStorage: showStorage,
+                      showDownloadFolders: showDownloadFolders,
                     ),
-                  ],
 
-                  // 5. AUDIOBOOKS
-                  if (showAudiobooksSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'AUDIOBOOKS'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showAudiobooksFolder) ...[
-                                  if (settings.audiobookFolder != null && settings.audiobookFolder!.isNotEmpty) ...[
-                                    _SettingsFolderTile(
-                                      path: settings.audiobookFolder!,
-                                      isSelected: true,
-                                      onSelect: () {},
-                                      onRemove: () {
-                                        ref.read(settingsProvider.notifier).removeAudiobookFolder();
-                                      },
-                                    ),
-                                    _buildDivider(isDark),
-                                    _SettingsTile(
-                                      icon: Icons.folder_open_outlined,
-                                      title: 'Change Audiobooks Folder',
-                                      subtitle: 'Pick a different directory',
-                                      onTap: () => _pickAudiobookFolder(),
-                                    ),
-                                  ] else ...[
-                                    Padding(
-                                      padding: const EdgeInsets.all(20),
-                                      child: Center(
-                                        child: Column(
-                                          children: [
-                                            Icon(Icons.library_books_outlined, color: isDark ? Colors.white24 : Colors.black26, size: 40),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'No audiobook folder set',
-                                              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 13),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'Add a folder containing audiobook subfolders',
-                                              style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 11),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    _buildDivider(isDark),
-                                    _SettingsTile(
-                                      icon: Icons.create_new_folder_outlined,
-                                      title: 'Set Audiobooks Folder',
-                                      subtitle: 'Select your local audiobooks directory',
-                                      onTap: () => _pickAudiobookFolder(),
-                                    ),
-                                  ],
-                                ],
-                                if (showHardcover) ...[
-                                  if (showAudiobooksFolder) _buildDivider(isDark),
-                                  const _HardcoverSettingsSection(),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showAudiobooksSection)
+                    _buildAudiobooksCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      settings: settings,
+                      showAudiobooksFolder: showAudiobooksFolder,
+                      showHardcover: showHardcover,
                     ),
-                  ],
 
-                  // 6. TOOLS & ADVANCED
-                  if (showToolsSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'TOOLS & ADVANCED'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showStats)
-                                  _SettingsTile(
-                                    icon: Icons.bar_chart_rounded,
-                                    title: 'Stats',
-                                    subtitle: 'View your listening habits',
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())),
-                                  ),
-                                if (showAddonManager) ...[
-                                  if (showStats) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.extension_outlined,
-                                    title: 'Addon Manager',
-                                    subtitle: 'Manage and test JS source plugins',
-                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PluginManagementScreen())),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showToolsSection)
+                    _buildToolsCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      showStats: showStats,
+                      showAddonManager: showAddonManager,
                     ),
-                  ],
 
-                  // 7. ABOUT
-                  if (showAboutSection) ...[
-                    RepaintBoundary(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSectionHeader(context, 'ABOUT'),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: cardBgColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: cardBorder,
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                if (showVersion)
-                                  _SettingsTile(
-                                    icon: Icons.info_outline,
-                                    title: _updateAvailable ? 'New Update Available!' : 'Version',
-                                    subtitle: _updateAvailable ? 'v$_githubVersion (Local: v$_currentLocalVersion)' : 'v$_currentLocalVersion',
-                                    showChevron: true,
-                                    onTap: () => AppUpdater.checkForUpdate(context, silent: false),
-                                  ),
-                                if (showChangelog) ...[
-                                  if (showVersion) _buildDivider(isDark),
-                                  _SettingsTile(
-                                    icon: Icons.history_rounded,
-                                    title: 'Changelog',
-                                    subtitle: 'View release notes',
-                                    onTap: () => _showChangelogDialog(context),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  if (showAboutSection)
+                    _buildAboutCard(
+                      context: context,
+                      isDark: isDark,
+                      cardBgColor: cardBgColor,
+                      cardBorder: cardBorder,
+                      showVersion: showVersion,
+                      showChangelog: showChangelog,
                     ),
-                  ],
 
                   const SizedBox(height: 100),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppearanceCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required dynamic themeMode,
+    required bool showTheme,
+    required bool showThemeStyle,
+    required bool showFontStyle,
+    required bool showCustomPlayer,
+    required bool showCustomDiscover,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'APPEARANCE'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showTheme)
+                  _SettingsTile(
+                    icon: Icons.brightness_6_outlined,
+                    title: 'Theme',
+                    subtitle: _getThemeLabel(themeMode),
+                    onTap: () => _showThemePicker(context, ref, themeMode),
+                  ),
+                if (showThemeStyle) ...[
+                  if (showTheme) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.style_outlined,
+                    title: 'Theme Style',
+                    subtitle: settings.appThemeStyle == 'apple' ? 'Apple Music' : 'Google Material 3',
+                    onTap: () => _showThemeStylePicker(context, ref, settings),
+                  ),
+                ],
+                if (showFontStyle) ...[
+                  if (showTheme || showThemeStyle) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.font_download_outlined,
+                    title: 'Font Style',
+                    subtitle: settings.appFontFamily,
+                    onTap: () => _showFontStylePicker(context, ref, settings),
+                  ),
+                ],
+                if (showCustomPlayer) ...[
+                  if (showTheme || showThemeStyle || showFontStyle) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.palette_outlined,
+                    title: 'Customize Player',
+                    subtitle: 'Artwork shape, background & glow',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerCustomizationScreen())),
+                  ),
+                ],
+                if (showCustomDiscover) ...[
+                  if (showTheme || showThemeStyle || showFontStyle || showCustomPlayer) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.dashboard_customize_outlined,
+                    title: 'Customize Discover Screen',
+                    subtitle: 'Reorder & toggle Discover sections',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiscoverCustomizationScreen())),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAccountCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required bool showAccountTorBox,
+    required bool showAccountLastfm,
+    required bool showAccountEclipse,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'ACCOUNT & INTEGRATIONS'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showAccountTorBox) ...[
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.key_rounded,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'TorBox API Key',
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _apiKeyController,
+                          obscureText: true,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'API Key',
+                            labelStyle: TextStyle(
+                              color: isDark ? Colors.white54 : Colors.black45,
+                            ),
+                            prefixIcon: Icon(
+                              Icons.vpn_key_rounded,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                              size: 20,
+                            ),
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (settings.isValid)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 8),
+                                    child: Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Colors.greenAccent,
+                                      size: 20,
+                                    ),
+                                  ),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.open_in_new_rounded,
+                                    color: isDark ? Colors.white54 : Colors.black45,
+                                    size: 20,
+                                  ),
+                                  onPressed: () async {
+                                    final url = Uri.parse('https://torbox.app/settings?section=account');
+                                    if (await canLaunchUrl(url)) {
+                                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                                    }
+                                  },
+                                  tooltip: 'Open TorBox Settings',
+                                ),
+                              ],
+                            ),
+                            filled: true,
+                            fillColor: isDark
+                                ? Colors.white.withValues(alpha: 0.06)
+                                : Colors.black.withValues(alpha: 0.04),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        if (settings.error != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            settings.error!,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: GlassButton(
+                            onPressed: settings.isValidating
+                                ? null
+                                : () => ref
+                                    .read(settingsProvider.notifier)
+                                    .saveAndValidateApiKey(
+                                        _apiKeyController.text.trim()),
+                            gradient: LinearGradient(
+                              colors: [
+                                Theme.of(context).colorScheme.primary,
+                                AppleMusicTheme.primaryPurple,
+                              ],
+                            ),
+                            child: settings.isValidating
+                                ? const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SizedBox(
+                                        height: 18,
+                                        width: 18,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text(
+                                        'Validating...',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : const Text(
+                                    'Save & Validate',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        if (settings.apiKey.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                _apiKeyController.clear();
+                                ref.read(settingsProvider.notifier).clearApiKey();
+                              },
+                              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 18),
+                              label: const Text(
+                                'Clear API Key',
+                                style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        Center(
+                          child: TextButton(
+                            onPressed: () async {
+                              final url = Uri.parse('https://torbox.app');
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            child: Text(
+                              'Don\'t have an account? Sign up',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _SettingsTile(
+                    icon: Icons.dashboard_outlined,
+                    title: 'TorBox Dashboard',
+                    subtitle: 'Manage your torrents and account',
+                    onTap: () async {
+                      final url = Uri.parse('https://torbox.app/dashboard');
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
+                ],
+                if (showAccountLastfm) ...[
+                  if (showAccountTorBox) _buildDivider(isDark),
+                  _LastfmLoginSection(),
+                ],
+                if (showAccountEclipse) ...[
+                  if (showAccountTorBox || showAccountLastfm) _buildDivider(isDark),
+                  const _EclipseSettingsSection(),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHapticsCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'EXPERIENCE'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                _SettingsTile(
+                  icon: Icons.vibration_outlined,
+                  title: 'Haptic Feedback',
+                  subtitle: settings.hapticsEnabled
+                      ? 'Intensity: ${settings.hapticIntensity[0].toUpperCase()}${settings.hapticIntensity.substring(1)}'
+                      : 'Disabled',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HapticsSettingsScreen())),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStorageCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required bool showStorage,
+    required bool showDownloadFolders,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'DATA & STORAGE'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showStorage)
+                  _SettingsTile(
+                    icon: Icons.storage_rounded,
+                    title: 'Storage',
+                    subtitle: 'Manage downloaded songs and cache limits',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StorageSettingsScreen())),
+                  ),
+                if (showDownloadFolders) ...[
+                  if (showStorage) _buildDivider(isDark),
+                  if (settings.downloadFolders.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.folder_off_outlined, color: isDark ? Colors.white24 : Colors.black26, size: 40),
+                            const SizedBox(height: 8),
+                            Text(
+                              'No download folders added',
+                              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ...settings.downloadFolders.map((folder) {
+                      final isSelected = settings.selectedDownloadFolder == folder;
+                      return Column(
+                        children: [
+                          _SettingsFolderTile(
+                            path: folder,
+                            isSelected: isSelected,
+                            onSelect: () {
+                              ref.read(settingsProvider.notifier).setSelectedDownloadFolder(folder);
+                            },
+                            onRemove: () {
+                              ref.read(settingsProvider.notifier).removeDownloadFolder(folder);
+                            },
+                          ),
+                          if (folder != settings.downloadFolders.last)
+                            _buildDivider(isDark, indent: 56),
+                        ],
+                      );
+                    }),
+                  _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.add_to_photos_outlined,
+                    title: 'Add Download Folder',
+                    subtitle: 'Select a directory to save songs',
+                    onTap: () => _pickDownloadFolder(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAudiobooksCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required dynamic settings,
+    required bool showAudiobooksFolder,
+    required bool showHardcover,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'AUDIOBOOKS'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showAudiobooksFolder) ...[
+                  if (settings.audiobookFolder != null && settings.audiobookFolder!.isNotEmpty) ...[
+                    _SettingsFolderTile(
+                      path: settings.audiobookFolder!,
+                      isSelected: true,
+                      onSelect: () {},
+                      onRemove: () {
+                        ref.read(settingsProvider.notifier).removeAudiobookFolder();
+                      },
+                    ),
+                    _buildDivider(isDark),
+                    _SettingsTile(
+                      icon: Icons.folder_open_outlined,
+                      title: 'Change Audiobooks Folder',
+                      subtitle: 'Pick a different directory',
+                      onTap: () => _pickAudiobookFolder(),
+                    ),
+                  ] else ...[
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.library_books_outlined, color: isDark ? Colors.white24 : Colors.black26, size: 40),
+                            const SizedBox(height: 8),
+                            Text(
+                              'No audiobook folder set',
+                              style: TextStyle(color: isDark ? Colors.white54 : Colors.black45, fontSize: 13),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Add a folder containing audiobook subfolders',
+                              style: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    _buildDivider(isDark),
+                    _SettingsTile(
+                      icon: Icons.create_new_folder_outlined,
+                      title: 'Set Audiobooks Folder',
+                      subtitle: 'Select your local audiobooks directory',
+                      onTap: () => _pickAudiobookFolder(),
+                    ),
+                  ],
+                ],
+                if (showHardcover) ...[
+                  if (showAudiobooksFolder) _buildDivider(isDark),
+                  const _HardcoverSettingsSection(),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolsCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required bool showStats,
+    required bool showAddonManager,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'TOOLS & ADVANCED'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showStats)
+                  _SettingsTile(
+                    icon: Icons.bar_chart_rounded,
+                    title: 'Stats',
+                    subtitle: 'View your listening habits',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())),
+                  ),
+                if (showAddonManager) ...[
+                  if (showStats) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.extension_outlined,
+                    title: 'Addon Manager',
+                    subtitle: 'Manage and test JS source plugins',
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PluginManagementScreen())),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutCard({
+    required BuildContext context,
+    required bool isDark,
+    required Color cardBgColor,
+    required BoxBorder cardBorder,
+    required bool showVersion,
+    required bool showChangelog,
+  }) {
+    return RepaintBoundary(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(context, 'ABOUT'),
+          Container(
+            decoration: BoxDecoration(
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(16),
+              border: cardBorder,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                if (showVersion)
+                  _SettingsTile(
+                    icon: Icons.info_outline,
+                    title: _updateAvailable ? 'New Update Available!' : 'Version',
+                    subtitle: _updateAvailable ? 'v$_githubVersion (Local: v$_currentLocalVersion)' : 'v$_currentLocalVersion',
+                    showChevron: true,
+                    onTap: () => AppUpdater.checkForUpdate(context, silent: false),
+                  ),
+                if (showChangelog) ...[
+                  if (showVersion) _buildDivider(isDark),
+                  _SettingsTile(
+                    icon: Icons.history_rounded,
+                    title: 'Changelog',
+                    subtitle: 'View release notes',
+                    onTap: () => _showChangelogDialog(context),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -2033,3 +2725,22 @@ class _EclipseSettingsSectionState extends ConsumerState<_EclipseSettingsSection
     );
   }
 }
+
+class _SidebarCategory {
+  final int index;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final bool visible;
+
+  const _SidebarCategory({
+    required this.index,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.visible,
+  });
+}
+
