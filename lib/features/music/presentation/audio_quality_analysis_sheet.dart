@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isai/core/di/injection.dart';
 import '../data/real_audio_analyzer.dart';
 import '../data/audio_device_service.dart';
-import '../data/metadata/deezer_metadata_provider.dart';
 import '../data/metadata/metadata_provider.dart';
 import '../data/metadata/metadata_addon_manager.dart';
 import 'music_providers.dart';
@@ -61,20 +60,37 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
   Future<void> _loadEnrichedMetadata() async {
     final extras = widget.item.extras ?? {};
     final isrc = extras['isrc'] as String?;
+    final trackId = widget.item.id;
+    final addonManager = getIt<MetadataAddonManager>();
+
+    // Check in-memory cache first
+    final cached = addonManager.getCached(
+      id: trackId,
+      isrc: isrc,
+      title: widget.item.title,
+      artist: widget.item.artist,
+    );
+    if (cached != null) {
+      if (mounted) {
+        setState(() {
+          _enrichedMeta = cached;
+        });
+      }
+      return;
+    }
+
     try {
-      final deezer = getIt<DeezerMetadataProvider>();
       TrackMeta? meta;
       if (isrc != null && isrc.isNotEmpty) {
-        meta = await deezer.enrichByIsrc(isrc);
+        meta = await addonManager.enrichByIsrc(isrc, id: trackId);
       }
-      if (meta == null) {
-        final addonManager = getIt<MetadataAddonManager>();
-        meta = await addonManager.enrich(
-          widget.item.title,
-          widget.item.artist ?? '',
-          isrc: isrc,
-        );
-      }
+      meta ??= await addonManager.enrich(
+        widget.item.title,
+        widget.item.artist ?? '',
+        isrc: isrc,
+        id: trackId,
+      );
+
       if (mounted && meta != null) {
         setState(() {
           _enrichedMeta = meta;

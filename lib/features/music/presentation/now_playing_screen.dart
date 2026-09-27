@@ -2867,7 +2867,7 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
               children: [
                 // Left: Thumbnail + Track Title & Artist
                 SizedBox(
-                  width: 280,
+                  width: 240,
                   child: Row(
                     children: [
                       ClipRRect(
@@ -2907,22 +2907,11 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    displayArtist,
-                                    style: const TextStyle(color: Colors.white60, fontSize: 11),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                StreamBuilder<MediaItem?>(
-                                  stream: audioHandler.mediaItem,
-                                  builder: (context, mediaSnap) => _buildQualityBadge(mediaSnap.data),
-                                ),
-                              ],
+                            Text(
+                              displayArtist,
+                              style: const TextStyle(color: Colors.white60, fontSize: 11),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),

@@ -13,6 +13,7 @@ class MetadataAddonManager {
   final MusicBrainzService _musicBrainz;
 
   List<MetadataProvider> _providers = [];
+  final Map<String, TrackMeta> _cache = {};
 
   MetadataAddonManager(
     this._settings,
@@ -42,8 +43,43 @@ class MetadataAddonManager {
     await _settings.setMetadataProviderEnabled(id, enabled);
   }
 
+  String _buildKey(String title, String artist) =>
+      '${title.trim().toLowerCase()}_${artist.trim().toLowerCase()}';
+
+  TrackMeta? getCached({String? id, String? isrc, String? title, String? artist}) {
+    if (id != null && id.isNotEmpty && _cache.containsKey(id)) {
+      return _cache[id];
+    }
+    if (isrc != null && isrc.isNotEmpty && _cache.containsKey('isrc_$isrc')) {
+      return _cache['isrc_$isrc'];
+    }
+    if (title != null && artist != null && title.isNotEmpty) {
+      final key = _buildKey(title, artist);
+      if (_cache.containsKey(key)) return _cache[key];
+    }
+    return null;
+  }
+
+  void cacheMeta(TrackMeta meta, {String? id, String? title, String? artist}) {
+    if (id != null && id.isNotEmpty) {
+      _cache[id] = meta;
+    }
+    if (meta.isrc != null && meta.isrc!.isNotEmpty) {
+      _cache['isrc_${meta.isrc}'] = meta;
+    }
+    if (meta.trackName != null && meta.artistName != null) {
+      _cache[_buildKey(meta.trackName!, meta.artistName!)] = meta;
+    }
+    if (title != null && artist != null && title.isNotEmpty) {
+      _cache[_buildKey(title, artist)] = meta;
+    }
+  }
+
   Future<TrackMeta?> enrich(String title, String artist,
-      {String? isrc}) async {
+      {String? isrc, String? id}) async {
+    final cached = getCached(id: id, isrc: isrc, title: title, artist: artist);
+    if (cached != null) return cached;
+
     _ensureInitialized();
 
     TrackMeta? result;
@@ -91,17 +127,27 @@ class MetadataAddonManager {
     if (result != null && result.isrc == null && resolvedIsrc != null) {
       result = result.copyWith(isrc: resolvedIsrc);
     }
+
+    if (result != null) {
+      cacheMeta(result, id: id, title: title, artist: artist);
+    }
     return result;
   }
 
-  Future<TrackMeta?> enrichByIsrc(String isrc) async {
+  Future<TrackMeta?> enrichByIsrc(String isrc, {String? id}) async {
+    final cached = getCached(id: id, isrc: isrc);
+    if (cached != null) return cached;
+
     _ensureInitialized();
 
     for (final provider in _providers) {
       if (!isEnabled(provider.id)) continue;
       try {
         final result = await provider.enrichByIsrc(isrc);
-        if (result != null) return result;
+        if (result != null) {
+          cacheMeta(result, id: id);
+          return result;
+        }
       } catch (e) {
         print('[MetadataAddon] ${provider.id} enrichByIsrc failed: $e');
       }

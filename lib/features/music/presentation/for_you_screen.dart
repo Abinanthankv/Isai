@@ -329,6 +329,19 @@ class ForYouScreen extends ConsumerWidget {
     );
   }
 
+  double _getMixCardWidth(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width >= 1200) {
+      return 360.0;
+    } else if (width >= 800) {
+      return 340.0;
+    } else if (width >= 600) {
+      return 320.0;
+    } else {
+      return width * 0.85;
+    }
+  }
+
   // ─── Personalized Mix ──────────────────────────────────────────────────
 
   Widget _buildPersonalizedMixSection(BuildContext context, WidgetRef ref, AsyncValue<List<ItunesTrack>> mixAsync, bool isDark) {
@@ -338,6 +351,7 @@ class ForYouScreen extends ConsumerWidget {
         
         final profile = ref.watch(userMusicProfileProvider).value;
         final topGenre = profile?.genreWeights.firstOrNull?.genre ?? 'Your Style';
+        final cardWidth = _getMixCardWidth(context);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,16 +362,19 @@ class ForYouScreen extends ConsumerWidget {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _buildMixCard(
-                context: context,
-                tracks: tracks,
-                title: 'Your Taste Mix',
-                subtitle: '${tracks.length} songs tailored for you',
-                isDark: isDark,
-                gradient: isDark 
-                    ? [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]
-                    : [const Color(0xFFff9a9e), const Color(0xFFfecfef)],
-                icon: Icons.insights_rounded,
+              child: SizedBox(
+                width: cardWidth,
+                child: _buildMixCard(
+                  context: context,
+                  tracks: tracks,
+                  title: 'Your Taste Mix',
+                  subtitle: '${tracks.length} songs tailored for you',
+                  isDark: isDark,
+                  gradient: isDark 
+                      ? [const Color(0xFF8E2DE2), const Color(0xFF4A00E0)]
+                      : [const Color(0xFFff9a9e), const Color(0xFFfecfef)],
+                  icon: Icons.insights_rounded,
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -375,6 +392,7 @@ class ForYouScreen extends ConsumerWidget {
     return mixAsync.when(
       data: (mixes) {
         if (mixes.isEmpty) return const SizedBox.shrink();
+        final cardWidth = _getMixCardWidth(context);
         
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,7 +412,7 @@ class ForYouScreen extends ConsumerWidget {
                   return Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.85,
+                      width: cardWidth,
                       child: _buildMixCard(
                         context: context,
                         tracks: mix.tracks,
@@ -422,6 +440,7 @@ class ForYouScreen extends ConsumerWidget {
     return mixAsync.when(
       data: (mixes) {
         if (mixes.isEmpty) return const SizedBox.shrink();
+        final cardWidth = _getMixCardWidth(context);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -440,7 +459,7 @@ class ForYouScreen extends ConsumerWidget {
                   return Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.85,
+                      width: cardWidth,
                       child: _buildMixCard(
                         context: context,
                         tracks: mix.tracks,
@@ -1118,6 +1137,7 @@ class ForYouScreen extends ConsumerWidget {
     required String subtitle,
   }) {
     if (playlists.isEmpty) return const SizedBox.shrink();
+    final cardWidth = _getMixCardWidth(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1136,7 +1156,7 @@ class ForYouScreen extends ConsumerWidget {
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.85,
+                  width: cardWidth,
                   child: _buildMixCard(
                     context: context,
                     tracks: pl.tracks,
