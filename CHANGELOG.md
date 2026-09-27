@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.0.18] - September 2026
+
+### Added
+- **YouTube Regional Charts & Community Playlists** [`fde0810`]: Integrated YouTube Music Charts and Community/User playlists into the Discovery screen right after JioSaavn Featured. Included language filtering chips for **Tamil**, **Telugu**, **Malayalam**, **Kannada**, **Hindi**, **Punjabi**, **Bhojpuri**, **Haryanvi**, and **Global** charts.
+- **Android Auto Media Browser & Live Lyrics** [`d496c71`]: Enhanced Android Auto media browser navigation, playback controls, high-resolution artwork rendering, and synchronized live lyrics display on vehicle head units.
+- **Tablet & Wide-Screen Now Playing & Settings Split Layouts** [`7c74219`, `6292490`, `27275fd`, `d738e51`, `7b7d181`, `da2c3c0`, `395fb4a`]: Redesigned Now Playing layout for tablets and wide screens with split queue view, bottom seekbar, minimalist player bar with animated expand controls, choose source button, and integrated audio quality badges. Added master-detail split layout for Settings screen.
+- **Metadata Caching & For You Mix Cards** [`207490b`]: Added metadata caching, clean quality badge indicators, and made "For You" mix cards dynamically responsive on wide displays.
+
+### Optimized
+- **Navigation Drawer Performance** [`bf88765`]: Optimized navigation drawer expansion/collapse animation performance and overall scroll responsiveness.
+- **Track Details Integrity** [`6ac44f4`]: Removed dummy fallback metadata values to display only genuine track details.
+
+### Fixed
+- **Android 13+ Notification Controls & Foreground Service Activity** [`a52a901`]: Fixed missing notification controls by registering `com.isai.music.MainActivity` (`AudioServiceActivity`) in `AndroidManifest.xml`, triggering post-frame notification permission prompts on launch, and resolving `AudioServiceConfig` assertion constraints.
+- **Riverpod Like State & RenderFlex Overflows** [`711c218`, `65cbeb9`]: Connected Riverpod `isTrackLikedProvider` to resolve `_isLiked` errors and fixed `RenderFlex` layout overflow in the sleep timer bottom sheet.
+
 ## [1.0.17] - September 2026
 
 ### Added

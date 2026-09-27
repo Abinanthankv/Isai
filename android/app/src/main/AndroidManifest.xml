@@ -24,7 +24,7 @@
         android:usesCleartextTraffic="true"
         android:requestLegacyExternalStorage="true">
         <activity
-            android:name=".MainActivity"
+            android:name="com.isai.music.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""

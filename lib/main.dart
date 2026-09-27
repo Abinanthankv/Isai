@@ -71,11 +71,11 @@ void main() async {
   } else {
     audioHandler = await AudioService.init(
       builder: () => MyAudioHandler(),
-      config: const AudioServiceConfig(
+      config: AudioServiceConfig(
         androidNotificationChannelId: 'com.isai.music.channel.audio',
         androidNotificationChannelName: 'Music Playback',
         androidNotificationOngoing: false,
-        androidStopForegroundOnPause: false,
+        androidStopForegroundOnPause: true,
         androidNotificationIcon: 'drawable/ic_stat_music',
       ),
     );
