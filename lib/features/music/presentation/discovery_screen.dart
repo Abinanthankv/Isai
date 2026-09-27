@@ -56,6 +56,7 @@ class DiscoveryScreen extends ConsumerWidget {
         enabledSections.contains('genre_pills') || enabledSections.contains('genres');
     final showNewReleases = enabledSections.contains('new_releases');
     final showJioSaavn = enabledSections.contains('jiosaavn');
+    final showYouTubeCharts = enabledSections.contains('youtube_charts');
 
     final genres =
         showGenreSections ? ref.watch(genresProvider) : null;
@@ -64,6 +65,11 @@ class DiscoveryScreen extends ConsumerWidget {
         showJioSaavn ? ref.watch(selectedJioSaavnLanguageProvider) : 'english';
     final jioPlaylistsAsync = showJioSaavn
         ? ref.watch(jiosaavnFeaturedPlaylistsProvider(selectedJioLanguage))
+        : null;
+    final selectedYtLanguage =
+        showYouTubeCharts ? ref.watch(selectedYouTubeChartLanguageProvider) : 'all';
+    final ytChartsAsync = showYouTubeCharts
+        ? ref.watch(youtubeRegionalChartsProvider(selectedYtLanguage))
         : null;
 
     if (isOffline) {
@@ -170,6 +176,8 @@ class DiscoveryScreen extends ConsumerWidget {
                   newReleases,
                   selectedJioLanguage,
                   jioPlaylistsAsync,
+                  selectedYtLanguage,
+                  ytChartsAsync,
                 );
                 if (section == null) {
                   return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -194,6 +202,8 @@ class DiscoveryScreen extends ConsumerWidget {
     AsyncValue<List<ItunesTrack>>? newReleases,
     String selectedJioLanguage,
     AsyncValue<List<AppleMusicPlaylist>>? jioPlaylistsAsync,
+    String selectedYtLanguage,
+    AsyncValue<List<AppleMusicPlaylist>>? ytChartsAsync,
   ) {
     switch (id) {
       case 'genre_pills':
@@ -211,6 +221,9 @@ class DiscoveryScreen extends ConsumerWidget {
       case 'jiosaavn':
         return _buildJioSaavnPlaylistsSection(
             context, ref, selectedJioLanguage, jioPlaylistsAsync!, isDark);
+      case 'youtube_charts':
+        return _buildYouTubeChartsSection(
+            context, ref, selectedYtLanguage, ytChartsAsync!, isDark);
       case 'apple_music':
         return _buildAppleMusicPlaylistsSection(context, ref, isDark);
       default:
@@ -2123,6 +2136,247 @@ class DiscoveryScreen extends ConsumerWidget {
             error: (err, __) => Center(
               child: Text(
                 'Failed to load playlists.',
+                style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  // YouTube Regional Charts Section
+  Widget _buildYouTubeChartsSection(
+    BuildContext context,
+    WidgetRef ref,
+    String selectedLanguage,
+    AsyncValue<List<AppleMusicPlaylist>> playlistsAsync,
+    bool isDark,
+  ) {
+    final Map<String, String> languages = {
+      'all': 'All Charts',
+      'tamil': 'Tamil',
+      'telugu': 'Telugu',
+      'malayalam': 'Malayalam',
+      'kannada': 'Kannada',
+      'hindi': 'Hindi',
+      'punjabi': 'Punjabi',
+      'bhojpuri': 'Bhojpuri',
+      'haryanvi': 'Haryanvi',
+      'global': 'Global',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.bar_chart_rounded, color: Theme.of(context).colorScheme.primary, size: 22),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'YouTube Regional Charts',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (playlistsAsync.value != null && playlistsAsync.value!.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => PlaylistGridScreen(
+                          title: 'YouTube Regional Charts',
+                          playlists: playlistsAsync.value!,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'See All',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // Language chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: languages.entries.map((entry) {
+              final isSelected = entry.key == selectedLanguage;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(
+                    entry.value,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark ? Colors.white70 : Colors.black87),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  selected: isSelected,
+                  onSelected: (_) {
+                    ref.read(selectedYouTubeChartLanguageProvider.notifier).state = entry.key;
+                  },
+                  selectedColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                  checkmarkColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // Carousel of playlist cards
+        SizedBox(
+          height: 200,
+          child: playlistsAsync.when(
+            data: (items) {
+              if (items.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No regional charts found.',
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
+                  ),
+                );
+              }
+              final cardWidth = (MediaQuery.of(context).size.width * 0.42).clamp(150.0, 180.0);
+              return ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final playlist = items[index];
+                  return Container(
+                    width: cardWidth,
+                    margin: const EdgeInsets.only(right: 14),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlaylistDetailsScreen(
+                              appleMusicPlaylist: playlist,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Stack(
+                            children: [
+                              Container(
+                                width: cardWidth,
+                                height: 140,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.18),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      playlist.artworkUrl.isNotEmpty
+                                          ? CachedNetworkImage(
+                                              cacheManager: DiscoveryCacheManager(),
+                                              memCacheWidth: cardWidth.toInt(),
+                                              memCacheHeight: 140,
+                                              imageUrl: playlist.artworkUrl,
+                                              fit: BoxFit.cover,
+                                              errorWidget: (_, __, ___) => Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                                ),
+                                                child: const Icon(Icons.bar_chart_rounded, color: Colors.white38, size: 36),
+                                              ),
+                                            )
+                                          : Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(colors: _getGradientForIndex(index)),
+                                              ),
+                                              child: const Icon(Icons.bar_chart_rounded, color: Colors.white38, size: 36),
+                                            ),
+                                      Positioned(
+                                        bottom: 8,
+                                        right: 8,
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.black.withOpacity(0.5),
+                                          ),
+                                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: cardWidth,
+                            child: Text(
+                              playlist.name,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+            loading: () => jioSaavnPlaylistsSkeleton(context),
+            error: (err, __) => Center(
+              child: Text(
+                'Failed to load YouTube charts.',
                 style: TextStyle(color: isDark ? Colors.white54 : Colors.black45),
               ),
             ),

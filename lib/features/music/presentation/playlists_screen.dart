@@ -767,6 +767,8 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
     } else if (appleMusicPlaylist != null) {
       if (appleMusicPlaylist.url.contains('jiosaavn.com')) {
         tracksAsync = ref.watch(jiosaavnPlaylistTracksProvider(appleMusicPlaylist.url));
+      } else if (appleMusicPlaylist.url.startsWith('youtube_playlist:')) {
+        tracksAsync = ref.watch(youtubePlaylistTracksProvider(appleMusicPlaylist.url));
       } else {
         tracksAsync = ref.watch(appleMusicPlaylistNotifierProvider(appleMusicPlaylist.url));
       }
@@ -805,7 +807,9 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                 ? 'Curated'
                 : (appleMusicPlaylist != null && appleMusicPlaylist.url.contains('jiosaavn.com'))
                     ? 'JioSaavn'
-                    : 'Apple Music';
+                    : (appleMusicPlaylist != null && appleMusicPlaylist.url.startsWith('youtube_playlist:'))
+                        ? 'YouTube Charts'
+                        : 'Apple Music';
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -1088,7 +1092,7 @@ class _PlaylistDetailsScreenState extends ConsumerState<PlaylistDetailsScreen> {
                           onLongPress: () => _showTrackOptions(context, ref, track),
                         );
                       } else if (track is ItunesTrack) {
-                        if (appleMusicPlaylist != null && !appleMusicPlaylist.url.contains('jiosaavn.com')) {
+                        if (appleMusicPlaylist != null && !appleMusicPlaylist.url.contains('jiosaavn.com') && !appleMusicPlaylist.url.startsWith('youtube_playlist:')) {
                           ref.read(appleMusicPlaylistNotifierProvider(appleMusicPlaylist.url).notifier).enrichTrackAtIndex(index);
                         }
                         return _buildTrackTile(

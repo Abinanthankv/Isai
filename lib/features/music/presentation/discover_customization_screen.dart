@@ -64,6 +64,12 @@ const List<DiscoverSectionInfo> kDiscoverSectionInfo = [
     icon: Icons.library_music_rounded,
   ),
   DiscoverSectionInfo(
+    id: 'youtube_charts',
+    title: 'YouTube Regional Charts',
+    subtitle: 'Regional charts & playlists (Tamil, Telugu, Hindi, etc.)',
+    icon: Icons.bar_chart_rounded,
+  ),
+  DiscoverSectionInfo(
     id: 'apple_music',
     title: 'Curated For You',
     subtitle: 'Language, moods & featured hits',

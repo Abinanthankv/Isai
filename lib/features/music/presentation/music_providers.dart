@@ -45,6 +45,7 @@ const List<String> kDefaultDiscoverSectionOrder = [
   'global_trends',
   'genres',
   'jiosaavn',
+  'youtube_charts',
   'apple_music',
 ];
 
@@ -3305,4 +3306,273 @@ final jiosaavnPlaylistTracksProvider = FutureProvider.family<List<ItunesTrack>, 
       artworkUrl: artwork,
     );
   }).toList();
+});
+
+// ─── YouTube Regional Charts Providers ─────────────────────────────────────
+final selectedYouTubeChartLanguageProvider = StateProvider<String>((ref) => 'all');
+
+final youtubeRegionalChartsProvider = FutureProvider.family<List<AppleMusicPlaylist>, String>((ref, language) async {
+  final dio = Dio();
+  dio.options.headers = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'X-YouTube-Client-Name': '67',
+    'X-YouTube-Client-Version': '1.20240101.01.00',
+  };
+
+  try {
+    final response = await dio.post(
+      'https://music.youtube.com/youtubei/v1/browse?alt=json',
+      data: {
+        'context': {
+          'client': {
+            'clientName': 'WEB_REMIX',
+            'clientVersion': '1.20240101.01.00',
+            'gl': 'IN',
+            'hl': 'en',
+          }
+        },
+        'browseId': 'FEmusic_charts',
+      },
+    );
+
+    if (response.statusCode != 200 || response.data == null) return [];
+
+    final Map<String, dynamic> data = response.data is String ? jsonDecode(response.data) : response.data;
+    final contents = data['contents']?['singleColumnBrowseResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List<dynamic>? ?? [];
+
+    final playlists = <AppleMusicPlaylist>[];
+    final seenIds = <String>{};
+
+    for (final section in contents) {
+      final shelf = section['musicCarouselShelfRenderer'] ?? section['musicShelfRenderer'];
+      if (shelf != null) {
+        final headerTitle = (shelf['header']?['musicCarouselShelfBasicHeaderRenderer']?['title']?['runs']?[0]?['text']?.toString() ?? '').toLowerCase();
+        if (headerTitle.contains('artist')) continue;
+
+        final items = shelf['contents'] as List<dynamic>? ?? [];
+        for (final item in items) {
+          final flex = item['musicTwoRowItemRenderer'] ?? item['musicResponsiveListItemRenderer'];
+          if (flex != null) {
+            final title = flex['title']?['runs']?[0]?['text']?.toString() ?? 'Chart';
+            final browseId = flex['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+            final thumbObj = flex['thumbnailRenderer'] ?? flex['thumbnail'];
+            final thumbnails = thumbObj?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List<dynamic>? ?? [];
+            var artworkUrl = thumbnails.isNotEmpty ? thumbnails.last['url']?.toString() ?? '' : '';
+
+            if (browseId != null && (browseId.startsWith('VL') || browseId.startsWith('PL'))) {
+              if (title.isEmpty || title == 'Chart') continue;
+
+              final lowerTitle = title.toLowerCase();
+              final langKey = language.toLowerCase();
+              bool matchesLanguage = langKey == 'all';
+
+              if (langKey == 'tamil') {
+                matchesLanguage = lowerTitle.contains('tamil');
+              } else if (langKey == 'telugu') {
+                matchesLanguage = lowerTitle.contains('telugu');
+              } else if (langKey == 'malayalam') {
+                matchesLanguage = lowerTitle.contains('malayalam');
+              } else if (langKey == 'kannada') {
+                matchesLanguage = lowerTitle.contains('kannada');
+              } else if (langKey == 'hindi') {
+                matchesLanguage = lowerTitle.contains('hindi');
+              } else if (langKey == 'punjabi') {
+                matchesLanguage = lowerTitle.contains('punjabi');
+              } else if (langKey == 'bhojpuri') {
+                matchesLanguage = lowerTitle.contains('bhojpuri');
+              } else if (langKey == 'haryanvi') {
+                matchesLanguage = lowerTitle.contains('haryanvi');
+              } else if (langKey == 'global') {
+                matchesLanguage = lowerTitle.contains('international') || lowerTitle.contains('global');
+              }
+
+              if (matchesLanguage) {
+                if (artworkUrl.contains('googleusercontent.com') || artworkUrl.contains('ytimg.com')) {
+                  artworkUrl = artworkUrl.replaceAll(RegExp(r'=s\d+'), '=s576').replaceAll(RegExp(r'=w\d+-h\d+'), '=w800-h800');
+                }
+                if (seenIds.add(browseId)) {
+                  playlists.add(AppleMusicPlaylist(
+                    id: browseId,
+                    name: title,
+                    artworkUrl: artworkUrl,
+                    url: 'youtube_playlist:$browseId',
+                  ));
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // If a specific language is selected, search for additional regional 90s, romance, sentimental & community playlists
+    if (language.toLowerCase() != 'all') {
+      final searchConfigs = [
+        {'query': '$language 90s romance sentimental', 'params': 'EgWKAQIYAw%3D%3D'},
+        {'query': '$language 2000s hits melody', 'params': 'EgWKAQIYAw%3D%3D'},
+        {'query': '$language 90s hits', 'params': 'EgWKAQIYBA%3D%3D'},
+        {'query': '$language love melodies', 'params': 'EgWKAQIYBA%3D%3D'},
+      ];
+
+      for (final config in searchConfigs) {
+        try {
+          final searchResponse = await dio.post(
+            'https://music.youtube.com/youtubei/v1/search?alt=json',
+            data: {
+              'context': {
+                'client': {
+                  'clientName': 'WEB_REMIX',
+                  'clientVersion': '1.20240101.01.00',
+                  'gl': 'IN',
+                  'hl': 'en',
+                }
+              },
+              'query': config['query'],
+              'params': config['params'],
+            },
+          );
+
+          if (searchResponse.statusCode == 200 && searchResponse.data != null) {
+            final Map<String, dynamic> searchData = searchResponse.data is String ? jsonDecode(searchResponse.data) : searchResponse.data;
+            final searchContents = searchData['contents']?['tabbedSearchResultsRenderer']?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents'] as List<dynamic>? ?? [];
+
+            for (final section in searchContents) {
+              final shelf = section['musicShelfRenderer'];
+              if (shelf != null) {
+                final items = shelf['contents'] as List<dynamic>? ?? [];
+                for (final item in items) {
+                  final flex = item['musicResponsiveListItemRenderer'];
+                  if (flex != null) {
+                    final flexCols = flex['flexColumns'] as List<dynamic>? ?? [];
+                    String title = '';
+                    if (flexCols.isNotEmpty) {
+                      final runs = flexCols[0]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs'] as List<dynamic>? ?? [];
+                      if (runs.isNotEmpty) title = runs[0]?['text']?.toString() ?? '';
+                    }
+
+                    final rawPlaylistId = flex['overlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchPlaylistEndpoint']?['playlistId']?.toString() ??
+                                       flex['navigationEndpoint']?['browseEndpoint']?['browseId']?.toString();
+
+                    final thumbObj = flex['thumbnailRenderer'] ?? flex['thumbnail'];
+                    final thumbnails = thumbObj?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List<dynamic>? ?? [];
+                    var artworkUrl = thumbnails.isNotEmpty ? thumbnails.last['url']?.toString() ?? '' : '';
+
+                    if (rawPlaylistId != null && title.isNotEmpty && !title.toLowerCase().contains('podcast')) {
+                      final cleanId = rawPlaylistId.startsWith('VL') ? rawPlaylistId : 'VL$rawPlaylistId';
+                      if (seenIds.add(cleanId)) {
+                        if (artworkUrl.contains('googleusercontent.com') || artworkUrl.contains('ytimg.com')) {
+                          artworkUrl = artworkUrl.replaceAll(RegExp(r'=s\d+'), '=s576').replaceAll(RegExp(r'=w\d+-h\d+'), '=w800-h800');
+                        }
+                        playlists.add(AppleMusicPlaylist(
+                          id: cleanId,
+                          name: title,
+                          artworkUrl: artworkUrl,
+                          url: 'youtube_playlist:$cleanId',
+                        ));
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    return playlists;
+  } catch (e) {
+    print('[YouTubeCharts] youtubeRegionalChartsProvider error: $e');
+    return [];
+  }
+});
+
+final youtubePlaylistTracksProvider = FutureProvider.family<List<ItunesTrack>, String>((ref, playlistUrl) async {
+  final browseId = playlistUrl.replaceAll('youtube_playlist:', '');
+  final cleanBrowseId = browseId.startsWith('VL') ? browseId : 'VL$browseId';
+
+  final dio = Dio();
+  dio.options.headers = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'X-YouTube-Client-Name': '67',
+    'X-YouTube-Client-Version': '1.20240101.01.00',
+  };
+
+  try {
+    final response = await dio.post(
+      'https://music.youtube.com/youtubei/v1/browse?alt=json',
+      data: {
+        'context': {
+          'client': {
+            'clientName': 'WEB_REMIX',
+            'clientVersion': '1.20240101.01.00',
+            'gl': 'IN',
+            'hl': 'en',
+          }
+        },
+        'browseId': cleanBrowseId,
+      },
+    );
+
+    if (response.statusCode != 200 || response.data == null) return [];
+
+    final Map<String, dynamic> data = response.data is String ? jsonDecode(response.data) : response.data;
+    
+    List<dynamic> items = [];
+    final twoCol = data['contents']?['twoColumnBrowseResultsRenderer'];
+    if (twoCol != null) {
+      items = twoCol['secondaryContents']?['sectionListRenderer']?['contents']?[0]?['musicPlaylistShelfRenderer']?['contents'] as List<dynamic>? ?? [];
+    } else {
+      final singleCol = data['contents']?['singleColumnBrowseResultsRenderer'];
+      items = singleCol?['tabs']?[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents']?[0]?['musicPlaylistShelfRenderer']?['contents'] as List<dynamic>? ?? [];
+    }
+
+    final tracks = <ItunesTrack>[];
+
+    for (final item in items) {
+      final flex = item['musicResponsiveListItemRenderer'];
+      if (flex != null) {
+        final List flexCols = flex['flexColumns'] is List ? flex['flexColumns'] as List : [];
+        
+        String getText(dynamic col) {
+          try {
+            final textObj = col?['musicResponsiveListItemFlexColumnRenderer']?['text'];
+            final runs = textObj?['runs'];
+            if (runs is List && runs.isNotEmpty) {
+              return runs[0]?['text']?.toString() ?? '';
+            }
+          } catch (_) {}
+          return '';
+        }
+
+        final title = flexCols.isNotEmpty ? getText(flexCols[0]) : 'Unknown Track';
+        final artist = flexCols.length > 1 ? getText(flexCols[1]) : 'Unknown Artist';
+        final album = flexCols.length > 2 ? getText(flexCols[2]) : '';
+        final videoId = flex['playlistItemData']?['videoId'] ?? flex['navigationEndpoint']?['watchEndpoint']?['videoId'] ?? '';
+        final thumbnails = flex['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'] as List<dynamic>? ?? [];
+        var artwork = thumbnails.isNotEmpty ? thumbnails.last['url']?.toString() ?? '' : '';
+        if (artwork.contains('ytimg.com')) {
+          artwork = artwork.replaceAll(RegExp(r'=w\d+-h\d+'), '=w800-h800');
+        }
+
+        if (videoId.toString().isNotEmpty) {
+          tracks.add(ItunesTrack(
+            trackId: videoId.toString().hashCode.abs(),
+            trackName: title,
+            artistName: artist,
+            collectionName: album.isNotEmpty ? album : 'YouTube Charts',
+            artworkUrl: artwork,
+            previewUrl: 'https://www.youtube.com/watch?v=$videoId',
+          ));
+        }
+      }
+    }
+
+    return tracks;
+  } catch (e) {
+    print('[YouTubeCharts] youtubePlaylistTracksProvider error: $e');
+    return [];
+  }
 });
