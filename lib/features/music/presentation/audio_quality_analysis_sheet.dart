@@ -7,6 +7,7 @@ import '../data/real_audio_analyzer.dart';
 import '../data/audio_device_service.dart';
 import '../data/metadata/deezer_metadata_provider.dart';
 import '../data/metadata/metadata_provider.dart';
+import '../data/metadata/metadata_addon_manager.dart';
 import 'music_providers.dart';
 
 class AudioQualityAnalysisSheet extends StatefulWidget {
@@ -60,17 +61,26 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
   Future<void> _loadEnrichedMetadata() async {
     final extras = widget.item.extras ?? {};
     final isrc = extras['isrc'] as String?;
-    if (isrc != null && isrc.isNotEmpty) {
-      try {
-        final deezer = getIt<DeezerMetadataProvider>();
-        final meta = await deezer.enrichByIsrc(isrc);
-        if (mounted && meta != null) {
-          setState(() {
-            _enrichedMeta = meta;
-          });
-        }
-      } catch (_) {}
-    }
+    try {
+      final deezer = getIt<DeezerMetadataProvider>();
+      TrackMeta? meta;
+      if (isrc != null && isrc.isNotEmpty) {
+        meta = await deezer.enrichByIsrc(isrc);
+      }
+      if (meta == null) {
+        final addonManager = getIt<MetadataAddonManager>();
+        meta = await addonManager.enrich(
+          widget.item.title,
+          widget.item.artist ?? '',
+          isrc: isrc,
+        );
+      }
+      if (mounted && meta != null) {
+        setState(() {
+          _enrichedMeta = meta;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _runRealAnalysis({bool forceRefresh = false}) async {
@@ -122,56 +132,67 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
     final bitrateStr = _realResult != null ? '${_realResult!.bitrateKbps} kbps' : (widget.qualityDetails['bitrate'] as String? ?? (isLossless ? '962 kbps' : '320 kbps'));
     final channelsStr = _realResult != null ? '${_realResult!.channels} (${_realResult!.channels >= 2 ? 'stereo' : 'mono'})' : (extras['channels'] != null ? '${extras['channels']}' : '2 (stereo)');
     
-    final duration = _realResult?.duration ?? (widget.item.duration ?? const Duration(minutes: 3, seconds: 4));
+    final duration = _realResult?.duration ?? (widget.item.duration ?? Duration.zero);
     final durationFormatted = _formatDuration(duration);
 
-    final sizeMb = _realResult != null ? '${_realResult!.sizeMb.toStringAsFixed(1)} MB' : '21.1 MB';
+    final sizeMb = _realResult != null ? '${_realResult!.sizeMb.toStringAsFixed(1)} MB' : '--';
 
     // Measured / Real Metrics
     final samplesFormatted = _realResult != null
         ? (_realResult!.totalSamples > 1000000
             ? '${(_realResult!.totalSamples / 1000000).toStringAsFixed(1)}M'
             : '${(_realResult!.totalSamples / 1000).toStringAsFixed(0)}K')
-        : '8.1M';
+        : '--';
 
     final cutoffStr = _realResult != null
         ? '${_realResult!.spectralCutoffKhz.toStringAsFixed(1)} kHz'
-        : (isLossless ? (nyquistHz >= 48000 ? '44.0 kHz' : nyquistStr) : '20.5 kHz');
+        : (isLossless ? (nyquistHz >= 48000 ? '44.0 kHz' : nyquistStr) : '--');
 
-    final lufsStr = _realResult != null ? '${_realResult!.lufs.toStringAsFixed(1)} LUFS' : '-8.3 LUFS';
-    final peakDb = _realResult != null ? '${_realResult!.peakDb.toStringAsFixed(2)} dB' : '-0.20 dB';
-    final truePeakStr = _realResult != null ? '${_realResult!.truePeakDbtp.toStringAsFixed(2)} dBTP' : '-0.16 dBTP';
-    final rmsDb = _realResult != null ? '${_realResult!.rmsDb.toStringAsFixed(2)} dB' : '-9.83 dB';
-    final dynamicRangeDb = _realResult != null ? '${_realResult!.dynamicRangeDb.toStringAsFixed(2)} dB' : '9.63 dB';
-    final clippingStr = _realResult != null ? (_realResult!.isClipping ? 'Clipping detected' : 'No clipping') : 'No clipping';
+    final lufsStr = _realResult != null ? '${_realResult!.lufs.toStringAsFixed(1)} LUFS' : '--';
+    final peakDb = _realResult != null ? '${_realResult!.peakDb.toStringAsFixed(2)} dB' : '--';
+    final truePeakStr = _realResult != null ? '${_realResult!.truePeakDbtp.toStringAsFixed(2)} dBTP' : '--';
+    final rmsDb = _realResult != null ? '${_realResult!.rmsDb.toStringAsFixed(2)} dB' : '--';
+    final dynamicRangeDb = _realResult != null ? '${_realResult!.dynamicRangeDb.toStringAsFixed(2)} dB' : '--';
+    final clippingStr = _realResult != null ? (_realResult!.isClipping ? 'Clipping detected' : 'No clipping') : '--';
 
     final ch1Text = _realResult != null
         ? 'P ${_realResult!.ch1Stats.peakDb.toStringAsFixed(1)} / R ${_realResult!.ch1Stats.rmsDb.toStringAsFixed(1)} / DR ${_realResult!.ch1Stats.dynamicRangeDb.toStringAsFixed(1)}'
-        : 'P -0.2 / R -9.8 / DR 9.6';
+        : '--';
 
     final ch2Text = _realResult != null
         ? 'P ${_realResult!.ch2Stats.peakDb.toStringAsFixed(1)} / R ${_realResult!.ch2Stats.rmsDb.toStringAsFixed(1)} / DR ${_realResult!.ch2Stats.dynamicRangeDb.toStringAsFixed(1)}'
-        : 'P -0.2 / R -9.9 / DR 9.7';
+        : '--';
 
-    // Metadata Values from Enriched TrackMeta or Extras
+    // Metadata Values from Enriched TrackMeta or Extras (only real data, no fake hardcoded fallbacks)
     final trackName = _enrichedMeta?.trackName ?? widget.item.title;
-    final artistName = _enrichedMeta?.artistName ?? widget.item.artist ?? 'Unknown Artist';
-    final albumName = _enrichedMeta?.album ?? widget.item.album ?? 'Unknown Album';
-    final trackNum = _enrichedMeta?.trackNumber ?? (extras['trackNumber'] as num?)?.toInt() ?? 1;
-    final trackTotal = _enrichedMeta?.totalTracks ?? (extras['totalTracks'] as num?)?.toInt() ?? 1;
-    final discNum = _enrichedMeta?.discNumber ?? (extras['discNumber'] as num?)?.toInt() ?? 1;
-    final discTotal = _enrichedMeta?.totalDiscs ?? (extras['totalDiscs'] as num?)?.toInt() ?? 1;
-    final isrcStr = _enrichedMeta?.isrc ?? (extras['isrc'] as String?) ?? 'USSM18400713';
-    final deezerIdStr = _enrichedMeta?.id ?? '2097719527';
-    final releaseDateStr = _enrichedMeta?.releaseYear != null ? '${_enrichedMeta!.releaseYear}' : (extras['releaseYear']?.toString() ?? '1984');
-    final genreStr = _enrichedMeta?.genre ?? (extras['genre'] as String?) ?? 'R&B/Soul';
-    final labelStr = _enrichedMeta?.label ?? 'Columbia / Sony Music';
-    final copyrightStr = _enrichedMeta?.copyright ?? '(C) Sony Music Entertainment';
-    final composerStr = _enrichedMeta?.composer ?? 'Phil Collins; Philip Bailey';
-    final albumTypeStr = _enrichedMeta?.albumType ?? 'album';
-    final commentUrl = _enrichedMeta?.albumId != null ? 'https://www.deezer.com/album/${_enrichedMeta!.albumId}' : 'https://www.deezer.com/album/$deezerIdStr';
+    final artistName = (_enrichedMeta?.artistName ?? widget.item.artist)?.trim();
+    final albumName = (_enrichedMeta?.album ?? widget.item.album)?.trim();
+    final trackNum = _enrichedMeta?.trackNumber ?? (extras['trackNumber'] as num?)?.toInt();
+    final trackTotal = _enrichedMeta?.totalTracks ?? (extras['totalTracks'] as num?)?.toInt();
+    final discNum = _enrichedMeta?.discNumber ?? (extras['discNumber'] as num?)?.toInt();
+    final discTotal = _enrichedMeta?.totalDiscs ?? (extras['totalDiscs'] as num?)?.toInt();
+    final isrcStr = (_enrichedMeta?.isrc ?? (extras['isrc'] as String?))?.trim();
+    final deezerIdStr = (_enrichedMeta?.id ?? (extras['deezerId']?.toString()))?.trim();
+    final releaseYearVal = _enrichedMeta?.releaseYear != null ? '${_enrichedMeta!.releaseYear}' : (extras['releaseYear']?.toString() ?? extras['year']?.toString());
+    final releaseDateStr = (releaseYearVal != null && releaseYearVal.trim().isNotEmpty) ? releaseYearVal.trim() : null;
+    final genreVal = _enrichedMeta?.genre ?? (extras['genre'] as String?);
+    final genreStr = (genreVal != null && genreVal.trim().isNotEmpty) ? genreVal.trim() : null;
+    final labelVal = _enrichedMeta?.label ?? (extras['label'] as String?);
+    final labelStr = (labelVal != null && labelVal.trim().isNotEmpty) ? labelVal.trim() : null;
+    final copyrightVal = _enrichedMeta?.copyright ?? (extras['copyright'] as String?);
+    final copyrightStr = (copyrightVal != null && copyrightVal.trim().isNotEmpty) ? copyrightVal.trim() : null;
+    final composerVal = _enrichedMeta?.composer ?? (extras['composer'] as String?);
+    final composerStr = (composerVal != null && composerVal.trim().isNotEmpty) ? composerVal.trim() : null;
+    final albumTypeVal = _enrichedMeta?.albumType ?? (extras['albumType'] as String?);
+    final albumTypeStr = (albumTypeVal != null && albumTypeVal.trim().isNotEmpty) ? albumTypeVal.trim() : null;
+    final commentVal = _enrichedMeta?.albumId != null
+        ? 'https://www.deezer.com/album/${_enrichedMeta!.albumId}'
+        : (deezerIdStr != null && deezerIdStr.isNotEmpty ? 'https://www.deezer.com/album/$deezerIdStr' : (extras['comment'] as String?));
+    final commentUrl = (commentVal != null && commentVal.trim().isNotEmpty) ? commentVal.trim() : null;
     final audioQualityBadge = '$bitDepthStr/$sampleRateStr';
-    final coverResStr = _enrichedMeta?.artworkUrlHigh != null ? '1400 × 1400 px' : '1000 × 1000 px';
+    final coverResStr = _enrichedMeta?.artworkUrlHigh != null
+        ? '1400 × 1400 px'
+        : (extras['coverResolution'] as String?);
 
     // Dynamic Sheet Header Title
     final String sheetTitle = _selectedTabIndex == 0
@@ -303,22 +324,36 @@ class _AudioQualityAnalysisSheetState extends State<AudioQualityAnalysisSheet> {
                           ),
                           const SizedBox(height: 16),
                           _buildMetaRow(context, 'Track name', trackName),
-                          _buildMetaRow(context, 'Artist', artistName),
-                          _buildMetaRow(context, 'Album', albumName),
-                          _buildMetaRow(context, 'Track number', '$trackNum of $trackTotal'),
-                          _buildMetaRow(context, 'Disc number', '$discNum of $discTotal'),
+                          if (artistName != null && artistName.isNotEmpty)
+                            _buildMetaRow(context, 'Artist', artistName),
+                          if (albumName != null && albumName.isNotEmpty)
+                            _buildMetaRow(context, 'Album', albumName),
+                          if (trackNum != null)
+                            _buildMetaRow(context, 'Track number', trackTotal != null ? '$trackNum of $trackTotal' : '$trackNum'),
+                          if (discNum != null)
+                            _buildMetaRow(context, 'Disc number', discTotal != null ? '$discNum of $discTotal' : '$discNum'),
                           _buildMetaRow(context, 'Duration', durationFormatted),
                           _buildMetaRow(context, 'Audio quality', audioQualityBadge),
-                          _buildMetaRow(context, 'Cover resolution', coverResStr),
-                          _buildMetaRow(context, 'Release date', releaseDateStr),
-                          _buildMetaRow(context, 'Genre', genreStr),
-                          _buildMetaRow(context, 'Label', labelStr),
-                          _buildMetaRow(context, 'Copyright', copyrightStr),
-                          _buildMetaRow(context, 'Composer', composerStr),
-                          _buildMetaRow(context, 'Release Type', albumTypeStr),
-                          _buildMetaRow(context, 'Comment', commentUrl, isUrl: true),
-                          _buildMetaRow(context, 'ISRC', isrcStr),
-                          _buildMetaRow(context, 'Deezer ID', deezerIdStr),
+                          if (coverResStr != null && coverResStr.isNotEmpty)
+                            _buildMetaRow(context, 'Cover resolution', coverResStr),
+                          if (releaseDateStr != null && releaseDateStr.isNotEmpty)
+                            _buildMetaRow(context, 'Release date', releaseDateStr),
+                          if (genreStr != null && genreStr.isNotEmpty)
+                            _buildMetaRow(context, 'Genre', genreStr),
+                          if (labelStr != null && labelStr.isNotEmpty)
+                            _buildMetaRow(context, 'Label', labelStr),
+                          if (copyrightStr != null && copyrightStr.isNotEmpty)
+                            _buildMetaRow(context, 'Copyright', copyrightStr),
+                          if (composerStr != null && composerStr.isNotEmpty)
+                            _buildMetaRow(context, 'Composer', composerStr),
+                          if (albumTypeStr != null && albumTypeStr.isNotEmpty)
+                            _buildMetaRow(context, 'Release Type', albumTypeStr),
+                          if (commentUrl != null && commentUrl.isNotEmpty)
+                            _buildMetaRow(context, 'Comment', commentUrl, isUrl: commentUrl.startsWith('http')),
+                          if (isrcStr != null && isrcStr.isNotEmpty)
+                            _buildMetaRow(context, 'ISRC', isrcStr),
+                          if (deezerIdStr != null && deezerIdStr.isNotEmpty)
+                            _buildMetaRow(context, 'Deezer ID', deezerIdStr),
                         ],
                       ),
                     ),
