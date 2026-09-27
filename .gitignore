@@ -48,3 +48,4 @@ app.*.map.json
 scratch/
 plugins/
 scripts/
+test/
