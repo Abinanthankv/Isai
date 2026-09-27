@@ -31,7 +31,41 @@ class AudioDevicePlugin(private val context: Context, flutterEngine: FlutterEngi
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             ?: return fallbackInfo("Phone Speaker", "speaker", "Internal AudioFlinger", "16-bit / 48 kHz System Output", false, emptyList())
 
+        // Query real Android OS AudioFlinger parameters
+        val sysSampleRateStr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
+        val sysSampleRate = sysSampleRateStr?.toIntOrNull() ?: 48000
+        val sysFramesStr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
+        val sysFrames = sysFramesStr?.toIntOrNull() ?: 960
+
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+
+        // Helper to query Android 13+ (API 33) Direct Playback Support
+        fun checkDirectSupport(sampleRate: Int, isPcmFloat: Boolean): String {
+            if (Build.VERSION.SDK_INT >= 33) {
+                try {
+                    val pcmEncoding = if (isPcmFloat) android.media.AudioFormat.ENCODING_PCM_FLOAT else android.media.AudioFormat.ENCODING_PCM_16BIT
+                    val format = android.media.AudioFormat.Builder()
+                        .setEncoding(pcmEncoding)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                    val attr = android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                    val method = audioManager.javaClass.getMethod(
+                        "getDirectPlaybackSupport",
+                        android.media.AudioFormat::class.java,
+                        android.media.AudioAttributes::class.java
+                    )
+                    val support = method.invoke(audioManager, format, attr) as? Int
+                    if (support != null && support != 0) {
+                        return "Supported (Bit-Perfect Direct)"
+                    }
+                } catch (_: Exception) {}
+            }
+            return "Not Supported (Mixed Path)"
+        }
 
         // 1. Check for Connected Bluetooth Devices
         val btDevice = devices.firstOrNull { 
@@ -42,8 +76,6 @@ class AudioDevicePlugin(private val context: Context, flutterEngine: FlutterEngi
 
         if (btDevice != null) {
             val name = getConnectedBluetoothName(btDevice)
-
-            // Determine active Bluetooth codec based on sample rates and encodings
             val sampleRates = btDevice.sampleRates
             val maxRate = sampleRates.maxOrNull() ?: 44100
             
@@ -64,10 +96,18 @@ class AudioDevicePlugin(private val context: Context, flutterEngine: FlutterEngi
             return mapOf(
                 "deviceName" to name,
                 "outputType" to "bluetooth",
+                "route" to "BLUETOOTH",
+                "transport" to "AudioTrack",
                 "codec" to codecName,
                 "details" to details,
                 "isBitPerfect" to false,
-                "sampleRates" to sampleRates.toList()
+                "sampleRates" to sampleRates.toList(),
+                "directStatus" to checkDirectSupport(maxRate, false),
+                "systemSampleRate" to sysSampleRate,
+                "systemBufferFrames" to sysFrames,
+                "systemHal" to "AudioFlinger Mixer $sysSampleRate Hz, HAL PCM24 packed",
+                "bluetoothProfile" to "A2DP",
+                "audioTrackFormat" to "PCM16 / $sysSampleRate Hz"
             )
         }
 
@@ -89,14 +129,23 @@ class AudioDevicePlugin(private val context: Context, flutterEngine: FlutterEngi
             val maxKhzStr = "${maxRate / 1000} kHz"
 
             val isBitPerfect = bitPerfectRequested && Build.VERSION.SDK_INT >= 34
+            val directStatus = if (isBitPerfect) "Supported (Bit-Perfect Direct)" else checkDirectSupport(maxRate, true)
 
             return mapOf(
                 "deviceName" to name,
                 "outputType" to "usb_dac",
+                "route" to "USB",
+                "transport" to if (isBitPerfect) "Direct USB" else "AudioTrack",
                 "codec" to if (isBitPerfect) "USB Direct PCM (Bit-Perfect)" else "AudioFlinger PCM",
                 "details" to if (isBitPerfect) "Bit-Perfect Direct • Up to 24-bit / $maxKhzStr" else "Resampled System Output • Up to 24-bit / $maxKhzStr",
                 "isBitPerfect" to isBitPerfect,
-                "sampleRates" to sampleRates
+                "sampleRates" to sampleRates,
+                "directStatus" to directStatus,
+                "systemSampleRate" to sysSampleRate,
+                "systemBufferFrames" to sysFrames,
+                "systemHal" to if (isBitPerfect) "Direct Hardware Pass-Through" else "AudioFlinger Mixer $sysSampleRate Hz, HAL PCM24 packed",
+                "bluetoothProfile" to "N/A",
+                "audioTrackFormat" to if (isBitPerfect) "FLOAT32 / $maxRate Hz" else "PCM16 / $sysSampleRate Hz"
             )
         }
 
@@ -115,15 +164,38 @@ class AudioDevicePlugin(private val context: Context, flutterEngine: FlutterEngi
             return mapOf(
                 "deviceName" to name,
                 "outputType" to "wired",
+                "route" to "WIRED",
+                "transport" to "AudioTrack",
                 "codec" to "3.5mm Analog Output",
                 "details" to "24-bit / 48 kHz DAC Output",
                 "isBitPerfect" to false,
-                "sampleRates" to wiredDevice.sampleRates.toList()
+                "sampleRates" to wiredDevice.sampleRates.toList(),
+                "directStatus" to checkDirectSupport(sysSampleRate, false),
+                "systemSampleRate" to sysSampleRate,
+                "systemBufferFrames" to sysFrames,
+                "systemHal" to "AudioFlinger Mixer $sysSampleRate Hz, HAL PCM24 packed",
+                "bluetoothProfile" to "N/A",
+                "audioTrackFormat" to "PCM16 / $sysSampleRate Hz"
             )
         }
 
         // 4. Fallback to Phone Speaker
-        return fallbackInfo("Phone Speaker", "speaker", "Internal AudioFlinger", "16-bit / 48 kHz System Output", false, emptyList())
+        return mapOf(
+            "deviceName" to "Phone Speaker",
+            "outputType" to "speaker",
+            "route" to "SPEAKER",
+            "transport" to "AudioTrack",
+            "codec" to "Internal AudioFlinger",
+            "details" to "16-bit / 48 kHz System Output",
+            "isBitPerfect" to false,
+            "sampleRates" to emptyList<Int>(),
+            "directStatus" to "Not Supported (Mixed Path)",
+            "systemSampleRate" to sysSampleRate,
+            "systemBufferFrames" to sysFrames,
+            "systemHal" to "AudioFlinger Mixer $sysSampleRate Hz, HAL PCM24 packed",
+            "bluetoothProfile" to "N/A",
+            "audioTrackFormat" to "PCM16 / $sysSampleRate Hz"
+        )
     }
 
     private fun fallbackInfo(

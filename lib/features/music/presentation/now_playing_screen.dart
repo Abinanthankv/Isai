@@ -2074,7 +2074,11 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             Flexible(
               child: Text(
                 title,
-                style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7), fontWeight: FontWeight.w500),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontSize: 13,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.bold,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -2082,7 +2086,10 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
             if (artist.isNotEmpty)
               Text(
                 ' · $artist',
-                style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.4)),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.4),
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -2122,7 +2129,11 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                 children: [
                   Text(
                     title,
-                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w500),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.bold,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -2432,6 +2443,12 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       }
     }
 
+    // Store claimed values before real analyzer overrides them
+    final claimedCodec = codec;
+    final claimedBitDepth = bitDepthStr;
+    final claimedSampleRate = sampleRateStr;
+    final claimedBitrate = bitrateStr;
+
     // Override with Real Analyzed Audio Data if available
     final cachedAnalysis = RealAudioAnalyzer.getCachedResult(item);
     if (cachedAnalysis != null) {
@@ -2474,6 +2491,10 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
       'isHiRes': isHiRes,
       'isLossless': isLossless,
       'badgeLabel': badgeLabel,
+      'claimedCodec': claimedCodec,
+      'claimedBitDepth': claimedBitDepth,
+      'claimedSampleRate': claimedSampleRate,
+      'claimedBitrate': claimedBitrate,
     };
   }
 
@@ -2772,10 +2793,10 @@ class _NowPlayingContentState extends ConsumerState<NowPlayingContent>
                                   item.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     fontSize: 14,
                                     color: isCurrent ? Theme.of(context).colorScheme.primary : Colors.white,
-                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
@@ -5061,9 +5082,9 @@ class _QueueBottomSheetState extends ConsumerState<QueueBottomSheet> {
                                     item.title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       color: isCurrent ? Theme.of(context).colorScheme.primary : Colors.white,
-                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                   subtitle: Text(

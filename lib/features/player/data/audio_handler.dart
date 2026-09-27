@@ -30,6 +30,8 @@ import 'cast_controller.dart';
 import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import '../../audiobooks/data/audiobook_repository.dart';
 import '../../audiobooks/data/audiobook_models.dart';
+import '../../music/data/scrapers/lyrics_scraper.dart';
+import '../../music/data/lyrics_models.dart';
 
 class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
@@ -75,6 +77,12 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   int? _lastCastResumeIndex;
   Duration _lastCastResumePosition = Duration.zero;
+
+  bool _showLyricsOnAndroidAuto = false;
+  LyricsData? _currentLyricsData;
+  String? _lyricsTrackId;
+  String? _lastEmittedLyric;
+  final LyricsScraper _lyricsScraper = LrclibScraper();
 
   MyAudioHandler() {
     _init();
@@ -282,7 +290,13 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       if (item != null && item.id != lastMediaItemId) {
         lastMediaItemId = item.id;
         _currentTrackRecorded = false;
+        _lyricsTrackId = null;
+        _currentLyricsData = null;
+        _lastEmittedLyric = null;
         print('[AudioHandler] New track detected: ${item.title}, resetting history recorded flag.');
+        if (_showLyricsOnAndroidAuto) {
+          _fetchAndDisplayLyricsForCurrentTrack(item);
+        }
         
         // Last.fm: Update Now Playing — GUARD: audiobooks must NOT scrobble
         final mediaType = item.extras?['mediaType'] as String? ?? 'music';
@@ -301,6 +315,28 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
        final item = mediaItem.value;
        if (item != null) {
          _lastKnownPosition = position;
+         
+         if (_showLyricsOnAndroidAuto && _currentLyricsData != null) {
+           final synced = _currentLyricsData!.syncedLines;
+           if (synced.isNotEmpty) {
+             String lineText = '';
+             for (int i = synced.length - 1; i >= 0; i--) {
+               if (position >= synced[i].timestamp) {
+                 lineText = synced[i].text;
+                 break;
+               }
+             }
+             if (lineText.isNotEmpty && lineText != _lastEmittedLyric) {
+               _lastEmittedLyric = lineText;
+               final rawArtist = item.extras?['rawArtist'] as String? ?? item.artist?.replaceAll(RegExp(r'^🎤\s*'), '') ?? '';
+               mediaItem.add(item.copyWith(
+                 artist: '🎤 $lineText',
+                 displaySubtitle: lineText,
+                 extras: {...?item.extras, 'rawArtist': rawArtist},
+               ));
+             }
+           }
+         }
          
           // Save audiobook progress — throttled to once per second
           final mediaType = item.extras?['mediaType'] as String? ?? 'music';
@@ -1918,6 +1954,324 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   }
 
   @override
+  Future<MediaItem?> getItem(String mediaId) async {
+    final currentQueue = queue.value;
+    final match = currentQueue.where((item) => item.id == mediaId).firstOrNull;
+    if (match != null) return match;
+    
+    final enriched = _enrichedItems[mediaId];
+    if (enriched != null) return enriched;
+
+    return null;
+  }
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId, [Map<String, dynamic>? options]) async {
+    print('[AudioHandler] getChildren requested for parentMediaId: $parentMediaId');
+    final db = getIt<AppDatabase>();
+    final items = <MediaItem>[];
+
+    // 1. ROOT tabs navigation for Android Auto top bar
+    if (parentMediaId == AudioService.MEDIA_ROOT_ID ||
+        parentMediaId == 'root' ||
+        parentMediaId == '/' ||
+        parentMediaId == 'root_id') {
+      return const [
+        MediaItem(
+          id: 'home',
+          title: 'Home',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'library',
+          title: 'Library',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'playlists',
+          title: 'Playlists',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'favorites',
+          title: 'Liked Songs',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'audiobooks',
+          title: 'Audiobooks',
+          playable: false,
+        ),
+      ];
+    }
+
+    // 2. PLAYLISTS tab
+    if (parentMediaId == 'playlists') {
+      try {
+        final playlists = await db.getAllPlaylists();
+        final counts = await db.getPlaylistSongCounts();
+        if (playlists.isNotEmpty) {
+          for (final pl in playlists) {
+            final songCount = counts[pl.id] ?? 0;
+            items.add(MediaItem(
+              id: 'playlist_${pl.id}',
+              title: pl.name,
+              artist: '$songCount songs',
+              displaySubtitle: '$songCount songs',
+              playable: false,
+              artUri: parseArtworkUri(pl.artworkUrl),
+            ));
+          }
+        } else {
+          items.add(const MediaItem(
+            id: 'no_playlists',
+            title: 'No Playlists Found',
+            artist: 'Create playlists in app',
+            displaySubtitle: 'Create playlists in app',
+            playable: false,
+          ));
+        }
+      } catch (e) {
+        print('[AudioHandler] getChildren playlists error: $e');
+      }
+      return items;
+    }
+
+    // 3. Inside a specific PLAYLIST (e.g. playlist_123)
+    if (parentMediaId.startsWith('playlist_')) {
+      final plIdStr = parentMediaId.replaceAll('playlist_', '');
+      final plId = int.tryParse(plIdStr);
+      if (plId != null) {
+        try {
+          final tracks = await db.getPlaylistTracks(plId);
+          for (final tr in tracks) {
+            final trackId = (tr.youtubeId.isNotEmpty && tr.youtubeId != 'null')
+                ? 'https://www.youtube.com/watch?v=${tr.youtubeId}'
+                : (tr.torrentId != null && tr.fileId != null
+                    ? 'lazy.torbox.internal://${tr.torrentId}/${tr.fileId}'
+                    : 'track_${tr.id}');
+            items.add(MediaItem(
+              id: trackId,
+              title: tr.title,
+              artist: tr.artist,
+              album: tr.album ?? '',
+              artUri: parseArtworkUri(tr.artworkUrl),
+              playable: true,
+              extras: {
+                if (tr.torrentId != null) 'torrentId': tr.torrentId,
+                if (tr.fileId != null) 'fileId': tr.fileId,
+                if (tr.youtubeId.isNotEmpty && tr.youtubeId != 'null') 'videoId': tr.youtubeId,
+                if (tr.youtubeId.isNotEmpty && tr.youtubeId != 'null') 'linkType': 'youtube',
+              },
+            ));
+          }
+        } catch (e) {
+          print('[AudioHandler] getChildren playlist tracks error: $e');
+        }
+      }
+      return items;
+    }
+
+    // 4. FAVORITES / LIKED SONGS tab
+    if (parentMediaId == 'favorites') {
+      try {
+        final liked = await db.getLikedTracks();
+        if (liked.isNotEmpty) {
+          for (final tr in liked) {
+            items.add(MediaItem(
+              id: 'lazy.torbox.internal://${tr.torrentId}/${tr.fileId}',
+              title: tr.trackTitle ?? 'Unknown Track',
+              artist: tr.artist ?? 'Unknown Artist',
+              album: tr.album ?? '',
+              artUri: parseArtworkUri(tr.artworkUrlHigh ?? tr.artworkUrlLow),
+              playable: true,
+              extras: {
+                'torrentId': tr.torrentId,
+                'fileId': tr.fileId,
+              },
+            ));
+          }
+        } else {
+          items.add(const MediaItem(
+            id: 'no_favorites',
+            title: 'No Liked Songs Yet',
+            artist: 'Tap heart icon while playing to like',
+            displaySubtitle: 'Tap heart icon while playing to like',
+            playable: false,
+          ));
+        }
+      } catch (e) {
+        print('[AudioHandler] getChildren favorites error: $e');
+      }
+      return items;
+    }
+
+    // 5. HOME tab
+    if (parentMediaId == 'home') {
+      if (queue.value.isNotEmpty) {
+        items.add(const MediaItem(
+          id: 'current_queue',
+          title: 'Current Queue',
+          artist: 'Now Playing Queue',
+          playable: false,
+        ));
+      }
+      items.add(const MediaItem(
+        id: 'favorites',
+        title: 'Liked Songs',
+        artist: 'Your Favorites',
+        playable: false,
+      ));
+      items.add(const MediaItem(
+        id: 'playlists',
+        title: 'Playlists',
+        artist: 'All Playlists',
+        playable: false,
+      ));
+      return items;
+    }
+
+    // 6. CURRENT QUEUE subfolder inside Home
+    if (parentMediaId == 'current_queue') {
+      return queue.value;
+    }
+
+    // 7. LIBRARY tab
+    if (parentMediaId == 'library') {
+      return const [
+        MediaItem(
+          id: 'favorites',
+          title: 'Liked Songs',
+          artist: 'Liked tracks',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'playlists',
+          title: 'Playlists',
+          artist: 'Saved Playlists',
+          playable: false,
+        ),
+        MediaItem(
+          id: 'audiobooks',
+          title: 'Audiobooks',
+          artist: 'Library Audiobooks',
+          playable: false,
+        ),
+      ];
+    }
+
+    // 8. AUDIOBOOKS tab
+    if (parentMediaId == 'audiobooks') {
+      try {
+        final repo = getIt<AudiobookRepository>();
+        final books = await repo.getTorBoxLibraryAudiobooks();
+        if (books.isNotEmpty) {
+          for (final book in books) {
+            items.add(MediaItem(
+              id: 'audiobook_${book.id}',
+              title: book.title,
+              artist: book.author ?? 'Audiobook',
+              artUri: parseArtworkUri(book.artworkUrl),
+              playable: false,
+            ));
+          }
+        } else {
+          items.add(const MediaItem(
+            id: 'no_audiobooks',
+            title: 'No Audiobooks Found',
+            artist: 'Import audiobooks in app',
+            playable: false,
+          ));
+        }
+      } catch (e) {
+        print('[AudioHandler] getChildren audiobooks error: $e');
+      }
+      return items;
+    }
+
+    // 9. Inside a specific AUDIOBOOK
+    if (parentMediaId.startsWith('audiobook_')) {
+      final bookId = parentMediaId.replaceAll('audiobook_', '');
+      try {
+        final repo = getIt<AudiobookRepository>();
+        final chapters = await repo.getBookChapters(bookId);
+        for (int i = 0; i < chapters.length; i++) {
+          final ch = chapters[i];
+          items.add(MediaItem(
+            id: 'chapter_${bookId}_$i',
+            title: ch.title,
+            artist: 'Chapter ${i + 1}',
+            playable: true,
+            extras: {
+              'bookId': bookId,
+              'chapterIndex': i,
+              'mediaType': 'audiobook',
+            },
+          ));
+        }
+      } catch (e) {
+        print('[AudioHandler] getChildren audiobook chapters error: $e');
+      }
+      return items;
+    }
+
+    return items;
+  }
+
+  @override
+  Future<void> playMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
+    print('[AudioHandler] playMediaId requested: $mediaId');
+
+    // 1. Play entire playlist
+    if (mediaId.startsWith('playlist_')) {
+      final children = await getChildren(mediaId);
+      if (children.isNotEmpty && children.any((item) => item.playable == true)) {
+        final playables = children.where((item) => item.playable == true).toList();
+        await updateQueue(playables);
+        await play();
+      }
+      return;
+    }
+
+    // 2. Play liked songs / favorites
+    if (mediaId == 'favorites') {
+      final children = await getChildren('favorites');
+      if (children.isNotEmpty && children.any((item) => item.playable == true)) {
+        final playables = children.where((item) => item.playable == true).toList();
+        await updateQueue(playables);
+        await play();
+      }
+      return;
+    }
+
+    // 3. Play audiobook chapter or book
+    if (mediaId.startsWith('audiobook_')) {
+      final children = await getChildren(mediaId);
+      if (children.isNotEmpty && children.any((item) => item.playable == true)) {
+        final playables = children.where((item) => item.playable == true).toList();
+        await updateQueue(playables);
+        await play();
+      }
+      return;
+    }
+
+    // 4. Play single track or search current queue
+    final currentQueue = queue.value;
+    final matchIndex = currentQueue.indexWhere((item) => item.id == mediaId);
+    if (matchIndex != -1) {
+      await skipToQueueItem(matchIndex);
+      await play();
+      return;
+    }
+
+    // 5. If not in current queue, check if mediaId is a playable track
+    final item = await getItem(mediaId);
+    if (item != null) {
+      await playMediaItem(item);
+    }
+  }
+
+  @override
   Future<void> addQueueItem(MediaItem item) async {
     final source = await _createAudioSource(item);
     await _playlist.add(source);
@@ -2024,13 +2378,19 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   static Uri? parseArtworkUri(String? path) {
     if (path == null || path.isEmpty) return null;
-    if (path.startsWith('file://')) {
-      return Uri.parse(path);
+    String highResPath = path;
+    if (highResPath.contains('dzcdn.net') || highResPath.contains('deezer.com')) {
+      highResPath = highResPath.replaceAll(RegExp(r'\d+x\d+'), '1000x1000');
+    } else if (highResPath.contains('mzstatic.com')) {
+      highResPath = highResPath.replaceAll(RegExp(r'\d+x\d+bb'), '1000x1000bb');
     }
-    if (path.startsWith('/')) {
-      return Uri.file(path);
+    if (highResPath.startsWith('file://')) {
+      return Uri.parse(highResPath);
     }
-    return Uri.tryParse(path);
+    if (highResPath.startsWith('/')) {
+      return Uri.file(highResPath);
+    }
+    return Uri.tryParse(highResPath);
   }
 
   @override
@@ -2070,6 +2430,20 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
           final position = _player.position.inMilliseconds;
           final repo = getIt<AudiobookRepository>();
           await repo.addBookmark(bookId, chapterIndex, position);
+        }
+      }
+      return;
+    }
+
+    if (name == 'lyrics') {
+      final item = mediaItem.value;
+      if (item != null) {
+        _showLyricsOnAndroidAuto = !_showLyricsOnAndroidAuto;
+        if (_showLyricsOnAndroidAuto) {
+          await _fetchAndDisplayLyricsForCurrentTrack(item);
+        } else {
+          final rawArtist = item.extras?['rawArtist'] as String? ?? item.artist?.replaceAll(RegExp(r'^🎤\s*'), '') ?? 'Unknown';
+          mediaItem.add(item.copyWith(artist: rawArtist, displaySubtitle: rawArtist));
         }
       }
       return;
@@ -2563,6 +2937,55 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     );
   }
 
+  Future<void> _fetchAndDisplayLyricsForCurrentTrack([MediaItem? targetItem]) async {
+    final item = targetItem ?? mediaItem.value;
+    if (item == null) return;
+    if (_lyricsTrackId != item.id || _currentLyricsData == null) {
+      _lyricsTrackId = item.id;
+      final artistName = item.extras?['rawArtist'] as String? ?? item.artist?.replaceAll(RegExp(r'^🎤\s*'), '') ?? '';
+      _currentLyricsData = await _lyricsScraper.getLyrics(
+        item.title,
+        artistName,
+        album: item.album,
+        durationMs: item.duration?.inMilliseconds,
+      );
+    }
+    final synced = _currentLyricsData?.syncedLines ?? [];
+    final plain = _currentLyricsData?.plainLyrics;
+    final rawArtist = item.extras?['rawArtist'] as String? ?? item.artist?.replaceAll(RegExp(r'^🎤\s*'), '') ?? 'Unknown';
+    final baseExtras = {...?item.extras, 'rawArtist': rawArtist};
+
+    if (synced.isNotEmpty) {
+      final pos = _player.position;
+      String lineText = synced.first.text;
+      for (int i = synced.length - 1; i >= 0; i--) {
+        if (pos >= synced[i].timestamp) {
+          lineText = synced[i].text;
+          break;
+        }
+      }
+      _lastEmittedLyric = lineText;
+      mediaItem.add(item.copyWith(
+        artist: '🎤 $lineText',
+        displaySubtitle: lineText,
+        extras: baseExtras,
+      ));
+    } else if (plain != null && plain.isNotEmpty) {
+      final firstLine = plain.split('\n').firstWhere((l) => l.trim().isNotEmpty, orElse: () => plain);
+      mediaItem.add(item.copyWith(
+        artist: '🎤 $firstLine',
+        displaySubtitle: firstLine,
+        extras: baseExtras,
+      ));
+    } else {
+      mediaItem.add(item.copyWith(
+        artist: '🎤 No lyrics available',
+        displaySubtitle: 'No lyrics available',
+        extras: baseExtras,
+      ));
+    }
+  }
+
   PlaybackState _transformEvent(PlaybackEvent event) {
     final currentItem = mediaItem.value;
     final isAudiobook = currentItem?.extras?['mediaType'] == 'audiobook';
@@ -2592,7 +3015,17 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
                   action: MediaAction.setRating,
                   customAction: CustomMediaAction(name: 'like'),
                 ),
-        MediaControl.stop,
+        const MediaControl(
+          androidIcon: 'drawable/ic_stop',
+          label: 'Stop',
+          action: MediaAction.stop,
+        ),
+        const MediaControl(
+          androidIcon: 'drawable/ic_lyrics',
+          label: 'Lyrics',
+          action: MediaAction.custom,
+          customAction: CustomMediaAction(name: 'lyrics'),
+        ),
       ],
       systemActions: const {
         MediaAction.seek,
@@ -2600,6 +3033,7 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         MediaAction.seekBackward,
         MediaAction.skipToNext,
         MediaAction.skipToPrevious,
+        MediaAction.stop,
       },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: _mapProcessingState(_player.processingState),

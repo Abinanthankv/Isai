@@ -18,6 +18,14 @@ class AudioOutputInfo {
   final bool isBitPerfect;
   final List<int> supportedSampleRates;
   final bool permissionGranted;
+  final String route;
+  final String transport;
+  final String directStatus;
+  final int systemSampleRate;
+  final int systemBufferFrames;
+  final String systemHal;
+  final String bluetoothProfile;
+  final String audioTrackFormat;
 
   const AudioOutputInfo({
     required this.deviceName,
@@ -27,6 +35,14 @@ class AudioOutputInfo {
     this.isBitPerfect = false,
     this.supportedSampleRates = const [],
     this.permissionGranted = true,
+    this.route = 'SPEAKER',
+    this.transport = 'AudioTrack',
+    this.directStatus = 'Not Supported (Mixed Path)',
+    this.systemSampleRate = 48000,
+    this.systemBufferFrames = 960,
+    this.systemHal = 'AudioFlinger Mixer 48000 Hz, HAL PCM24 packed',
+    this.bluetoothProfile = 'N/A',
+    this.audioTrackFormat = 'PCM16 / 48000 Hz',
   });
 
   factory AudioOutputInfo.speaker() {
@@ -36,6 +52,14 @@ class AudioOutputInfo {
       codecName: 'Internal AudioFlinger',
       transmissionDetails: '16-bit / 48 kHz System Output',
       isBitPerfect: false,
+      route: 'SPEAKER',
+      transport: 'AudioTrack',
+      directStatus: 'Not Supported (Mixed Path)',
+      systemSampleRate: 48000,
+      systemBufferFrames: 960,
+      systemHal: 'AudioFlinger Mixer 48000 Hz, HAL PCM24 packed',
+      bluetoothProfile: 'N/A',
+      audioTrackFormat: 'PCM16 / 48000 Hz',
     );
   }
 
@@ -53,6 +77,14 @@ class AudioOutputInfo {
             : 'Resampled System Output • $ratesStr',
         isBitPerfect: isBitPerfect,
         supportedSampleRates: sampleRates ?? [44100, 48000, 96000, 192000],
+        route: 'USB',
+        transport: isBitPerfect ? 'Direct USB' : 'AudioTrack',
+        directStatus: isBitPerfect ? 'Supported (Bit-Perfect Direct)' : 'Not Supported (Mixed Path)',
+        systemSampleRate: 48000,
+        systemBufferFrames: 960,
+        systemHal: isBitPerfect ? 'Direct Hardware Pass-Through' : 'AudioFlinger Mixer 48000 Hz, HAL PCM24 packed',
+        bluetoothProfile: 'N/A',
+        audioTrackFormat: isBitPerfect ? 'FLOAT32 / 192000 Hz' : 'PCM16 / 48000 Hz',
       );
     }
 
@@ -62,6 +94,14 @@ class AudioOutputInfo {
       codecName: '3.5mm Analog Output',
       transmissionDetails: '24-bit / 48 kHz DAC Output',
       isBitPerfect: false,
+      route: 'WIRED',
+      transport: 'AudioTrack',
+      directStatus: 'Not Supported (Mixed Path)',
+      systemSampleRate: 48000,
+      systemBufferFrames: 960,
+      systemHal: 'AudioFlinger Mixer 48000 Hz, HAL PCM24 packed',
+      bluetoothProfile: 'N/A',
+      audioTrackFormat: 'PCM16 / 48000 Hz',
     );
   }
 
@@ -82,6 +122,14 @@ class AudioOutputInfo {
       transmissionDetails: transmDetails,
       isBitPerfect: false,
       permissionGranted: permissionGranted,
+      route: 'BLUETOOTH',
+      transport: 'AudioTrack',
+      directStatus: 'Not Supported (Mixed Path)',
+      systemSampleRate: 48000,
+      systemBufferFrames: 960,
+      systemHal: 'AudioFlinger Mixer 48000 Hz, HAL PCM24 packed',
+      bluetoothProfile: 'A2DP',
+      audioTrackFormat: 'PCM16 / 48000 Hz',
     );
   }
 }
@@ -118,6 +166,15 @@ class AudioDeviceService {
         final ratesRaw = result['sampleRates'] as List<dynamic>?;
         final sampleRates = ratesRaw?.map((e) => (e as num).toInt()).toList() ?? [];
 
+        final route = result['route'] as String? ?? (typeStr == 'bluetooth' ? 'BLUETOOTH' : (typeStr == 'usb_dac' ? 'USB' : (typeStr == 'wired' ? 'WIRED' : 'SPEAKER')));
+        final transport = result['transport'] as String? ?? (isBitPerfect ? 'Direct USB' : 'AudioTrack');
+        final directStatus = result['directStatus'] as String? ?? (isBitPerfect ? 'Supported (Bit-Perfect Direct)' : 'Not Supported (Mixed Path)');
+        final sysSampleRate = (result['systemSampleRate'] as num?)?.toInt() ?? 48000;
+        final sysFrames = (result['systemBufferFrames'] as num?)?.toInt() ?? 960;
+        final sysHal = result['systemHal'] as String? ?? 'AudioFlinger Mixer $sysSampleRate Hz, HAL PCM24 packed';
+        final btProfile = result['bluetoothProfile'] as String? ?? (typeStr == 'bluetooth' ? 'A2DP' : 'N/A');
+        final trackFormat = result['audioTrackFormat'] as String? ?? 'PCM16 / $sysSampleRate Hz';
+
         AudioOutputType type = AudioOutputType.speaker;
         if (typeStr == 'bluetooth') {
           type = AudioOutputType.bluetooth;
@@ -135,6 +192,14 @@ class AudioDeviceService {
           isBitPerfect: isBitPerfect,
           supportedSampleRates: sampleRates,
           permissionGranted: hasPermission,
+          route: route,
+          transport: transport,
+          directStatus: directStatus,
+          systemSampleRate: sysSampleRate,
+          systemBufferFrames: sysFrames,
+          systemHal: sysHal,
+          bluetoothProfile: btProfile,
+          audioTrackFormat: trackFormat,
         );
       }
     } catch (e) {
