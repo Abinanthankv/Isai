@@ -53,6 +53,13 @@ void main() async {
     } catch (e) {
       print('[FlutterDisplayMode] Failed to set high display refresh rate: $e');
     }
+    try {
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
+    } catch (e) {
+      print('[NotificationPermission] Error requesting notification permission: $e');
+    }
   }
 
   if (Platform.isLinux || Platform.isWindows) {
@@ -71,11 +78,11 @@ void main() async {
   } else {
     audioHandler = await AudioService.init(
       builder: () => MyAudioHandler(),
-      config: AudioServiceConfig(
+      config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.isai.music.channel.audio',
         androidNotificationChannelName: 'Music Playback',
         androidNotificationOngoing: false,
-        androidStopForegroundOnPause: true,
+        androidStopForegroundOnPause: false,
         androidNotificationIcon: 'drawable/ic_stat_music',
       ),
     );

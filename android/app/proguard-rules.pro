@@ -36,7 +36,13 @@
 -keep class androidx.lifecycle.** { *; }
 -keepclassmembers class androidx.lifecycle.** { *; }
 
+# App Main Package & Custom Native Plugins
+-keep class com.isai.music.** { *; }
+-keepclassmembers class com.isai.music.** { *; }
+
 # AndroidX Media (used by audio_service for MediaSession, MediaStyle)
+-keep class androidx.media.** { *; }
+-keepclassmembers class androidx.media.** { *; }
 -keep class android.support.v4.media.** { *; }
 -keep class android.support.v4.media.session.** { *; }
 -keepclasseswithmembers class android.support.v4.media.** { *; }
