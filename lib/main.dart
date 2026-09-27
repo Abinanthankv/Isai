@@ -55,13 +55,6 @@ void main() async {
     }
   }
 
-  if (!Platform.isLinux) {
-    final notifStatus = await Permission.notification.request();
-    if (notifStatus.isDenied) {
-      await Permission.notification.request();
-    }
-  }
-  
   if (Platform.isLinux || Platform.isWindows) {
     JustAudioMediaKit.ensureInitialized();
   }
@@ -81,8 +74,8 @@ void main() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.isai.music.channel.audio',
         androidNotificationChannelName: 'Music Playback',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        androidNotificationOngoing: false,
+        androidStopForegroundOnPause: false,
         androidNotificationIcon: 'drawable/ic_stat_music',
       ),
     );
@@ -152,12 +145,32 @@ class MyApp extends ConsumerWidget {
 final playerMediaItemProvider = StreamProvider<MediaItem?>((ref) => audioHandler.mediaItem);
 
 
-class AppGate extends ConsumerWidget {
+class AppGate extends ConsumerStatefulWidget {
   const AppGate({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Allow entry even without API key as requested
+  ConsumerState<AppGate> createState() => _AppGateState();
+}
+
+class _AppGateState extends ConsumerState<AppGate> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestNotificationPermission();
+    });
+  }
+
+  Future<void> _requestNotificationPermission() async {
+    if (Platform.isAndroid) {
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return const MusicHubScreen();
   }
 }

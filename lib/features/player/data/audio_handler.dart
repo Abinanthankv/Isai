@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:io' as io;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -1732,6 +1733,11 @@ class MyAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       await cast.play();
       _emitCastState();
       return;
+    }
+    if (io.Platform.isAndroid) {
+      if (!await Permission.notification.isGranted) {
+        await Permission.notification.request();
+      }
     }
     if (!io.Platform.isWindows) {
       final session = await AudioSession.instance;
