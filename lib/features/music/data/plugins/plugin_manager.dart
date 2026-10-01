@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io' as io;
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_js/flutter_js.dart';
@@ -717,8 +718,53 @@ class PluginManager {
   }
 
   // ---------------------------------------------------------------------------
-  // Eclipse Addons Implementation
+  // Eclipse Addons & HMAC Protocol Implementation
   // ---------------------------------------------------------------------------
+
+  static const String _lastWaveSecret =
+      '36d96a751b12ee481c281a8a8e64c482d0c1634a22061ab72f40175017818b85';
+
+  bool _isLastWave(EclipseAddon? addon, String url) {
+    if (addon != null && (addon.id.toLowerCase().contains('lastwave') || addon.baseUrl.toLowerCase().contains('/a/'))) {
+      return true;
+    }
+    final lowerUrl = url.toLowerCase();
+    return lowerUrl.contains('lastwave') || lowerUrl.contains('/a/');
+  }
+
+  Map<String, String> _buildLastWaveHeaders(
+    String urlStr, {
+    String method = 'GET',
+    String intent = 'stream',
+  }) {
+    try {
+      final uri = Uri.parse(urlStr);
+      final path = uri.path.isEmpty ? '/' : uri.path;
+      final tokenMatch = RegExp(r'/a/([^/]+)').firstMatch(path);
+      final token = tokenMatch?.group(1) ?? '';
+      final ts = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
+      final message = '$ts\n${method.toUpperCase()}\n$path\n$token';
+
+      final key = utf8.encode(_lastWaveSecret);
+      final bytes = utf8.encode(message);
+      final hmac = Hmac(sha256, key);
+      final sign = hmac.convert(bytes).toString();
+
+      final userAgent = intent == 'download'
+          ? 'LastWave-Downloader/1.0'
+          : 'LastWave-Player/1.0';
+
+      return {
+        'User-Agent': userAgent,
+        'X-LW-Intent': intent,
+        'X-LW-TS': ts,
+        'X-LW-Sign': sign,
+      };
+    } catch (e) {
+      print('[PluginManager] Failed to generate HMAC headers: $e');
+      return {};
+    }
+  }
 
   Future<EclipseAddon> installEclipseAddon(String baseUrl) async {
     print('[PluginManager] Installing Eclipse Addon from $baseUrl');
@@ -733,11 +779,16 @@ class PluginManager {
       manifestUrl = '$url/manifest.json';
     }
 
+    final Map<String, String> headers = {'Cache-Control': 'no-cache'};
+    if (_isLastWave(null, manifestUrl)) {
+      headers.addAll(_buildLastWaveHeaders(manifestUrl, intent: 'search'));
+    }
+
     final response = await _dio.get<String>(
       manifestUrl,
       options: Options(
         responseType: ResponseType.plain,
-        headers: {'Cache-Control': 'no-cache'},
+        headers: headers,
       ),
     );
 
@@ -803,8 +854,20 @@ class PluginManager {
     if (!addon.enabled) return [];
 
     try {
-      final searchUrl = '${addon.baseUrl}/search?q=${Uri.encodeComponent(query)}';
-      final response = await _dio.get<String>(searchUrl);
+      final isLW = _isLastWave(addon, addon.baseUrl);
+      final searchUrl = isLW
+          ? '${addon.baseUrl}/search?q=${Uri.encodeComponent(query)}&quality=lossless'
+          : '${addon.baseUrl}/search?q=${Uri.encodeComponent(query)}';
+          
+      final Map<String, String> headers = {};
+      if (isLW) {
+        headers.addAll(_buildLastWaveHeaders(searchUrl, intent: 'search'));
+      }
+
+      final response = await _dio.get<String>(
+        searchUrl,
+        options: Options(headers: headers.isEmpty ? null : headers),
+      );
       final data = response.data;
       if (data == null) return [];
 
@@ -854,13 +917,29 @@ class PluginManager {
       return null;
     }
     try {
-      final streamUrl = '${addon.baseUrl}/stream/${Uri.encodeComponent(trackId)}';
-      final response = await _dio.get<String>(streamUrl);
+      final isLW = _isLastWave(addon, addon.baseUrl);
+      final streamUrl = isLW
+          ? '${addon.baseUrl}/stream/${Uri.encodeComponent(trackId)}?quality=lossless&atmos=none'
+          : '${addon.baseUrl}/stream/${Uri.encodeComponent(trackId)}';
+
+      final Map<String, String> headers = {};
+      if (isLW) {
+        headers.addAll(_buildLastWaveHeaders(streamUrl, intent: 'stream'));
+      }
+
+      final response = await _dio.get<String>(
+        streamUrl,
+        options: Options(headers: headers.isEmpty ? null : headers),
+      );
       final data = response.data;
       if (data == null) return null;
 
       final json = jsonDecode(data) as Map<String, dynamic>;
-      return json['url'] as String?;
+      final resUrl = json['url'] as String? ??
+          json['streamUrl'] as String? ??
+          json['directUrl'] as String? ??
+          json['mediaUrl'] as String?;
+      return resUrl;
     } catch (e) {
       print('[PluginManager] Exception running Eclipse stream resolution for $addonId: $e');
       return null;

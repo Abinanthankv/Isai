@@ -46,6 +46,6 @@ app.*.map.json
 
 # Scratch/test files
 scratch/
-plugins/
+/plugins/
 scripts/
 test/
