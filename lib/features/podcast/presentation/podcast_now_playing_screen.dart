@@ -326,23 +326,315 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isWide = MediaQuery.of(context).size.width >= 700;
     final artworkUrl = widget.episode.artworkUrl ?? widget.podcastArtwork;
     final podcastDescAsync = widget.feedUrl != null
         ? ref.watch(podcastDescriptionProvider(widget.feedUrl!))
         : null;
 
+    final chaptersWidget = _buildChaptersSection(context);
+
+    final descriptionWidget = (widget.episode.description != null &&
+            widget.episode.description!.isNotEmpty)
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 16),
+              _buildTimestampChipsSection(
+                  context,
+                  _extractDescriptionTimestamps(
+                      widget.episode.description!)),
+              _buildSectionHeader('About this Episode'),
+              const SizedBox(height: 8),
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 200),
+                crossFadeState: _descriptionExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: Text.rich(
+                  TextSpan(
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.8),
+                          height: 1.5,
+                        ),
+                    children: _buildDescriptionSpans(
+                        context, widget.episode.description!),
+                  ),
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                secondChild: Text.rich(
+                  TextSpan(
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.8),
+                          height: 1.5,
+                        ),
+                    children: _buildDescriptionSpans(
+                        context, widget.episode.description!),
+                  ),
+                ),
+              ),
+              if (widget.episode.description!.length > 200)
+                GestureDetector(
+                  onTap: () => setState(
+                      () => _descriptionExpanded = !_descriptionExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      _descriptionExpanded ? 'Show less' : 'Show more',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ],
+          )
+        : const SizedBox.shrink();
+
+    final podcastDescWidget = podcastDescAsync?.when(
+          data: (desc) {
+            if (desc == null || desc.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionHeader('About the Podcast'),
+                const SizedBox(height: 8),
+                Text(
+                  desc,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant
+                            .withValues(alpha: 0.8),
+                        height: 1.5,
+                      ),
+                  maxLines: 10,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            );
+          },
+          loading: () => const SizedBox(
+              height: 40,
+              child: Center(
+                  child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)))),
+          error: (_, __) => const SizedBox.shrink(),
+        ) ??
+        const SizedBox.shrink();
+
+    Widget bodyContent;
+
+    if (isWide) {
+      bodyContent = SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(32, 56, 32, 24),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left Column: Full-Height Player Controls & Artwork Card
+              Container(
+                width: 420,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF161618).withValues(alpha: 0.85)
+                      : const Color(0xFFF7F7FA).withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.08),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: PodcastArtworkImage(
+                          imageUrl: artworkUrl,
+                          width: 260,
+                          height: 260,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      widget.episode.title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      widget.podcastTitle,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      width: double.infinity,
+                      child: _PodcastProgressBar(
+                        onPreviousEpisode: _previousEpisode,
+                        onNextEpisode: _nextEpisode,
+                        chapters: ref
+                            .watch(podcastChaptersProvider(widget.episode))
+                            .asData
+                            ?.value,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 32),
+              // Right Column: Episode Details, Timestamps & Podcast Information Card
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF161618).withValues(alpha: 0.85)
+                        : const Color(0xFFF7F7FA).withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.black.withValues(alpha: 0.08),
+                      width: 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          chaptersWidget,
+                          descriptionWidget,
+                          podcastDescWidget,
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      bodyContent = SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              children: [
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: PodcastArtworkImage(
+                    imageUrl: artworkUrl,
+                    width: 220,
+                    height: 220,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  widget.episode.title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.podcastTitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                _PodcastProgressBar(
+                  onPreviousEpisode: _previousEpisode,
+                  onNextEpisode: _nextEpisode,
+                  chapters: ref
+                      .watch(podcastChaptersProvider(widget.episode))
+                      .asData
+                      ?.value,
+                ),
+                const SizedBox(height: 24),
+                chaptersWidget,
+                descriptionWidget,
+                const SizedBox(height: 16),
+                podcastDescWidget,
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(widget.podcastTitle,
+        title: Text(
+          widget.podcastTitle,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          maxLines: 1, overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         centerTitle: true,
         actions: [
@@ -353,10 +645,16 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     alignment: Alignment.center,
                     children: [
                       const Icon(Icons.bedtime_rounded, size: 24),
-                      Positioned(top: 0, right: 0, child: Container(
-                        width: 10, height: 10,
-                        decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
-                      )),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                              color: Colors.green, shape: BoxShape.circle),
+                        ),
+                      ),
                     ],
                   )
                 : const Icon(Icons.bedtime_outlined),
@@ -366,9 +664,14 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
             onPressed: _showSleepTimerSheet,
           ),
           IconButton(
-            icon: Text('${_playbackSpeed}x',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold,
-                color: _playbackSpeed != 1.0 ? Theme.of(context).colorScheme.primary : null,
+            icon: Text(
+              '${_playbackSpeed}x',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: _playbackSpeed != 1.0
+                    ? Theme.of(context).colorScheme.primary
+                    : null,
               ),
             ),
             tooltip: 'Playback speed',
@@ -382,139 +685,23 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
           if (artworkUrl != null) ...[
             Positioned.fill(
               child: PodcastArtworkImage(
-                imageUrl: artworkUrl, fit: BoxFit.cover, memCacheWidth: 200,
+                imageUrl: artworkUrl,
+                fit: BoxFit.cover,
+                memCacheWidth: 200,
               ),
             ),
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                 child: Container(
-                  color: isDark ? Colors.black.withOpacity(0.65) : Colors.white.withOpacity(0.65),
+                  color: isDark
+                      ? Colors.black.withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: 0.65),
                 ),
               ),
             ),
           ],
-          SafeArea(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: PodcastArtworkImage(
-                        imageUrl: artworkUrl,
-                        width: 220,
-                        height: 220,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      widget.episode.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.podcastTitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    _PodcastProgressBar(
-                      onPreviousEpisode: _previousEpisode,
-                      onNextEpisode: _nextEpisode,
-                      chapters: ref.watch(podcastChaptersProvider(widget.episode)).asData?.value,
-                    ),
-                    const SizedBox(height: 24),
-                    _buildChaptersSection(context),
-                    if (widget.episode.description != null && widget.episode.description!.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      _buildTimestampChipsSection(context, _extractDescriptionTimestamps(widget.episode.description!)),
-                      _buildSectionHeader('About this Episode'),
-                      const SizedBox(height: 8),
-                      AnimatedCrossFade(
-                        duration: const Duration(milliseconds: 200),
-                        crossFadeState: _descriptionExpanded
-                            ? CrossFadeState.showSecond
-                            : CrossFadeState.showFirst,
-                        firstChild: Text.rich(
-                          TextSpan(
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                              height: 1.5,
-                            ),
-                            children: _buildDescriptionSpans(context, widget.episode.description!),
-                          ),
-                          maxLines: 5,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        secondChild: Text.rich(
-                          TextSpan(
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                              height: 1.5,
-                            ),
-                            children: _buildDescriptionSpans(context, widget.episode.description!),
-                          ),
-                        ),
-                      ),
-                      if (widget.episode.description!.length > 200)
-                        GestureDetector(
-                          onTap: () => setState(() => _descriptionExpanded = !_descriptionExpanded),
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              _descriptionExpanded ? 'Show less' : 'Show more',
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      const SizedBox(height: 16),
-                    ],
-                    const SizedBox(height: 16),
-                    podcastDescAsync?.when(
-                      data: (desc) {
-                        if (desc == null || desc.isEmpty) return const SizedBox.shrink();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildSectionHeader('About the Podcast'),
-                            const SizedBox(height: 8),
-                            Text(
-                              desc,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                                height: 1.5,
-                              ),
-                              maxLines: 10,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        );
-                      },
-                      loading: () => const SizedBox(height: 40,
-                        child: Center(child: SizedBox(width: 16, height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2)))),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ) ?? const SizedBox.shrink(),
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          bodyContent,
           if (_isLoading)
             Container(
               color: Colors.black54,
@@ -525,7 +712,7 @@ class _PodcastNowPlayingScreenState extends ConsumerState<PodcastNowPlayingScree
                     CircularProgressIndicator(color: Colors.white),
                     SizedBox(height: 16),
                     Text('Loading episode…',
-                      style: TextStyle(color: Colors.white, fontSize: 14)),
+                        style: TextStyle(color: Colors.white, fontSize: 14)),
                   ],
                 ),
               ),
@@ -1140,25 +1327,19 @@ List<InlineSpan> _buildDescriptionSpans(BuildContext context, String description
 
 List<_DescriptionTimestamp> _extractDescriptionTimestamps(String description) {
   final cleanText = _cleanHtmlDescription(description);
-  final lines = cleanText.split('\n');
   final regex = RegExp(r'(?:\b|(?<=\[|\(|\s|^))(\d{1,2}:[0-5]\d(?::[0-5]\d)?)(?:\b|(?=\]|\)|\s|$))');
   final results = <_DescriptionTimestamp>[];
+  final seenSeconds = <int>{};
 
-  for (final line in lines) {
-    final trimmed = line.trim();
-    final match = regex.firstMatch(trimmed);
-    if (match != null) {
-      final timeStr = match.group(1)!;
-      final seconds = _parseTimestampToSeconds(timeStr);
-      var label = trimmed.replaceAll(match.group(0)!, '').trim();
-      label = label.replaceAll(RegExp(r'^[\s:\-–—\(\)\[\]]+'), '').trim();
-      if (label.isEmpty) {
-        label = 'Timestamp $timeStr';
-      }
+  for (final match in regex.allMatches(cleanText)) {
+    final timeStr = match.group(1)!;
+    final seconds = _parseTimestampToSeconds(timeStr);
+    if (!seenSeconds.contains(seconds)) {
+      seenSeconds.add(seconds);
       results.add(_DescriptionTimestamp(
         timeString: timeStr,
         seconds: seconds,
-        label: label,
+        label: timeStr,
       ));
     }
   }
@@ -1167,6 +1348,8 @@ List<_DescriptionTimestamp> _extractDescriptionTimestamps(String description) {
 
 Widget _buildTimestampChipsSection(BuildContext context, List<_DescriptionTimestamp> timestamps) {
   if (timestamps.isEmpty) return const SizedBox.shrink();
+  final scrollController = ScrollController();
+
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -1181,40 +1364,81 @@ Widget _buildTimestampChipsSection(BuildContext context, List<_DescriptionTimest
             ),
             const SizedBox(width: 6),
             Text(
-              'Timestamps & Highlights',
+              'Timestamps & Highlights (${timestamps.length})',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
+            ),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.chevron_left_rounded, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () {
+                if (!scrollController.hasClients) return;
+                final target = (scrollController.offset - 220).clamp(0.0, scrollController.position.maxScrollExtent);
+                scrollController.animateTo(
+                  target,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right_rounded, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              onPressed: () {
+                if (!scrollController.hasClients) return;
+                final target = (scrollController.offset + 220).clamp(0.0, scrollController.position.maxScrollExtent);
+                scrollController.animateTo(
+                  target,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                );
+              },
             ),
           ],
         ),
       ),
       SizedBox(
         height: 40,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: timestamps.length,
-          itemBuilder: (context, index) {
-            final ts = timestamps[index];
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ActionChip(
-                avatar: const Icon(Icons.play_arrow_rounded, size: 16),
-                label: Text('${ts.timeString} • ${ts.label}'),
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  audioHandler.seek(Duration(seconds: ts.seconds));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Jumped to ${ts.timeString}'),
-                      duration: const Duration(seconds: 1),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                },
-              ),
-            );
-          },
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(
+            dragDevices: {
+              PointerDeviceKind.touch,
+              PointerDeviceKind.mouse,
+              PointerDeviceKind.trackpad,
+              PointerDeviceKind.stylus,
+            },
+          ),
+          child: ListView.builder(
+            controller: scrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: timestamps.length,
+            itemBuilder: (context, index) {
+              final ts = timestamps[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ActionChip(
+                  avatar: const Icon(Icons.play_arrow_rounded, size: 14),
+                  label: Text(ts.timeString),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    audioHandler.seek(Duration(seconds: ts.seconds));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Jumped to ${ts.timeString}'),
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
         ),
       ),
       const SizedBox(height: 16),

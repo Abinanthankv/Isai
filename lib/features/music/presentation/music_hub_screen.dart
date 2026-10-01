@@ -54,6 +54,7 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isWide = MediaQuery.of(context).size.width >= 700;
 
     final pages = const [
       DiscoveryScreen(),
@@ -63,74 +64,112 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
       SettingsScreen(),
     ];
 
-    return Scaffold(
-      extendBody: true,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: isDark
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF0a0a0a),
-                    Color(0xFF000000),
-                  ],
-                )
-              : const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFFf5f5f7),
-                    Color(0xFFefeff1),
-                  ],
-                ),
-        ),
-        child: NotificationListener<ScrollNotification>(
-          onNotification: (notification) {
-            if (notification.metrics.axis != Axis.vertical) return false;
+    final mainContent = Container(
+      decoration: BoxDecoration(
+        gradient: isDark
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFF0a0a0a),
+                  Color(0xFF000000),
+                ],
+              )
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFf5f5f7),
+                  Color(0xFFefeff1),
+                ],
+              ),
+      ),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.axis != Axis.vertical) return false;
 
-            if (notification is ScrollUpdateNotification) {
-              if (notification.metrics.pixels <= 30.0) {
-                if (!_isNavExpanded.value) {
-                  _isNavExpanded.value = true;
-                  _accumulatedDelta = 0.0;
-                }
-                return false;
-              }
-
-              final delta = notification.scrollDelta ?? 0.0;
-              if (delta == 0.0) return false;
-
-              final currentDirection =
-                  delta > 0 ? ScrollDirection.reverse : ScrollDirection.forward;
-
-              if (_lastDirection != currentDirection) {
-                _lastDirection = currentDirection;
+          if (notification is ScrollUpdateNotification) {
+            if (notification.metrics.pixels <= 30.0) {
+              if (!_isNavExpanded.value) {
+                _isNavExpanded.value = true;
                 _accumulatedDelta = 0.0;
               }
+              return false;
+            }
 
-              _accumulatedDelta += delta.abs();
+            final delta = notification.scrollDelta ?? 0.0;
+            if (delta == 0.0) return false;
 
-              if (_accumulatedDelta >= 15.0) {
-                if (currentDirection == ScrollDirection.reverse &&
-                    _isNavExpanded.value) {
-                  _isNavExpanded.value = false;
-                  _accumulatedDelta = 0.0;
-                } else if (currentDirection == ScrollDirection.forward &&
-                    !_isNavExpanded.value) {
-                  _isNavExpanded.value = true;
-                  _accumulatedDelta = 0.0;
-                }
+            final currentDirection =
+                delta > 0 ? ScrollDirection.reverse : ScrollDirection.forward;
+
+            if (_lastDirection != currentDirection) {
+              _lastDirection = currentDirection;
+              _accumulatedDelta = 0.0;
+            }
+
+            _accumulatedDelta += delta.abs();
+
+            if (_accumulatedDelta >= 15.0) {
+              if (currentDirection == ScrollDirection.reverse &&
+                  _isNavExpanded.value) {
+                _isNavExpanded.value = false;
+                _accumulatedDelta = 0.0;
+              } else if (currentDirection == ScrollDirection.forward &&
+                  !_isNavExpanded.value) {
+                _isNavExpanded.value = true;
+                _accumulatedDelta = 0.0;
               }
             }
-            return false;
-          },
-          child: IndexedStack(
-            index: _tab,
-            children: pages,
-          ),
+          }
+          return false;
+        },
+        child: IndexedStack(
+          index: _tab,
+          children: pages,
         ),
       ),
+    );
+
+    if (isWide) {
+      return Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF0A0A0C) : const Color(0xFFEFEFF2),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Row(
+              children: [
+                _SideNavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: (i) {
+                    if (_tab != i) {
+                      setState(() => _tab = i);
+                    }
+                  },
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(child: mainContent),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: MiniPlayer(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      extendBody: true,
+      body: mainContent,
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -150,6 +189,218 @@ class _MusicHubScreenState extends ConsumerState<MusicHubScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SideNavigationBar extends ConsumerWidget {
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  const _SideNavigationBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settings = ref.watch(settingsProvider);
+    final useLiquid =
+        settings.appThemeStyle == 'apple' && settings.appleUseLiquidGlass;
+    final primaryColor = context.accentColor;
+
+    final navItems = [
+      (Icons.explore_outlined, Icons.explore_rounded, 'Discover'),
+      (Icons.auto_awesome_outlined, Icons.auto_awesome_rounded, 'For You'),
+      (Icons.library_music_outlined, Icons.library_music_rounded, 'Library'),
+      (Icons.search_outlined, Icons.search_rounded, 'Search'),
+      (Icons.settings_outlined, Icons.settings_rounded, 'Settings'),
+    ];
+
+    Widget content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      primaryColor,
+                      primaryColor.withValues(alpha: 0.75),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.music_note_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Isai',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                  ),
+                  Text(
+                    'Music & Audio',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: isDark ? Colors.white54 : Colors.black45,
+                        ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Divider(
+          height: 1,
+          indent: 16,
+          endIndent: 16,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.08),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: navItems.length,
+            itemBuilder: (context, index) {
+              final item = navItems[index];
+              final isSelected = selectedIndex == index;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6.0),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onDestinationSelected(index),
+                    borderRadius: BorderRadius.circular(14),
+                    hoverColor: primaryColor.withValues(alpha: 0.08),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? primaryColor.withValues(alpha: isDark ? 0.22 : 0.14)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        border: isSelected
+                            ? Border.all(
+                                color: primaryColor.withValues(alpha: 0.3),
+                                width: 1,
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isSelected ? item.$2 : item.$1,
+                            color: isSelected
+                                ? primaryColor
+                                : (isDark ? Colors.white70 : Colors.black54),
+                            size: 22,
+                          ),
+                          const SizedBox(width: 14),
+                          Text(
+                            item.$3,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
+                                  color: isSelected
+                                      ? primaryColor
+                                      : (isDark
+                                          ? Colors.white
+                                          : Colors.black87),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+
+    if (useLiquid) {
+      return Container(
+        width: 230,
+        margin: const EdgeInsets.all(12),
+        child: GlassCard(
+          padding: EdgeInsets.zero,
+          margin: EdgeInsets.zero,
+          useOwnLayer: true,
+          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+          settings: LiquidGlassSettings(
+            glassColor: (isDark ? Colors.black : Colors.white)
+                .withValues(alpha: settings.appleLiquidGlassOpacity),
+            thickness: 20,
+            blur: 12,
+          ),
+          child: content,
+        ),
+      );
+    }
+
+    return Container(
+      width: 230,
+      margin: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF161618).withValues(alpha: 0.95)
+            : const Color(0xFFF7F7FA).withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: content,
     );
   }
 }
